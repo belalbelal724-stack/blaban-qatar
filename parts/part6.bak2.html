@@ -1,0 +1,437 @@
+<script>
+// ===================== MANAGERS PAGE =====================
+function buildManagerStats() {
+  const managerStats = {};
+  BRANCHES.forEach(branch => {
+    for (let m = 0; m < 12; m++) {
+      for (let d = 1; d <= MONTH_DAYS[m]; d++) {
+        const key = getKey(branch, m, d);
+        if (!appData[key]) continue;
+        const visit = appData[key];
+        const manager = visit.manager?.trim();
+        if (!manager) continue;
+        const { pct, answered } = calcSmartScore(branch, m, d);
+        if (answered === 0) continue;
+        if (!managerStats[manager]) managerStats[manager] = { visits:[], failItems:{}, branches:new Set() };
+        managerStats[manager].visits.push({ branch, m, d, pct, date:`${d} ${MONTHS[m]}` });
+        managerStats[manager].branches.add(branch);
+        Object.entries(visit.results||{}).forEach(([id,val]) => {
+          if (val === 'fail') managerStats[manager].failItems[id] = (managerStats[manager].failItems[id]||0)+1;
+        });
+      }
+    }
+  });
+  return managerStats;
+}
+
+function analyzeManagerTrend(visits) {
+  if (visits.length < 2) return { trend: 'neutral', delta: 0, improving: false, avgFirst:0, avgLast:0 };
+  const sorted = [...visits].sort((a,b) => a.m*31+a.d - (b.m*31+b.d));
+  const half = Math.ceil(sorted.length / 2);
+  const first = sorted.slice(0, half);
+  const last = sorted.slice(sorted.length - half);
+  const avgFirst = first.reduce((s,v)=>s+v.pct,0)/first.length;
+  const avgLast = last.reduce((s,v)=>s+v.pct,0)/last.length;
+  const delta = Math.round(avgLast - avgFirst);
+  return {
+    trend: delta > 3 ? 'up' : delta < -3 ? 'down' : 'stable',
+    delta, improving: delta > 3,
+    avgFirst: Math.round(avgFirst), avgLast: Math.round(avgLast)
+  };
+}
+
+function renderManagersPage() {
+  const container = document.getElementById('managers-content');
+  if (!container) return;
+  const managerStats = buildManagerStats();
+  let html = `<div class="card"><div class="card-title">👔 تقييم المديرين — تراكمي وتحليلي</div>`;
+  if (Object.keys(managerStats).length === 0) {
+    html += `<div class="alert alert-info">لا توجد بيانات مديرين. أدخل أسماء المديرين في صفحات الفروع أولاً.</div>`;
+  } else {
+    const sorted = Object.entries(managerStats).sort((a,b) => {
+      const avgA = a[1].visits.reduce((s,v)=>s+v.pct,0)/a[1].visits.length;
+      const avgB = b[1].visits.reduce((s,v)=>s+v.pct,0)/b[1].visits.length;
+      return avgB - avgA;
+    });
+    sorted.forEach(([name, stats]) => {
+      const sortedVisits = [...stats.visits].sort((a,b) => a.m*31+a.d - (b.m*31+b.d));
+      const avg = Math.round(stats.visits.reduce((s,v)=>s+v.pct,0) / stats.visits.length);
+      const cls = avg >= 90 ? 'high' : avg >= 70 ? 'mid' : 'low';
+      const failList = Object.entries(stats.failItems).sort((a,b)=>b[1]-a[1]).slice(0,4);
+      const trend = analyzeManagerTrend(stats.visits);
+      const trendIcon = trend.trend==='up' ? '📈' : trend.trend==='down' ? '📉' : '➡️';
+      const trendColor = trend.trend==='up' ? 'var(--green)' : trend.trend==='down' ? 'var(--red)' : 'var(--text-muted)';
+      const trendText = trend.trend==='up' ? `تحسّن +${trend.delta}% (${trend.avgFirst}% → ${trend.avgLast}%)` : trend.trend==='down' ? `تراجع ${trend.delta}% (${trend.avgFirst}% → ${trend.avgLast}%)` : `مستقر (${trend.avgFirst}% → ${trend.avgLast}%)`;
+      const sparkData = sortedVisits.map(v => v.pct);
+      const sparkMin = Math.min(...sparkData, 0);
+      const sparkMax = Math.max(...sparkData, 100);
+      const sparkH = 40, sparkW = Math.max(sparkData.length * 18, 80);
+      const sparkPts = sparkData.map((v,i) => {
+        const x = sparkData.length > 1 ? (i / (sparkData.length-1)) * (sparkW-4) + 2 : sparkW/2;
+        const y = sparkH - ((v - sparkMin)/(sparkMax - sparkMin || 1)) * (sparkH-6) - 3;
+        return `${x},${y}`;
+      }).join(' ');
+      const sparkColor = trend.trend==='up' ? '#2ECC71' : trend.trend==='down' ? '#E74C3C' : '#C9A84C';
+      html += `
+      <div class="manager-score-row" style="flex-wrap:wrap;">
+        <div class="score-circle ${cls}" style="flex-shrink:0">${avg}%</div>
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <span style="font-size:var(--fs-lg);font-weight:800;color:var(--gold-light)">${name}</span>
+            <span style="font-size:var(--fs-xs);color:${trendColor};font-weight:700">${trendIcon} ${trendText}</span>
+          </div>
+          <div style="font-size:var(--fs-xs);color:var(--text-muted);margin-top:3px">
+            زيارات: ${stats.visits.length} | الفروع: ${[...stats.branches].map(b=>BRANCH_NAMES[b]).join(', ')} | أول: ${sortedVisits[0]?.date} | آخر: ${sortedVisits[sortedVisits.length-1]?.date}
+          </div>
+          <div style="display:flex;align-items:center;gap:16px;margin-top:8px;flex-wrap:wrap;">
+            <div style="background:rgba(0,0,0,0.2);border-radius:6px;padding:4px;border:1px solid var(--border)">
+              <svg width="${sparkW}" height="${sparkH}" style="display:block;">
+                <polyline points="${sparkPts}" fill="none" stroke="${sparkColor}" stroke-width="2.5" stroke-linejoin="round"/>
+                ${sparkData.map((v,i)=>{const x=sparkData.length>1?(i/(sparkData.length-1))*(sparkW-4)+2:sparkW/2;const y=sparkH-((v-sparkMin)/(sparkMax-sparkMin||1))*(sparkH-6)-3;return`<circle cx="${x}" cy="${y}" r="3" fill="${sparkColor}"/><title>${sortedVisits[i]?.date}: ${v}%</title>`;}).join('')}
+              </svg>
+            </div>
+            <div style="font-size:var(--fs-xs);color:var(--text-muted)">
+              أعلى: <strong style="color:var(--green)">${Math.max(...sparkData)}%</strong> |
+              أدنى: <strong style="color:var(--red)">${Math.min(...sparkData)}%</strong> |
+              أخير: <strong style="color:var(--gold)">${sparkData[sparkData.length-1]}%</strong>
+            </div>
+          </div>
+          ${failList.length>0?`<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:3px;">${failList.map(([id,cnt])=>{const t=CHECKLIST.flatMap(s=>s.items).find(i=>i.id===id)?.text?.substring(0,38)||id;return`<span class="tag tag-red">${t}... (${cnt}×)</span>`;}).join('')}</div>`:'' }
+          <div class="progress-wrap" style="margin-top:6px"><div class="progress-bar"><div class="progress-fill ${cls}" style="width:${avg}%"></div></div></div>
+          <div style="margin-top:5px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            ${avg<70?`<span style="font-size:var(--fs-xs);color:var(--red);">🔴 إنذار رسمي + خطة تصحيحية فورية</span>`:avg<90?`<span style="font-size:var(--fs-xs);color:var(--orange);">🟡 متابعة مكثفة + برنامج تطوير أسبوعي</span>`:`<span style="font-size:var(--fs-xs);color:var(--green);">🟢 تقدير رسمي + ترشيح للمكافأة</span>`}
+            <button class="btn btn-primary btn-sm" onclick="showManagerDetail('${name}')">📋 تفاصيل</button>
+          </div>
+        </div>
+      </div>`;
+    });
+  }
+  html += `</div>
+  <div id="manager-detail-panel"></div>
+  <div class="page-footer"><div class="footer-sig">بِلَال الأَنْصَارِي ✦</div><div class="footer-actions">
+    <button class="btn btn-gold btn-sm" onclick="exportManagersExcel()">📊 Excel</button>
+    <button class="btn btn-primary btn-sm" onclick="exportManagersPPTX()">📑 PowerPoint</button>
+    <button class="btn btn-purple" onclick="openShareModal('managers',null,'تقييم المديرين')">📤 مشاركة</button>
+  </div></div>`;
+  container.innerHTML = html;
+}
+
+function showManagerDetail(name) {
+  const panel = document.getElementById('manager-detail-panel');
+  if (!panel) return;
+  const stats = buildManagerStats()[name];
+  if (!stats) return;
+  const sortedVisits = [...stats.visits].sort((a,b)=>a.m*31+a.d-(b.m*31+b.d));
+  let html = `<div class="card" style="border-color:var(--gold)">
+    <div class="card-title">📋 سجل تفصيلي — ${name}</div>
+    <div style="overflow-x:auto;">
+    <table class="data-table">
+      <tr><th>التاريخ</th><th>الفرع</th><th>النتيجة</th><th>التغيير</th></tr>
+      ${sortedVisits.map((v,i)=>{
+        const prev = i>0?sortedVisits[i-1].pct:null;
+        const delta = prev!==null?v.pct-prev:null;
+        const dc = delta===null?'':delta>0?`<span style="color:var(--green)">▲+${delta}%</span>`:delta<0?`<span style="color:var(--red)">▼${delta}%</span>`:`<span style="color:var(--text-muted)">—</span>`;
+        const cls = v.pct>=90?'tag-green':v.pct>=70?'tag-orange':'tag-red';
+        return`<tr><td>${v.date}</td><td>${BRANCH_NAMES[v.branch]}</td><td><span class="tag ${cls}">${v.pct}%</span></td><td>${dc}</td></tr>`;
+      }).join('')}
+    </table>
+    </div>
+  </div>`;
+  panel.innerHTML = html;
+  panel.scrollIntoView({behavior:'smooth'});
+}
+
+// ===================== ANALYTICS PAGE =====================
+const BRANCH_COLORS = { nasr:'#E74C3C', farosiya:'#3498DB', gharafa:'#2ECC71', wakra:'#F39C12' };
+
+function chartDefaults(scaleType) {
+  const base = {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { labels: { color: '#F0E6D3', font: { family: 'Tajawal', size: 11 } } } },
+  };
+  if (scaleType === 'y_pct') {
+    base.scales = {
+      x:{ticks:{color:'#BCA98A',font:{family:'Tajawal',size:10}},grid:{color:'rgba(255,255,255,0.05)'}},
+      y:{min:0,max:100,ticks:{color:'#BCA98A',callback:v=>v+'%'},grid:{color:'rgba(255,255,255,0.05)'}}
+    };
+  }
+  return base;
+}
+
+function renderAnalyticsPage() {
+  const container = document.getElementById('analytics-content');
+  if (!container) return;
+  const monthlyData = {};
+  BRANCHES.forEach(branch => {
+    monthlyData[branch] = MONTHS.map((_,m) => {
+      let total = 0, count = 0;
+      for (let d = 1; d <= MONTH_DAYS[m]; d++) {
+        const { pct, answered } = calcSmartScore(branch, m, d);
+        if (answered > 0 && pct !== null) { total += pct; count++; }
+      }
+      return count > 0 ? Math.round(total/count) : null;
+    });
+  });
+  container.innerHTML = `
+  <!-- Weekly Analysis Section (merged inside Analytics) -->
+  <div class="card weekly-card">
+    <div class="card-title">📅 تحليل أداء الأسبوع</div>
+    <p style="color:var(--text-muted);font-size:var(--fs-xs);margin-bottom:12px;">
+      يحلّل أداء الفروع على مدى آخر 7 أيام مع رصد الاتجاهات والتوصيات
+    </p>
+    <div id="weekly-controls">
+      <div class="form-row">
+        <div class="form-group">
+          <label>نهاية الأسبوع — الشهر</label>
+          <select id="weekly_month">${MONTHS.map((m,i)=>`<option value="${i}" ${i===currentMonth?'selected':''}>${m}</option>`).join('')}</select>
+        </div>
+        <div class="form-group">
+          <label>نهاية الأسبوع — اليوم</label>
+          <select id="weekly_day">${Array.from({length:MONTH_DAYS[currentMonth]},(_,i)=>`<option value="${i+1}" ${i+1===currentDay?'selected':''}>${i+1}</option>`).join('')}</select>
+        </div>
+        <div class="form-group" style="display:flex;align-items:flex-end;">
+          <button class="btn btn-purple" onclick="runWeeklyAnalysis()">⚡ حلّل أداء الأسبوع</button>
+        </div>
+      </div>
+    </div>
+    <div id="weekly-result" style="margin-top:12px;"></div>
+  </div>
+
+  <div class="card"><div class="card-title">📈 مقارنة أداء الفروع شهرياً</div><div class="chart-wrap-tall"><canvas id="chart_monthly"></canvas></div></div>
+  <div class="grid-2">
+    <div class="card"><div class="card-title">🏆 تقييم شامل بالأقسام</div><div class="chart-wrap"><canvas id="chart_radar"></canvas></div></div>
+    <div class="card"><div class="card-title">📊 مقارنة الشهر الحالي</div><div class="chart-wrap"><canvas id="chart_bar"></canvas></div></div>
+  </div>
+  <div class="page-footer"><div class="footer-sig">بِلَال الأَنْصَارِي ✦</div><div class="footer-actions">
+    <button class="btn btn-gold btn-sm" onclick="exportAllExcel()">📊 Excel كامل</button>
+    <button class="btn btn-primary btn-sm" onclick="exportAnalyticsPPTX()">📑 PPTX تحليلات</button>
+    <button class="btn btn-gold btn-sm" onclick="exportAllPPTX()">📑 PPTX كامل</button>
+    <button class="btn btn-purple" onclick="openShareModal('analytics',null,'التحليلات الشاملة')">📤 مشاركة</button>
+  </div></div>`;
+  // Wire up day select to update on month change
+  const wm = document.getElementById('weekly_month');
+  const wd = document.getElementById('weekly_day');
+  if (wm && wd) {
+    wm.addEventListener('change', () => {
+      const newMonth = parseInt(wm.value);
+      const days = MONTH_DAYS[newMonth];
+      const cur = parseInt(wd.value) || 1;
+      wd.innerHTML = Array.from({length:days},(_,i)=>`<option value="${i+1}" ${i+1===Math.min(cur,days)?'selected':''}>${i+1}</option>`).join('');
+    });
+  }
+  setTimeout(() => { drawLineChart(monthlyData); drawRadarChart(monthlyData); drawBarChart(monthlyData); }, 100);
+}
+
+function drawLineChart(monthlyData) {
+  const ctx = document.getElementById('chart_monthly')?.getContext('2d');
+  if (!ctx) return;
+  if (activeCharts['monthly']) activeCharts['monthly'].destroy();
+  activeCharts['monthly'] = new Chart(ctx, {
+    type:'line',
+    data: { labels: MONTHS, datasets: BRANCHES.map(b => ({ label: BRANCH_NAMES[b], data: monthlyData[b], borderColor: BRANCH_COLORS[b], backgroundColor: BRANCH_COLORS[b]+'20', borderWidth:2, tension:0.4, fill:true, pointBackgroundColor:BRANCH_COLORS[b], pointRadius:4, spanGaps:true })) },
+    options: chartDefaults('y_pct')
+  });
+}
+
+function drawRadarChart(monthlyData) {
+  const ctx = document.getElementById('chart_radar')?.getContext('2d');
+  if (!ctx) return;
+  if (activeCharts['radar']) activeCharts['radar'].destroy();
+  const sectionScores = BRANCHES.map(branch => CHECKLIST.map(sec => {
+    let t=0,o=0;
+    for(let m=0;m<12;m++) for(let d=1;d<=MONTH_DAYS[m];d++){const k=getKey(branch,m,d);if(!appData[k])continue;sec.items.forEach(item=>{const r=appData[k].results[item.id];if(r==='ok')o++;else if(r==='fail')t++;})}
+    const total=o+t; return total>0?Math.round((o/total)*100):50;
+  }));
+  activeCharts['radar'] = new Chart(ctx, {
+    type:'radar',
+    data: { labels: CHECKLIST.map(s=>s.section.replace(/[\u{1F300}-\u{1F9FF}]/gu,'')), datasets: BRANCHES.map((b,i) => ({ label:BRANCH_NAMES[b], data:sectionScores[i], borderColor:BRANCH_COLORS[b], backgroundColor:BRANCH_COLORS[b]+'30', borderWidth:2, pointBackgroundColor:BRANCH_COLORS[b] })) },
+    options: { ...chartDefaults(), scales:{r:{min:0,max:100,ticks:{display:false},grid:{color:'rgba(255,255,255,0.1)'},pointLabels:{color:'#BCA98A',font:{family:'Tajawal',size:9}}}} }
+  });
+}
+
+function drawBarChart(monthlyData) {
+  const ctx = document.getElementById('chart_bar')?.getContext('2d');
+  if (!ctx) return;
+  if (activeCharts['bar']) activeCharts['bar'].destroy();
+  const m = currentMonth;
+  activeCharts['bar'] = new Chart(ctx, {
+    type:'bar',
+    data: { labels: BRANCHES.map(b=>BRANCH_NAMES[b]), datasets:[{ label:`${MONTHS[m]} 2026`, data:BRANCHES.map(b=>monthlyData[b][m]||0), backgroundColor:BRANCHES.map(b=>BRANCH_COLORS[b]+'AA'), borderColor:BRANCHES.map(b=>BRANCH_COLORS[b]), borderWidth:2, borderRadius:8 }] },
+    options: chartDefaults('y_pct')
+  });
+}
+
+// ===================== RECOMMENDATIONS PAGE =====================
+function renderRecommendationsPage() {
+  const container = document.getElementById('reco-content');
+  if (!container) return;
+  const failCounts = {}, branchScores = {};
+  BRANCHES.forEach(b => branchScores[b] = {total:0,count:0});
+  BRANCHES.forEach(branch => {
+    for(let m=0;m<12;m++) for(let d=1;d<=MONTH_DAYS[m];d++){
+      const key=getKey(branch,m,d); if(!appData[key])continue;
+      const {pct,answered}=calcSmartScore(branch,m,d);
+      if(answered>0&&pct!==null){branchScores[branch].total+=pct;branchScores[branch].count++;}
+      Object.entries(appData[key].results||{}).forEach(([id,val])=>{if(val==='fail')failCounts[id]=(failCounts[id]||0)+1;});
+    }
+  });
+  const topFails = Object.entries(failCounts).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  container.innerHTML = `
+  <div class="card"><div class="card-title">💡 توصيات لمدير التشغيل</div>
+    <div class="reco-box"><h4>🔴 أكثر البنود إخفاقاً:</h4><ul>${topFails.map(([id,cnt])=>{const item=CHECKLIST.flatMap(s=>s.items).find(i=>i.id===id);return`<li>${item?.icon||''} ${item?.text||id} — تكرر ${cnt} مرة</li>`;}).join('')||'<li>لا توجد بيانات بعد</li>'}</ul></div>
+    <div class="reco-box"><h4>📊 متوسط أداء الفروع:</h4><ul>${BRANCHES.map(b=>{const avg=branchScores[b].count>0?Math.round(branchScores[b].total/branchScores[b].count):0;const cls=avg>=90?'tag-green':avg>=70?'tag-orange':'tag-red';return`<li>فرع ${BRANCH_NAMES[b]}: <span class="tag ${cls}">${avg}%</span></li>`;}).join('')}</ul></div>
+    <div class="reco-box"><h4>✅ توصيات عامة:</h4><ul>
+      <li>جدولة زيارات متوازنة بين الشيفتين</li>
+      <li>التركيز على البنود المتكررة بحلول جذرية</li>
+      <li>اجتماع أسبوعي مع مديري الفروع</li>
+      <li>مشاركة أفضل الممارسات بين الفروع</li>
+      <li>تفعيل نظام المكافآت للفروع المتميزة</li>
+      <li>استخدام قسم "المهام" لإسناد إجراءات محددة بمواعيد نهائية</li>
+    </ul></div>
+  </div>
+  <div class="page-footer"><div class="footer-sig">بِلَال الأَنْصَارِي ✦</div><div class="footer-actions">
+    <button class="btn btn-gold btn-sm" onclick="exportRecoExcel()">📊 Excel</button>
+    <button class="btn btn-primary btn-sm" onclick="exportAnalyticsPPTX()">📑 PPTX</button>
+    <button class="btn btn-purple" onclick="openShareModal('analytics',null,'التوصيات')">📤 مشاركة</button>
+  </div></div>`;
+}
+
+// ===================== ACTION PLAN PAGE =====================
+function renderActionPlanPage() {
+  const container = document.getElementById('ap-content');
+  if (!container) return;
+  const apItems = [];
+  BRANCHES.forEach(branch => {
+    for(let m=0;m<12;m++) for(let d=1;d<=MONTH_DAYS[m];d++){
+      const key=getKey(branch,m,d); if(!appData[key])continue;
+      const visit=appData[key];
+      Object.entries(visit.results||{}).forEach(([id,val])=>{
+        if(val==='fail'){
+          const item=CHECKLIST.flatMap(s=>s.items).find(i=>i.id===id);
+          apItems.push({branch,branchName:BRANCH_NAMES[branch],date:`${d} ${MONTHS[m]}`,item,note:visit.notes?.[id]||'',dept:visit.deptAssign?.[id]||'الفرع'});
+        }
+      });
+    }
+  });
+  container.innerHTML = `
+  <div class="card"><div class="card-title">🎯 خطة العمل الكاملة — ${apItems.length} بند</div>
+    ${apItems.length===0?`<div class="alert alert-success">✅ لا توجد بنود تحتاج أكشن بلان</div>`:apItems.map(ap=>`
+    <div class="action-plan-item">
+      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:5px;">
+        <span style="font-weight:700;font-size:var(--fs-sm)">${ap.item?.icon||''} ${ap.item?.text||''}</span>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;"><span class="tag tag-blue">${ap.branchName}</span><span class="tag tag-orange">${ap.dept}</span><span class="tag tag-purple">${ap.date}</span></div>
+      </div>
+      ${ap.note?`<div style="font-size:var(--fs-xs);color:var(--green);">✓ الإجراء: ${ap.note}</div>`:`<div style="font-size:var(--fs-xs);color:var(--text-muted);">لم يتم تحديد إجراء</div>`}
+    </div>`).join('')}
+  </div>
+  <div class="page-footer"><div class="footer-sig">بِلَال الأَنْصَارِي ✦</div><div class="footer-actions">
+    <button class="btn btn-gold btn-sm" onclick="exportActionPlanExcel()">📊 Excel</button>
+    <button class="btn btn-primary btn-sm" onclick="exportActionPlanPPTX()">📑 PPTX</button>
+    <button class="btn btn-purple" onclick="openShareModal('action-plan',null,'خطة العمل')">📤 مشاركة</button>
+  </div></div>`;
+}
+
+// ===================== OPS MANAGER PAGE =====================
+function renderOpsPage() {
+  const container = document.getElementById('ops-content');
+  if (!container) return;
+  const shiftStats = { morning:{}, evening:{} };
+  BRANCHES.forEach(b=>{shiftStats.morning[b]=0;shiftStats.evening[b]=0;});
+  let totalMorning=0, totalEvening=0;
+  BRANCHES.forEach(branch=>{
+    for(let m=0;m<12;m++) for(let d=1;d<=MONTH_DAYS[m];d++){
+      const key=getKey(branch,m,d); if(!appData[key])continue;
+      const shift=appData[key].shift;
+      if(shift==='صباحي'){shiftStats.morning[branch]++;totalMorning++;}
+      else if(shift==='مسائي'){shiftStats.evening[branch]++;totalEvening++;}
+    }
+  });
+  const total=totalMorning+totalEvening;
+  const morningPct=total>0?Math.round((totalMorning/total)*100):0;
+  const eveningPct=total>0?Math.round((totalEvening/total)*100):0;
+  let shiftAlert='';
+  if(Math.abs(morningPct-eveningPct)>20) shiftAlert=`<div class="alert alert-warning">⚠️ الزيارات غير متوازنة! ${morningPct>eveningPct?'تركيز أكثر على الصباحي — يُنصح بزيادة المسائي':'تركيز أكثر على المسائي — يُنصح بزيادة الصباحي'}</div>`;
+  const worstBranch = BRANCHES.reduce((worst,b)=>{
+    const {pct,answered}=calcSmartScore(b,currentMonth,currentDay);
+    if(answered===0)return worst;
+    return pct<(worst.pct??101)?{branch:b,pct}:worst;
+  },{pct:101});
+  
+  // Tasks summary
+  const totalTasks = tasksData.length;
+  const completedTasks = tasksData.filter(t=>t.status==='completed').length;
+  const pendingTasks = totalTasks - completedTasks;
+  
+  container.innerHTML = `
+  <div class="card"><div class="card-title">🌐 نظرة عامة — مدير التشغيل</div>
+    ${shiftAlert}
+    <div class="grid-4">${BRANCHES.map(b=>`<div class="stat-card"><div class="stat-icon">🏪</div><div style="font-size:13px;font-weight:800;color:var(--gold)">${BRANCH_NAMES[b]}</div><div style="font-size:var(--fs-xs);color:var(--green)">☀️ صباحي: ${shiftStats.morning[b]}</div><div style="font-size:var(--fs-xs);color:var(--blue)">🌙 مسائي: ${shiftStats.evening[b]}</div></div>`).join('')}</div>
+    <div class="grid-2" style="margin-top:14px;">
+      <div class="stat-card"><div class="stat-icon">☀️</div><div class="stat-value">${totalMorning}</div><div class="stat-label">زيارات صباحي (${morningPct}%)</div></div>
+      <div class="stat-card"><div class="stat-icon">🌙</div><div class="stat-value">${totalEvening}</div><div class="stat-label">زيارات مسائي (${eveningPct}%)</div></div>
+    </div>
+  </div>
+  
+  ${totalTasks > 0 ? `
+  <div class="card">
+    <div class="card-title">📋 ملخص المهام</div>
+    <div class="grid-3">
+      <div class="stat-card"><div class="stat-icon">📌</div><div class="stat-value" style="color:var(--blue);">${totalTasks}</div><div class="stat-label">إجمالي المهام</div></div>
+      <div class="stat-card"><div class="stat-icon">⏳</div><div class="stat-value" style="color:var(--orange);">${pendingTasks}</div><div class="stat-label">قيد التنفيذ</div></div>
+      <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-value" style="color:var(--green);">${completedTasks}</div><div class="stat-label">منجزة</div></div>
+    </div>
+    <button class="btn btn-primary btn-sm" style="margin-top:12px;" onclick="showPage('tasks')">📋 الذهاب إلى المهام</button>
+  </div>` : ''}
+  
+  <div class="card"><div class="card-title">📅 خطة الغد</div>
+    <div class="reco-box"><h4>🎯 التوصيات لليوم التالي:</h4><ul>
+      ${worstBranch.branch?`<li>أولوية لزيارة فرع ${BRANCH_NAMES[worstBranch.branch]} (أقل أداء اليوم: ${worstBranch.pct||'-'}%)</li>`:'<li>لا توجد بيانات كافية لليوم الحالي</li>'}
+      <li>${morningPct>eveningPct+20?'التركيز على الشيفت المسائي غداً':eveningPct>morningPct+20?'التركيز على الشيفت الصباحي غداً':'الموازنة بين الشيفتين'}</li>
+      <li>متابعة البنود المتكررة المُعلَّمة بالأحمر</li>
+      <li>مراجعة أكشن بلان اليوم مع مديري الفروع</li>
+      <li>التأكد من إرسال التقارير للإدارة العليا</li>
+      <li>حلّل أداء الأسبوع من تبويب "تحليل الأسبوع"</li>
+    </ul></div>
+  </div>
+  <div class="page-footer"><div class="footer-sig">بِلَال الأَنْصَارِي ✦</div><div class="footer-actions">
+    <button class="btn btn-gold btn-sm" onclick="exportAllExcel()">📊 Excel كامل</button>
+    <button class="btn btn-primary btn-sm" onclick="exportAllPPTX()">📑 PPTX كامل</button>
+    <button class="btn btn-purple" onclick="openShareModal('all',null,'التقرير الشامل')">📤 مشاركة</button>
+  </div></div>`;
+}
+
+// ===================== OTHER DEPTS PAGE =====================
+function renderDeptsPage() {
+  const container = document.getElementById('depts-content');
+  if (!container) return;
+  const deptIssues = {};
+  const deptList = ['الصيانة','الجودة','المصنع','الإدارة العليا'];
+  deptList.forEach(d=>deptIssues[d]=[]);
+  BRANCHES.forEach(branch=>{
+    for(let m=0;m<12;m++) for(let d=1;d<=MONTH_DAYS[m];d++){
+      const key=getKey(branch,m,d); if(!appData[key])continue;
+      const visit=appData[key];
+      Object.entries(visit.deptAssign||{}).forEach(([id,dept])=>{
+        if(dept!=='الفرع'&&deptIssues[dept]&&visit.results?.[id]==='fail'){
+          const item=CHECKLIST.flatMap(s=>s.items).find(i=>i.id===id);
+          deptIssues[dept].push({branch,branchName:BRANCH_NAMES[branch],date:`${d} ${MONTHS[m]}`,item});
+        }
+      });
+    }
+  });
+  const deptColors = {الصيانة:'#E67E22',الجودة:'#27AE60',المصنع:'#8E44AD','الإدارة العليا':'#2980B9'};
+  const deptIcons = {الصيانة:'🔧',الجودة:'🔬',المصنع:'🏭','الإدارة العليا':'🏢'};
+  container.innerHTML = `
+  <div class="card"><div class="card-title">🔧 البنود المتعلقة بالإدارات الأخرى</div>
+    ${deptList.map(dept=>{
+      const issues=deptIssues[dept];
+      return `<div class="checklist-section" style="border-right-color:${deptColors[dept]}">
+        <div class="section-header">${deptIcons[dept]} ${dept} — ${issues.length} بند</div>
+        ${issues.length===0?`<div style="font-size:var(--fs-xs);color:var(--text-muted);">لا توجد بنود محالة لهذه الإدارة</div>`:issues.map(i=>`<div class="check-item"><div class="check-label">${i.item?.icon||''} ${i.item?.text||''}</div><div style="display:flex;gap:4px;flex-direction:column;align-items:flex-end;"><span class="tag tag-blue">${i.branchName}</span><span class="tag tag-purple">${i.date}</span></div></div>`).join('')}
+        ${issues.length>0?`<div style="margin-top:8px;"><button class="btn btn-gold btn-sm" onclick="exportDeptExcel('${dept}')">📊 تصدير ${dept}</button></div>`:''}
+      </div>`;
+    }).join('')}
+  </div>
+  <div class="page-footer"><div class="footer-sig">بِلَال الأَنْصَارِي ✦</div><div class="footer-actions"><button class="btn btn-gold btn-sm" onclick="exportDeptsExcel()">📊 تصدير كل الإدارات</button></div></div>`;
+}
+</script>

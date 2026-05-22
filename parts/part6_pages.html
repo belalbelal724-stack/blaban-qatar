@@ -1,0 +1,754 @@
+<script>
+// ===================== MANAGERS PAGE =====================
+function buildManagerStats() {
+  const managerStats = {};
+  BRANCHES.forEach(branch => {
+    for (let m = 0; m < 12; m++) {
+      for (let d = 1; d <= MONTH_DAYS[m]; d++) {
+        const key = getKey(branch, m, d);
+        if (!appData[key]) continue;
+        const visit = appData[key];
+        // Multi-manager support: prefer visit.managers (array), fall back to visit.manager (string)
+        const managerList = (Array.isArray(visit.managers) && visit.managers.length > 0)
+          ? visit.managers
+          : (visit.manager?.trim() ? [visit.manager.trim()] : []);
+        if (managerList.length === 0) continue;
+        const { pct, answered } = calcSmartScore(branch, m, d);
+        if (answered === 0) continue;
+        
+        // Attribute the score to each manager — they're all responsible
+        managerList.forEach(manager => {
+          const mname = manager.trim();
+          if (!mname) return;
+          if (!managerStats[mname]) managerStats[mname] = { visits:[], failItems:{}, branches:new Set(), sharedVisits: 0 };
+          managerStats[mname].visits.push({ 
+            branch, m, d, pct, 
+            date:`${d} ${MONTHS[m]}`,
+            sharedWith: managerList.length > 1 ? managerList.filter(n => n.trim() !== mname) : []
+          });
+          managerStats[mname].branches.add(branch);
+          if (managerList.length > 1) managerStats[mname].sharedVisits++;
+          Object.entries(visit.results||{}).forEach(([id,val]) => {
+            if (val === 'fail') managerStats[mname].failItems[id] = (managerStats[mname].failItems[id]||0)+1;
+          });
+        });
+      }
+    }
+  });
+  return managerStats;
+}
+
+function analyzeManagerTrend(visits) {
+  if (visits.length < 2) return { trend: 'neutral', delta: 0, improving: false, avgFirst:0, avgLast:0 };
+  const sorted = [...visits].sort((a,b) => a.m*31+a.d - (b.m*31+b.d));
+  const half = Math.ceil(sorted.length / 2);
+  const first = sorted.slice(0, half);
+  const last = sorted.slice(sorted.length - half);
+  const avgFirst = first.reduce((s,v)=>s+v.pct,0)/first.length;
+  const avgLast = last.reduce((s,v)=>s+v.pct,0)/last.length;
+  const delta = Math.round(avgLast - avgFirst);
+  return {
+    trend: delta > 3 ? 'up' : delta < -3 ? 'down' : 'stable',
+    delta, improving: delta > 3,
+    avgFirst: Math.round(avgFirst), avgLast: Math.round(avgLast)
+  };
+}
+
+function renderManagersPage() {
+  const container = document.getElementById('managers-content');
+  if (!container) return;
+  const managerStats = buildManagerStats();
+  let html = `<div class="card"><div class="card-title">👔 تقييم المديرين — تراكمي وتحليلي</div>
+    <div class="alert alert-info" style="margin-bottom:14px;font-size:var(--fs-sm);">
+      💡 <strong>للوصول لمعلومات أي مدير</strong> (الهاتف، الإيميل، العمر، نقاط القوة والضعف): اضغط زر <strong style="color:var(--gold);">"📋 تفاصيل"</strong> أسفل كل بطاقة مدير.
+      <br>🔒 ملاحظة: تعديل البيانات الشخصية يتطلب فتح وضع التعديل من زر <strong style="color:var(--gold);">"🔐 الأمان"</strong> في الـ Header.
+    </div>
+  `;
+  if (Object.keys(managerStats).length === 0) {
+    html += `<div class="alert alert-info">لا توجد بيانات مديرين. أدخل أسماء المديرين في صفحات الفروع أولاً.</div>`;
+  } else {
+    const sorted = Object.entries(managerStats).sort((a,b) => {
+      const avgA = a[1].visits.reduce((s,v)=>s+v.pct,0)/a[1].visits.length;
+      const avgB = b[1].visits.reduce((s,v)=>s+v.pct,0)/b[1].visits.length;
+      return avgB - avgA;
+    });
+    sorted.forEach(([name, stats]) => {
+      const sortedVisits = [...stats.visits].sort((a,b) => a.m*31+a.d - (b.m*31+b.d));
+      const avg = Math.round(stats.visits.reduce((s,v)=>s+v.pct,0) / stats.visits.length);
+      const cls = scoreRating(avg).cls;
+      const failList = Object.entries(stats.failItems).sort((a,b)=>b[1]-a[1]).slice(0,4);
+      const trend = analyzeManagerTrend(stats.visits);
+      const trendIcon = trend.trend==='up' ? '📈' : trend.trend==='down' ? '📉' : '➡️';
+      const trendColor = trend.trend==='up' ? 'var(--green)' : trend.trend==='down' ? 'var(--red)' : 'var(--text-muted)';
+      const trendText = trend.trend==='up' ? `تحسّن +${trend.delta}% (${trend.avgFirst}% → ${trend.avgLast}%)` : trend.trend==='down' ? `تراجع ${trend.delta}% (${trend.avgFirst}% → ${trend.avgLast}%)` : `مستقر (${trend.avgFirst}% → ${trend.avgLast}%)`;
+      const sparkData = sortedVisits.map(v => v.pct);
+      // Compute action plan summary for this manager
+      const allItemsLib = CHECKLIST.flatMap(s=>s.items);
+      let mTotalAP = 0, mDoneAP = 0;
+      stats.visits.forEach(v => {
+        const visit = getVisitData(v.branch, v.m, v.d);
+        const fItems = allItemsLib.filter(i => visit.results[i.id] === 'fail');
+        fItems.forEach(it => {
+          mTotalAP++;
+          if (visit.actionStatus?.[it.id]?.status === 'done') mDoneAP++;
+        });
+      });
+      const mApPct = mTotalAP > 0 ? Math.round((mDoneAP/mTotalAP)*100) : null;
+      const sparkMin = Math.min(...sparkData, 0);
+      const sparkMax = Math.max(...sparkData, 100);
+      const sparkH = 40, sparkW = Math.min(Math.max(sparkData.length * 18, 80), 240);  // Cap width
+      const sparkPts = sparkData.map((v,i) => {
+        const x = sparkData.length > 1 ? (i / (sparkData.length-1)) * (sparkW-4) + 2 : sparkW/2;
+        const y = sparkH - ((v - sparkMin)/(sparkMax - sparkMin || 1)) * (sparkH-6) - 3;
+        return `${x},${y}`;
+      }).join(' ');
+      const sparkColor = trend.trend==='up' ? '#2ECC71' : trend.trend==='down' ? '#E74C3C' : '#C9A84C';
+      html += `
+      <div class="manager-score-row manager-card-fixed">
+        <div class="score-circle ${cls}">${avg}%</div>
+        <div class="manager-card-body">
+          <div class="manager-card-header">
+            <span class="manager-name">${name}</span>
+            <span class="manager-trend" style="color:${trendColor};">${trendIcon} ${trendText}</span>
+          </div>
+          <div class="manager-meta">
+            📅 ${stats.visits.length} زيارة • 🏪 ${[...stats.branches].map(b=>BRANCH_NAMES[b]).join('، ')} • من ${sortedVisits[0]?.date} إلى ${sortedVisits[sortedVisits.length-1]?.date}
+          </div>
+          <div class="manager-spark-row">
+            <div class="manager-spark-box">
+              <svg width="${sparkW}" height="${sparkH}" style="display:block;max-width:100%;">
+                <polyline points="${sparkPts}" fill="none" stroke="${sparkColor}" stroke-width="2.5" stroke-linejoin="round"/>
+                ${sparkData.map((v,i)=>{const x=sparkData.length>1?(i/(sparkData.length-1))*(sparkW-4)+2:sparkW/2;const y=sparkH-((v-sparkMin)/(sparkMax-sparkMin||1))*(sparkH-6)-3;return`<circle cx="${x}" cy="${y}" r="3" fill="${sparkColor}"/><title>${sortedVisits[i]?.date}: ${v}%</title>`;}).join('')}
+              </svg>
+            </div>
+            <div class="manager-spark-stats">
+              <div>أعلى: <strong style="color:var(--green)">${Math.max(...sparkData)}%</strong></div>
+              <div>أدنى: <strong style="color:var(--red)">${Math.min(...sparkData)}%</strong></div>
+              <div>أخير: <strong style="color:var(--gold)">${sparkData[sparkData.length-1]}%</strong></div>
+            </div>
+          </div>
+          ${failList.length>0?`<div class="manager-tags">${failList.map(([id,cnt])=>{const t=CHECKLIST.flatMap(s=>s.items).find(i=>i.id===id)?.text?.substring(0,38)||id;return`<span class="tag tag-red">${t}... (${cnt}×)</span>`;}).join('')}</div>`:'' }
+          <div class="progress-wrap" style="margin-top:8px"><div class="progress-bar"><div class="progress-fill ${cls}" style="width:${avg}%"></div></div></div>
+          ${mTotalAP > 0 ? `
+          <div class="manager-ap-mini">
+            <div class="manager-ap-mini-row">
+              <span style="font-weight:700;color:var(--gold-light);">🎯 أكشن بلان المدير</span>
+              <span style="color:var(--text-muted);">${mDoneAP} / ${mTotalAP} منجز • <strong style="color:${scoreColor(mApPct)};">${mApPct}%</strong></span>
+            </div>
+            <div class="ap-progress-bar" style="margin-top:4px;height:6px;"><div class="ap-progress-fill" style="width:${mApPct}%"></div></div>
+          </div>` : ''}
+          <div class="manager-actions">
+            ${avg<70?`<span class="manager-verdict verdict-red">🔴 إنذار رسمي + خطة تصحيحية فورية</span>`:avg<90?`<span class="manager-verdict verdict-orange">🟡 متابعة مكثفة + برنامج تطوير أسبوعي</span>`:`<span class="manager-verdict verdict-green">🟢 تقدير رسمي + ترشيح للمكافأة</span>`}
+            <button class="btn btn-gold btn-sm" style="font-weight:800;" onclick="showManagerDetail('${name}')">📋 الملف الشخصي والتفاصيل</button>
+          </div>
+        </div>
+      </div>`;
+    });
+  }
+  html += `</div>
+  <div id="manager-detail-panel"></div>
+  <div class="page-footer"><div class="footer-actions">
+    <button class="btn btn-gold btn-sm" onclick="exportManagersExcel()">📊 Excel</button>
+    
+    <button class="btn btn-purple" onclick="openShareModal('managers',null,'تقييم المديرين')">📤 مشاركة</button>
+  </div></div>`;
+  container.innerHTML = html;
+}
+
+function showManagerDetail(name) {
+  const panel = document.getElementById('manager-detail-panel');
+  if (!panel) return;
+  const stats = buildManagerStats()[name];
+  if (!stats) return;
+  const sortedVisits = [...stats.visits].sort((a,b)=>a.m*31+a.d-(b.m*31+b.d));
+  
+  // PIN required for personal profile (sensitive HR info)
+  const editingNow = typeof canEditNow === 'function' && canEditNow();
+  
+  // Load saved personal profile
+  const profiles = JSON.parse(localStorage.getItem('blaban_manager_profiles') || '{}');
+  const profile = profiles[name] || { phone:'', email:'', joined:'', age:'', notes:'', strengths:'', weaknesses:'' };
+  
+  // AUTO-ANALYZE strengths/weaknesses from data
+  const allItemsLib = CHECKLIST.flatMap(s=>s.items.map(it=>({...it,section:s.section})));
+  const okCount = {}, failCount = {};
+  sortedVisits.forEach(v => {
+    const visit = getVisitData(v.branch, v.m, v.d);
+    allItemsLib.forEach(item => {
+      const r = visit.results[item.id];
+      if (r === 'ok') okCount[item.id] = (okCount[item.id]||0) + 1;
+      else if (r === 'fail') failCount[item.id] = (failCount[item.id]||0) + 1;
+    });
+  });
+  // Top strengths: items with highest ok count and no fails
+  const strengths = Object.entries(okCount)
+    .filter(([id,c]) => c >= 3 && !failCount[id])
+    .sort((a,b)=>b[1]-a[1])
+    .slice(0,5)
+    .map(([id,c]) => {
+      const item = allItemsLib.find(i=>i.id===id);
+      return { ...item, count: c };
+    });
+  // Top weaknesses: items failed multiple times
+  const weaknesses = Object.entries(failCount)
+    .filter(([id,c]) => c >= 2)
+    .sort((a,b)=>b[1]-a[1])
+    .slice(0,5)
+    .map(([id,c]) => {
+      const item = allItemsLib.find(i=>i.id===id);
+      return { ...item, count: c };
+    });
+  
+  // Build action plan summary across all visits of this manager
+  const allItems = CHECKLIST.flatMap(s=>s.items);
+  let totalAP = 0, doneAP = 0, inProgressAP = 0, pendingAP = 0;
+  const apDetails = [];
+  sortedVisits.forEach(v => {
+    const visit = getVisitData(v.branch, v.m, v.d);
+    const failItems = allItems.filter(i => visit.results[i.id] === 'fail');
+    failItems.forEach(item => {
+      const aSt = visit.actionStatus?.[item.id] || { status:'pending' };
+      totalAP++;
+      if (aSt.status === 'done') doneAP++;
+      else if (aSt.status === 'in-progress') inProgressAP++;
+      else pendingAP++;
+      apDetails.push({ visit:v, item, status: aSt.status||'pending', entries: aSt.entries||[], completedAt: aSt.completedAt, completedBy: aSt.completedBy, opsNote: visit.notes?.[item.id]||'' });
+    });
+  });
+  const apPct = totalAP > 0 ? Math.round((doneAP/totalAP)*100) : 0;
+  
+  let html = `<div class="card" style="border-color:var(--gold)">
+    <div class="card-title">📋 الملف الشخصي والتقييم — ${name}</div>
+    
+    ${!editingNow ? `
+    <div class="alert alert-info" style="margin-bottom:14px;">
+      🔒 <strong>الملف الشخصي محمي</strong> — لتعديل البيانات الشخصية، افتح وضع التعديل (🔐 الأمان).
+    </div>
+    ` : ''}
+    
+    <!-- Personal info card (PIN-protected) -->
+    <div class="manager-profile-card">
+      <h4>👤 المعلومات الشخصية</h4>
+      <div class="manager-profile-grid">
+        <div class="manager-profile-field">
+          <label>📞 الهاتف</label>
+          ${editingNow ? `<input type="text" value="${profile.phone}" oninput="saveManagerProfileField('${name.replace(/'/g,"\\'")}','phone',this.value)" placeholder="رقم الهاتف">` : `<div class="profile-readonly">${profile.phone||'—'}</div>`}
+        </div>
+        <div class="manager-profile-field">
+          <label>✉️ الإيميل</label>
+          ${editingNow ? `<input type="email" value="${profile.email}" oninput="saveManagerProfileField('${name.replace(/'/g,"\\'")}','email',this.value)" placeholder="email@example.com">` : `<div class="profile-readonly">${profile.email||'—'}</div>`}
+        </div>
+        <div class="manager-profile-field">
+          <label>📅 تاريخ الالتحاق</label>
+          ${editingNow ? `<input type="date" value="${profile.joined}" oninput="saveManagerProfileField('${name.replace(/'/g,"\\'")}','joined',this.value)">` : `<div class="profile-readonly">${profile.joined||'—'}</div>`}
+        </div>
+        <div class="manager-profile-field">
+          <label>🎂 العمر</label>
+          ${editingNow ? `<input type="number" min="18" max="80" value="${profile.age}" oninput="saveManagerProfileField('${name.replace(/'/g,"\\'")}','age',this.value)" placeholder="مثلاً: 35">` : `<div class="profile-readonly">${profile.age||'—'}</div>`}
+        </div>
+      </div>
+      <div class="manager-profile-field" style="margin-top:10px;">
+        <label>📝 ملاحظات شخصية</label>
+        ${editingNow ? `<textarea rows="2" oninput="saveManagerProfileField('${name.replace(/'/g,"\\'")}','notes',this.value)" placeholder="ملاحظات خاصة بالمقيّم...">${profile.notes||''}</textarea>` : `<div class="profile-readonly" style="min-height:40px;">${profile.notes||'—'}</div>`}
+      </div>
+    </div>
+    
+    <!-- Auto-analyzed strengths and weaknesses (purely from evaluation data) -->
+    <div class="strengths-weaknesses-grid">
+      <div class="strength-box">
+        <h4>💪 نقاط القوة <span style="font-size:11px;color:var(--text-muted);font-weight:600;">(تحليل تلقائي بناءً على التقييم)</span></h4>
+        ${strengths.length > 0 ? `
+        <ul class="sw-list">
+          ${strengths.map(s => `<li>${s.icon} ${s.text} <span class="sw-count">✓ ${s.count}×</span></li>`).join('')}
+        </ul>
+        ` : '<p style="color:var(--text-muted);font-size:var(--fs-sm);">لم تتوفر بيانات كافية بعد لتحليل نقاط القوة.</p>'}
+      </div>
+      
+      <div class="weakness-box">
+        <h4>⚠️ نقاط الضعف <span style="font-size:11px;color:var(--text-muted);font-weight:600;">(تحليل تلقائي بناءً على التقييم)</span></h4>
+        ${weaknesses.length > 0 ? `
+        <ul class="sw-list">
+          ${weaknesses.map(w => `<li>${w.icon} ${w.text} <span class="sw-count fail">✗ ${w.count}×</span></li>`).join('')}
+        </ul>
+        ` : '<p style="color:var(--text-muted);font-size:var(--fs-sm);">لا توجد نقاط ضعف ملحوظة. أداء جيد عموماً!</p>'}
+      </div>
+    </div>
+    
+    <!-- Action plan summary -->
+    ${totalAP > 0 ? `
+    <div style="background:linear-gradient(135deg,rgba(211,84,0,0.10),rgba(107,27,42,0.10));border:1px solid var(--orange);border-radius:12px;padding:14px;margin-bottom:14px;">
+      <div style="font-weight:800;color:var(--gold-light);margin-bottom:10px;font-size:14px;">🎯 إجمالي الأكشن بلان للمدير</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;">
+        <div class="ap-stat ap-stat-total"><span class="ap-stat-num">${totalAP}</span><span class="ap-stat-label">إجمالي البنود</span></div>
+        <div class="ap-stat ap-stat-pending"><span class="ap-stat-num">${pendingAP}</span><span class="ap-stat-label">⏳ معلقة</span></div>
+        <div class="ap-stat ap-stat-progress"><span class="ap-stat-num">${inProgressAP}</span><span class="ap-stat-label">🔄 قيد التنفيذ</span></div>
+        <div class="ap-stat ap-stat-done"><span class="ap-stat-num">${doneAP}</span><span class="ap-stat-label">✅ مكتملة</span></div>
+      </div>
+      <div class="ap-progress-bar" style="margin-top:10px;"><div class="ap-progress-fill" style="width:${apPct}%"></div></div>
+      <div style="text-align:center;font-size:var(--fs-sm);color:var(--text-muted);margin-top:6px;font-weight:700;">معدل تنفيذ المدير: <strong style="color:${scoreColor(apPct)};">${apPct}%</strong></div>
+    </div>
+    ` : ''}
+    
+    <!-- Visits table -->
+    <div style="font-weight:800;color:var(--gold-light);margin-bottom:8px;font-size:var(--fs-base);">📊 سجل الزيارات</div>
+    <div style="overflow-x:auto;">
+    <table class="data-table">
+      <tr><th>التاريخ</th><th>الفرع</th><th>النتيجة</th><th>التغيير</th><th>أكشن بلان</th></tr>
+      ${sortedVisits.map((v,i)=>{
+        const prev = i>0?sortedVisits[i-1].pct:null;
+        const delta = prev!==null?v.pct-prev:null;
+        const dc = delta===null?'':delta>0?`<span style="color:var(--green)">▲+${delta}%</span>`:delta<0?`<span style="color:var(--red)">▼${delta}%</span>`:`<span style="color:var(--text-muted)">—</span>`;
+        const cls = v.pct>=90?'tag-green':v.pct>=70?'tag-orange':'tag-red';
+        // AP for this visit
+        const visit = getVisitData(v.branch, v.m, v.d);
+        const fItems = allItems.filter(it => visit.results[it.id] === 'fail');
+        const totalV = fItems.length;
+        const doneV = fItems.filter(it => visit.actionStatus?.[it.id]?.status === 'done').length;
+        const apCell = totalV === 0 ? `<span style="color:var(--green);">—</span>` :
+          `<span class="tag ${doneV===totalV?'tag-green':doneV>0?'tag-orange':'tag-red'}">${doneV}/${totalV}</span>`;
+        return`<tr><td>${v.date}</td><td>${BRANCH_NAMES[v.branch]}</td><td><span class="tag ${cls}">${v.pct}%</span></td><td>${dc}</td><td>${apCell}</td></tr>`;
+      }).join('')}
+    </table>
+    </div>
+  </div>`;
+  
+  // Detailed action plan items
+  if (apDetails.length > 0) {
+    const pendingDetails = apDetails.filter(d => d.status !== 'done');
+    const doneDetails = apDetails.filter(d => d.status === 'done');
+    html += `<div class="card" style="border-color:var(--orange);">
+      <div class="card-title">🎯 بنود الأكشن بلان التفصيلية — ${name}</div>
+      <p style="color:var(--text-muted);font-size:var(--fs-sm);margin-bottom:10px;">
+        تظهر هنا كل بنود الأكشن بلان المتولدة من تقييمات هذا المدير عبر كل الفروع التي تولّاها
+      </p>`;
+    if (pendingDetails.length > 0) {
+      html += `<div style="margin-bottom:14px;">
+        <div style="font-weight:800;color:var(--orange);margin-bottom:8px;font-size:var(--fs-base);">⏳ بنود معلقة / قيد التنفيذ (${pendingDetails.length})</div>`;
+      pendingDetails.forEach(d => {
+        const statusBadge = d.status === 'in-progress' ? `<span class="tag tag-orange">🔄 قيد التنفيذ</span>` : `<span class="tag tag-red">⏳ معلق</span>`;
+        const entriesHtml = (d.entries||[]).length > 0 ? d.entries.slice(-2).map(e => `
+          <div style="font-size:var(--fs-xs);color:var(--text-muted);margin-top:4px;padding:3px 6px;background:rgba(0,0,0,0.15);border-radius:4px;">
+            👔 ${e.user} • ${new Date(e.timestamp).toLocaleDateString('ar-QA')}: ${e.text.substring(0,60)}
+          </div>`).join('') : '';
+        html += `<div class="action-plan-item ap-item-${d.status}" style="border-right-color:${d.status==='in-progress'?'var(--orange)':'var(--red)'}">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:5px;margin-bottom:4px;">
+            <span style="font-weight:700;font-size:var(--fs-sm);">${d.item.icon} ${d.item.text}</span>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;">
+              ${statusBadge}
+              <span class="tag tag-blue">${BRANCH_NAMES[d.visit.branch]}</span>
+              <span class="tag" style="background:rgba(255,255,255,0.05);">📅 ${d.visit.date}</span>
+            </div>
+          </div>
+          ${d.opsNote?`<div class="ap-ops-note" style="font-size:var(--fs-xs);">📌 توجيه: ${d.opsNote}</div>`:''}
+          ${entriesHtml}
+        </div>`;
+      });
+      html += `</div>`;
+    }
+    if (doneDetails.length > 0) {
+      html += `<details><summary style="cursor:pointer;font-weight:800;color:var(--green);margin-bottom:8px;font-size:var(--fs-base);">✅ بنود مكتملة (${doneDetails.length}) — اضغط للعرض</summary>`;
+      doneDetails.forEach(d => {
+        html += `<div class="action-plan-item ap-item-done" style="border-right-color:var(--green);opacity:0.85;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:5px;margin-bottom:4px;">
+            <span style="font-size:var(--fs-sm);">${d.item.icon} ${d.item.text}</span>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;">
+              <span class="tag tag-green">✅ مكتمل</span>
+              <span class="tag tag-blue">${BRANCH_NAMES[d.visit.branch]}</span>
+            </div>
+          </div>
+          ${d.completedBy?`<div style="font-size:var(--fs-xs);color:var(--green);font-weight:700;">✓ نُفّذ بواسطة ${d.completedBy} في ${d.completedAt?new Date(d.completedAt).toLocaleDateString('ar-QA'):'-'}</div>`:''}
+        </div>`;
+      });
+      html += `</details>`;
+    }
+    html += `</div>`;
+  }
+  
+  panel.innerHTML = html;
+  panel.scrollIntoView({behavior:'smooth'});
+}
+
+// ===================== ANALYTICS PAGE =====================
+const BRANCH_COLORS = { nasr:'#E74C3C', farosiya:'#3498DB', gharafa:'#2ECC71', wakra:'#F39C12' };
+
+function chartDefaults(scaleType) {
+  // Detect light mode and pick contrasting colors
+  const isLight = document.body.classList.contains('light-mode');
+  const labelColor = isLight ? '#4A0F1A' : '#F0E6D3';   // dark maroon vs cream
+  const tickColor  = isLight ? '#6B1B2A' : '#BCA98A';   // maroon vs muted cream
+  const gridColor  = isLight ? 'rgba(107,27,42,0.08)' : 'rgba(255,255,255,0.05)';
+  
+  const base = {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { 
+      legend: { labels: { color: labelColor, font: { family: 'Tajawal', size: 11, weight: '700' } } },
+      tooltip: { 
+        bodyFont: { family: 'Tajawal' },
+        titleFont: { family: 'Tajawal' },
+        backgroundColor: isLight ? '#4A0F1A' : '#1A0810',
+        titleColor: '#E8C96A',
+        bodyColor: '#F0E6D3',
+        borderColor: '#C9A84C',
+        borderWidth: 1
+      }
+    },
+  };
+  if (scaleType === 'y_pct') {
+    base.scales = {
+      x:{ticks:{color:tickColor,font:{family:'Tajawal',size:10,weight:'700'}},grid:{color:gridColor}},
+      y:{min:0,max:100,ticks:{color:tickColor,font:{family:'Tajawal',weight:'700'},callback:v=>v+'%'},grid:{color:gridColor}}
+    };
+  }
+  return base;
+}
+
+function renderAnalyticsPage() {
+  const container = document.getElementById('analytics-content');
+  if (!container) return;
+  const monthlyData = {};
+  BRANCHES.forEach(branch => {
+    monthlyData[branch] = MONTHS.map((_,m) => {
+      let total = 0, count = 0;
+      for (let d = 1; d <= MONTH_DAYS[m]; d++) {
+        const { pct, answered } = calcSmartScore(branch, m, d);
+        if (answered > 0 && pct !== null) { total += pct; count++; }
+      }
+      return count > 0 ? Math.round(total/count) : null;
+    });
+  });
+  container.innerHTML = `
+  <!-- Weekly Analysis Section (merged inside Analytics) -->
+  <div class="card weekly-card">
+    <div class="card-title">📅 تحليل أداء الأسبوع</div>
+    <p style="color:var(--text-muted);font-size:var(--fs-xs);margin-bottom:12px;">
+      يحلّل أداء الفروع على مدى آخر 7 أيام مع رصد الاتجاهات والتوصيات
+    </p>
+    <div id="weekly-controls">
+      <div class="form-row">
+        <div class="form-group">
+          <label>نهاية الأسبوع — الشهر</label>
+          <select id="weekly_month">${MONTHS.map((m,i)=>`<option value="${i}" ${i===currentMonth?'selected':''}>${m}</option>`).join('')}</select>
+        </div>
+        <div class="form-group">
+          <label>نهاية الأسبوع — اليوم</label>
+          <select id="weekly_day">${Array.from({length:MONTH_DAYS[currentMonth]},(_,i)=>`<option value="${i+1}" ${i+1===currentDay?'selected':''}>${i+1}</option>`).join('')}</select>
+        </div>
+        <div class="form-group" style="display:flex;align-items:flex-end;">
+          <button class="btn btn-gold" style="font-weight:800;" onclick="runWeeklyAnalysis()"><span class="gold-icon">⚡</span> حلّل أداء الأسبوع</button>
+        </div>
+      </div>
+    </div>
+    <div id="weekly-result" style="margin-top:12px;"></div>
+  </div>
+
+  <div class="card"><div class="card-title">📈 مقارنة أداء الفروع شهرياً</div><div class="chart-wrap-tall"><canvas id="chart_monthly"></canvas></div></div>
+  <div class="grid-2">
+    <div class="card"><div class="card-title">🏆 تقييم شامل بالأقسام</div><div class="chart-wrap"><canvas id="chart_radar"></canvas></div></div>
+    <div class="card"><div class="card-title">📊 مقارنة الشهر الحالي</div><div class="chart-wrap"><canvas id="chart_bar"></canvas></div></div>
+  </div>
+  <div class="page-footer"><div class="footer-actions">
+    <button class="btn btn-gold btn-sm" onclick="exportAllExcel()">📊 Excel كامل</button>
+    
+    
+    <button class="btn btn-purple" onclick="openShareModal('analytics',null,'التحليلات الشاملة')">📤 مشاركة</button>
+  </div></div>`;
+  // Wire up day select to update on month change
+  const wm = document.getElementById('weekly_month');
+  const wd = document.getElementById('weekly_day');
+  if (wm && wd) {
+    wm.addEventListener('change', () => {
+      const newMonth = parseInt(wm.value);
+      const days = MONTH_DAYS[newMonth];
+      const cur = parseInt(wd.value) || 1;
+      wd.innerHTML = Array.from({length:days},(_,i)=>`<option value="${i+1}" ${i+1===Math.min(cur,days)?'selected':''}>${i+1}</option>`).join('');
+    });
+  }
+  setTimeout(() => { drawLineChart(monthlyData); drawRadarChart(monthlyData); drawBarChart(monthlyData); }, 100);
+}
+
+function drawLineChart(monthlyData) {
+  const ctx = document.getElementById('chart_monthly')?.getContext('2d');
+  if (!ctx) return;
+  if (activeCharts['monthly']) activeCharts['monthly'].destroy();
+  activeCharts['monthly'] = new Chart(ctx, {
+    type:'line',
+    data: { labels: MONTHS, datasets: BRANCHES.map(b => ({ label: BRANCH_NAMES[b], data: monthlyData[b], borderColor: BRANCH_COLORS[b], backgroundColor: BRANCH_COLORS[b]+'20', borderWidth:2, tension:0.4, fill:true, pointBackgroundColor:BRANCH_COLORS[b], pointRadius:4, spanGaps:true })) },
+    options: chartDefaults('y_pct')
+  });
+}
+
+function drawRadarChart(monthlyData) {
+  const ctx = document.getElementById('chart_radar')?.getContext('2d');
+  if (!ctx) return;
+  if (activeCharts['radar']) activeCharts['radar'].destroy();
+  const sectionScores = BRANCHES.map(branch => CHECKLIST.map(sec => {
+    let t=0,o=0;
+    for(let m=0;m<12;m++) for(let d=1;d<=MONTH_DAYS[m];d++){const k=getKey(branch,m,d);if(!appData[k])continue;sec.items.forEach(item=>{const r=appData[k].results[item.id];if(r==='ok')o++;else if(r==='fail')t++;})}
+    const total=o+t; return total>0?Math.round((o/total)*100):50;
+  }));
+  activeCharts['radar'] = new Chart(ctx, {
+    type:'radar',
+    data: { labels: CHECKLIST.map(s=>s.section.replace(/[\u{1F300}-\u{1F9FF}]/gu,'')), datasets: BRANCHES.map((b,i) => ({ label:BRANCH_NAMES[b], data:sectionScores[i], borderColor:BRANCH_COLORS[b], backgroundColor:BRANCH_COLORS[b]+'30', borderWidth:2, pointBackgroundColor:BRANCH_COLORS[b] })) },
+    options: (() => {
+      const isLight = document.body.classList.contains('light-mode');
+      const radarLabelColor = isLight ? '#4A0F1A' : '#BCA98A';
+      const radarGridColor  = isLight ? 'rgba(107,27,42,0.15)' : 'rgba(255,255,255,0.1)';
+      return { ...chartDefaults(), scales:{r:{min:0,max:100,ticks:{display:false},grid:{color:radarGridColor},angleLines:{color:radarGridColor},pointLabels:{color:radarLabelColor,font:{family:'Tajawal',size:10,weight:'700'}}}} };
+    })()
+  });
+}
+
+function drawBarChart(monthlyData) {
+  const ctx = document.getElementById('chart_bar')?.getContext('2d');
+  if (!ctx) return;
+  if (activeCharts['bar']) activeCharts['bar'].destroy();
+  const m = currentMonth;
+  activeCharts['bar'] = new Chart(ctx, {
+    type:'bar',
+    data: { labels: BRANCHES.map(b=>BRANCH_NAMES[b]), datasets:[{ label:`${MONTHS[m]} 2026`, data:BRANCHES.map(b=>monthlyData[b][m]||0), backgroundColor:BRANCHES.map(b=>BRANCH_COLORS[b]+'AA'), borderColor:BRANCHES.map(b=>BRANCH_COLORS[b]), borderWidth:2, borderRadius:8 }] },
+    options: chartDefaults('y_pct')
+  });
+}
+
+// ===================== RECOMMENDATIONS PAGE =====================
+function renderRecommendationsPage() {
+  const container = document.getElementById('reco-content');
+  if (!container) return;
+  
+  const failCounts = {}, branchScores = {};
+  BRANCHES.forEach(b => branchScores[b] = {total:0,count:0});
+  BRANCHES.forEach(branch => {
+    for(let m=0;m<12;m++) for(let d=1;d<=MONTH_DAYS[m];d++){
+      const key=getKey(branch,m,d); if(!appData[key])continue;
+      const {pct,answered}=calcSmartScore(branch,m,d);
+      if(answered>0&&pct!==null){branchScores[branch].total+=pct;branchScores[branch].count++;}
+      Object.entries(appData[key].results||{}).forEach(([id,val])=>{if(val==='fail')failCounts[id]=(failCounts[id]||0)+1;});
+    }
+  });
+  const topFails = Object.entries(failCounts).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  container.innerHTML = `
+  <div class="card"><div class="card-title">💡 توصيات لمدير التشغيل</div>
+    <div class="reco-box"><h4>🔴 أكثر البنود إخفاقاً:</h4><ul>${topFails.map(([id,cnt])=>{const item=CHECKLIST.flatMap(s=>s.items).find(i=>i.id===id);return`<li>${item?.icon||''} ${item?.text||id} — تكرر ${cnt} مرة</li>`;}).join('')||'<li>لا توجد بيانات بعد</li>'}</ul></div>
+    <div class="reco-box"><h4>📊 متوسط أداء الفروع:</h4><ul>${BRANCHES.map(b=>{const avg=branchScores[b].count>0?Math.round(branchScores[b].total/branchScores[b].count):0;const cls=avg>=90?'tag-green':avg>=70?'tag-orange':'tag-red';return`<li>فرع ${BRANCH_NAMES[b]}: <span class="tag ${cls}">${avg}%</span></li>`;}).join('')}</ul></div>
+    <div class="reco-box"><h4>✅ توصيات عامة:</h4><ul>
+      <li>جدولة زيارات متوازنة بين الشيفتين</li>
+      <li>التركيز على البنود المتكررة بحلول جذرية</li>
+      <li>اجتماع أسبوعي مع مديري الفروع</li>
+      <li>مشاركة أفضل الممارسات بين الفروع</li>
+      <li>تفعيل نظام المكافآت للفروع المتميزة</li>
+      <li>استخدام قسم "المهام" لإسناد إجراءات محددة بمواعيد نهائية</li>
+    </ul></div>
+  </div>
+  <div class="page-footer"><div class="footer-actions">
+    <button class="btn btn-gold btn-sm" onclick="exportRecoExcel()">📊 Excel</button>
+    
+    <button class="btn btn-purple" onclick="openShareModal('analytics',null,'التوصيات')">📤 مشاركة</button>
+  </div></div>`;
+}
+
+// ===================== ACTION PLAN PAGE =====================
+function renderActionPlanPage() {
+  const container = document.getElementById('ap-content');
+  if (!container) return;
+  const apItems = [];
+  BRANCHES.forEach(branch => {
+    for(let m=0;m<12;m++) for(let d=1;d<=MONTH_DAYS[m];d++){
+      const key=getKey(branch,m,d); if(!appData[key])continue;
+      const visit=appData[key];
+      Object.entries(visit.results||{}).forEach(([id,val])=>{
+        if(val==='fail'){
+          const item=CHECKLIST.flatMap(s=>s.items).find(i=>i.id===id);
+          apItems.push({branch,branchName:BRANCH_NAMES[branch],date:`${d} ${MONTHS[m]}`,item,note:visit.notes?.[id]||'',dept:visit.deptAssign?.[id]||'الفرع'});
+        }
+      });
+    }
+  });
+  container.innerHTML = `
+  <div class="card"><div class="card-title">🎯 خطة العمل الكاملة — ${apItems.length} بند</div>
+    ${apItems.length===0?`<div class="alert alert-success">✅ لا توجد بنود تحتاج أكشن بلان</div>`:apItems.map(ap=>`
+    <div class="action-plan-item">
+      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:5px;">
+        <span style="font-weight:700;font-size:var(--fs-sm)">${ap.item?.icon||''} ${ap.item?.text||''}</span>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;"><span class="tag tag-blue">${ap.branchName}</span><span class="tag tag-orange">${ap.dept}</span><span class="tag tag-purple">${ap.date}</span></div>
+      </div>
+      ${ap.note?`<div style="font-size:var(--fs-xs);color:var(--green);">✓ الإجراء: ${ap.note}</div>`:`<div style="font-size:var(--fs-xs);color:var(--text-muted);">لم يتم تحديد إجراء</div>`}
+    </div>`).join('')}
+  </div>
+  <div class="page-footer"><div class="footer-actions">
+    <button class="btn btn-gold btn-sm" onclick="exportActionPlanExcel()">📊 Excel</button>
+    
+    <button class="btn btn-purple" onclick="openShareModal('action-plan',null,'خطة العمل')">📤 مشاركة</button>
+  </div></div>`;
+}
+
+// ===================== OPS MANAGER PAGE =====================
+function renderOpsPage() {
+  const container = document.getElementById('ops-content');
+  if (!container) return;
+  const shiftStats = { morning:{}, evening:{} };
+  BRANCHES.forEach(b=>{shiftStats.morning[b]=0;shiftStats.evening[b]=0;});
+  let totalMorning=0, totalEvening=0;
+  BRANCHES.forEach(branch=>{
+    for(let m=0;m<12;m++) for(let d=1;d<=MONTH_DAYS[m];d++){
+      const key=getKey(branch,m,d); if(!appData[key])continue;
+      const shift=appData[key].shift;
+      if(shift==='صباحي'){shiftStats.morning[branch]++;totalMorning++;}
+      else if(shift==='مسائي'){shiftStats.evening[branch]++;totalEvening++;}
+    }
+  });
+  const total=totalMorning+totalEvening;
+  const morningPct=total>0?Math.round((totalMorning/total)*100):0;
+  const eveningPct=total>0?Math.round((totalEvening/total)*100):0;
+  let shiftAlert='';
+  if(Math.abs(morningPct-eveningPct)>20) shiftAlert=`<div class="alert alert-warning">⚠️ الزيارات غير متوازنة! ${morningPct>eveningPct?'تركيز أكثر على الصباحي — يُنصح بزيادة المسائي':'تركيز أكثر على المسائي — يُنصح بزيادة الصباحي'}</div>`;
+  const worstBranch = BRANCHES.reduce((worst,b)=>{
+    const {pct,answered}=calcSmartScore(b,currentMonth,currentDay);
+    if(answered===0)return worst;
+    return pct<(worst.pct??101)?{branch:b,pct}:worst;
+  },{pct:101});
+  
+  // Tasks summary
+  const totalTasks = tasksData.length;
+  const completedTasks = tasksData.filter(t=>t.status==='completed').length;
+  const pendingTasks = totalTasks - completedTasks;
+  
+  container.innerHTML = `
+  <div class="card"><div class="card-title">🌐 نظرة عامة — مدير التشغيل</div>
+    ${shiftAlert}
+    <div class="grid-4">${BRANCHES.map(b=>`<div class="stat-card"><div class="stat-icon">🏪</div><div style="font-size:15px;font-weight:800;color:var(--gold-light);margin-bottom:4px;">${BRANCH_NAMES[b]}</div><div style="font-size:var(--fs-sm);color:#7BED9F;font-weight:700;">☀️ صباحي: ${shiftStats.morning[b]}</div><div style="font-size:var(--fs-sm);color:#7EC8E3;font-weight:700;">🌙 مسائي: ${shiftStats.evening[b]}</div></div>`).join('')}</div>
+    <div class="grid-2" style="margin-top:14px;">
+      <div class="stat-card"><div class="stat-icon">☀️</div><div class="stat-value">${totalMorning}</div><div class="stat-label">زيارات صباحي (${morningPct}%)</div></div>
+      <div class="stat-card"><div class="stat-icon">🌙</div><div class="stat-value">${totalEvening}</div><div class="stat-label">زيارات مسائي (${eveningPct}%)</div></div>
+    </div>
+  </div>
+  
+  ${totalTasks > 0 ? `
+  <div class="card">
+    <div class="card-title">📋 ملخص المهام</div>
+    <div class="grid-3">
+      <div class="stat-card"><div class="stat-icon">📌</div><div class="stat-value" style="color:var(--blue);">${totalTasks}</div><div class="stat-label">إجمالي المهام</div></div>
+      <div class="stat-card"><div class="stat-icon">⏳</div><div class="stat-value" style="color:var(--orange);">${pendingTasks}</div><div class="stat-label">قيد التنفيذ</div></div>
+      <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-value" style="color:var(--green);">${completedTasks}</div><div class="stat-label">منجزة</div></div>
+    </div>
+    <button class="btn btn-primary btn-sm" style="margin-top:12px;" onclick="showPage('tasks')">📋 الذهاب إلى المهام</button>
+  </div>` : ''}
+  
+  <div class="card"><div class="card-title">📅 خطة الغد</div>
+    <div class="reco-box"><h4>🎯 التوصيات لليوم التالي:</h4><ul>
+      ${worstBranch.branch?`<li>أولوية لزيارة فرع ${BRANCH_NAMES[worstBranch.branch]} (أقل أداء اليوم: ${worstBranch.pct||'-'}%)</li>`:'<li>لا توجد بيانات كافية لليوم الحالي</li>'}
+      <li>${morningPct>eveningPct+20?'التركيز على الشيفت المسائي غداً':eveningPct>morningPct+20?'التركيز على الشيفت الصباحي غداً':'الموازنة بين الشيفتين'}</li>
+      <li>متابعة البنود المتكررة المُعلَّمة بالأحمر</li>
+      <li>مراجعة أكشن بلان اليوم مع مديري الفروع</li>
+      <li>التأكد من إرسال التقارير للإدارة العليا</li>
+      <li>حلّل أداء الأسبوع من تبويب "تحليل الأسبوع"</li>
+    </ul></div>
+  </div>
+  <div class="page-footer"><div class="footer-actions">
+    <button class="btn btn-gold btn-sm" onclick="exportAllExcel()">📊 Excel كامل</button>
+    
+    <button class="btn btn-purple" onclick="openShareModal('all',null,'التقرير الشامل')">📤 مشاركة</button>
+  </div></div>`;
+}
+
+// ===================== OTHER DEPTS PAGE =====================
+function renderDeptsPage() {
+  const container = document.getElementById('depts-content');
+  if (!container) return;
+  const deptIssues = {};
+  const deptList = ['الصيانة','الجودة','المصنع','الإدارة العليا'];
+  deptList.forEach(d=>deptIssues[d]=[]);
+  BRANCHES.forEach(branch=>{
+    for(let m=0;m<12;m++) for(let d=1;d<=MONTH_DAYS[m];d++){
+      const key=getKey(branch,m,d); if(!appData[key])continue;
+      const visit=appData[key];
+      Object.entries(visit.deptAssign||{}).forEach(([id,dept])=>{
+        if(dept!=='الفرع'&&deptIssues[dept]&&visit.results?.[id]==='fail'){
+          const item=CHECKLIST.flatMap(s=>s.items).find(i=>i.id===id);
+          deptIssues[dept].push({branch,branchName:BRANCH_NAMES[branch],date:`${d} ${MONTHS[m]}`,item});
+        }
+      });
+    }
+  });
+  const deptColors = {الصيانة:'#E67E22',الجودة:'#27AE60',المصنع:'#8E44AD','الإدارة العليا':'#2980B9'};
+  const deptIcons = {الصيانة:'🔧',الجودة:'🔬',المصنع:'🏭','الإدارة العليا':'🏢'};
+  container.innerHTML = `
+  <div class="card"><div class="card-title">🔧 البنود المتعلقة بالإدارات الأخرى</div>
+    ${deptList.map(dept=>{
+      const issues=deptIssues[dept];
+      return `<div class="checklist-section" style="border-right-color:${deptColors[dept]}">
+        <div class="section-header">${deptIcons[dept]} ${dept} — ${issues.length} بند</div>
+        ${issues.length===0?`<div style="font-size:var(--fs-xs);color:var(--text-muted);">لا توجد بنود محالة لهذه الإدارة</div>`:issues.map(i=>`<div class="check-item"><div class="check-label">${i.item?.icon||''} ${i.item?.text||''}</div><div style="display:flex;gap:4px;flex-direction:column;align-items:flex-end;"><span class="tag tag-blue">${i.branchName}</span><span class="tag tag-purple">${i.date}</span></div></div>`).join('')}
+        ${issues.length>0?`<div style="margin-top:8px;"><button class="btn btn-gold btn-sm" onclick="exportDeptExcel('${dept}')">📊 تصدير ${dept}</button></div>`:''}
+      </div>`;
+    }).join('')}
+  </div>
+  <div class="page-footer"><div class="footer-actions"><button class="btn btn-gold btn-sm" onclick="exportDeptsExcel()">📊 تصدير كل الإدارات</button></div></div>`;
+}
+
+// Save manager profile field (called from input/textarea oninput)
+function saveManagerProfileField(name, field, value) {
+  if (typeof canEditNow === 'function' && !canEditNow()) {
+    if (typeof showNotif === 'function') showNotif('🔒 يلزم وضع التعديل', 'error');
+    return;
+  }
+  const profiles = JSON.parse(localStorage.getItem('blaban_manager_profiles') || '{}');
+  if (!profiles[name]) profiles[name] = {};
+  profiles[name][field] = value;
+  localStorage.setItem('blaban_manager_profiles', JSON.stringify(profiles));
+}
+
+// ============ CRITICAL ITEMS REPORT (across all branches) ============
+function renderCriticalReport() {
+  // Build a report of all CRITICAL items (built-in + user-marked) and their current state
+  const allItems = CHECKLIST.flatMap(s => s.items.map(it => ({...it, section: s.section})));
+  const builtInCritical = allItems.filter(it => it.critical);
+  
+  const findings = []; // {branch, month, day, item, result, isUserCritical, ...}
+  
+  BRANCHES.forEach(b => {
+    Object.keys(appData).filter(k => k.startsWith(b+'_')).forEach(key => {
+      const parts = key.split('_');
+      const m = parseInt(parts[1]), d = parseInt(parts[2]);
+      const visit = appData[key];
+      if (!visit?.results) return;
+      
+      // Built-in critical items
+      builtInCritical.forEach(item => {
+        if (visit.results[item.id]) {
+          findings.push({
+            branch: b, branchName: BRANCH_NAMES[b], month: m, day: d,
+            item, result: visit.results[item.id],
+            isUserCritical: false, dateStr: `${d} ${MONTHS[m]}`,
+            apStatus: visit.actionStatus?.[item.id]?.status || 'pending',
+            manager: visit.manager || '-'
+          });
+        }
+      });
+      
+      // User-marked critical items
+      if (visit.userCritical) {
+        Object.keys(visit.userCritical).filter(id => visit.userCritical[id] === true).forEach(id => {
+          const item = allItems.find(i => i.id === id);
+          if (item && visit.results[id] && !builtInCritical.find(b => b.id === id)) {
+            findings.push({
+              branch: b, branchName: BRANCH_NAMES[b], month: m, day: d,
+              item, result: visit.results[id],
+              isUserCritical: true, dateStr: `${d} ${MONTHS[m]}`,
+              apStatus: visit.actionStatus?.[id]?.status || 'pending',
+              manager: visit.manager || '-'
+            });
+          }
+        });
+      }
+    });
+  });
+  
+  // Sort: failed first, then by date
+  findings.sort((a, b) => {
+    if (a.result !== b.result) return a.result === 'fail' ? -1 : 1;
+    return (b.month*31 + b.day) - (a.month*31 + a.day);
+  });
+  
+  return findings;
+}
+</script>

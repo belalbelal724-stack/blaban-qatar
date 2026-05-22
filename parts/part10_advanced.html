@@ -1,0 +1,1896 @@
+<script>
+// ===================================================================
+// PART 10: Firebase Sync + History + Push Notifications + Auto-Backup + Dashboard
+// ===================================================================
+
+// ============ STATE ============
+let fbApp = null;
+let fbDb = null;
+let fbAuth = null;
+let fbCurrentUser = null;
+let fbWorkspace = localStorage.getItem('blaban_fb_workspace') || 'blaban-qatar';
+let fbUserName = localStorage.getItem('blaban_fb_username') || '';
+let fbLastSyncTime = null;
+let fbConfig = null;
+try {
+  fbConfig = JSON.parse(localStorage.getItem('blaban_fb_config') || 'null');
+} catch(e) { fbConfig = null; }
+
+// Sync state: 'offline' | 'online' | 'syncing' | 'error'
+let syncState = 'offline';
+let isApplyingRemoteUpdate = false;  // prevent echo loops
+
+// History log (max 100 entries, stored in localStorage)
+let historyLog = [];
+try {
+  historyLog = JSON.parse(localStorage.getItem('blaban_history') || '[]');
+} catch(e) { historyLog = []; }
+
+// Auto-backup
+let lastBackupTime = parseInt(localStorage.getItem('blaban_last_backup') || '0');
+
+// ============ SYNC INDICATOR ============
+function updateSyncIndicator(state, msg) {
+  syncState = state;
+  const ind = document.getElementById('syncIndicator');
+  const txt = document.getElementById('syncIndicatorText');
+  if (!ind || !txt) return;
+  ind.classList.remove('online','offline','syncing','error');
+  ind.classList.add(state);
+  const labels = {
+    online: '☁️ متصل',
+    offline: '⚫ غير متصل',
+    syncing: '🔄 مزامنة...',
+    error: '⚠️ خطأ'
+  };
+  txt.textContent = msg || labels[state] || '';
+}
+
+// ============ HISTORY LOG ============
+function addHistoryEntry(entry) {
+  // entry: { type, action, target, details, user, timestamp }
+  const fullEntry = {
+    id: 'h_' + Date.now() + '_' + Math.random().toString(36).substr(2,5),
+    timestamp: new Date().toISOString(),
+    user: fbUserName || (currentRole === 'ops' ? 'مدير التشغيل' : 'مدير الفرع'),
+    role: currentRole,
+    ...entry
+  };
+  historyLog.unshift(fullEntry);
+  // Keep last 200 entries
+  if (historyLog.length > 200) historyLog = historyLog.slice(0, 200);
+  try {
+    localStorage.setItem('blaban_history', JSON.stringify(historyLog));
+  } catch(e) { console.warn('history save failed', e); }
+}
+
+function openHistoryModal() {
+  document.getElementById('historyModal').classList.remove('hidden');
+  renderHistoryList();
+}
+function closeHistoryModal() {
+  document.getElementById('historyModal').classList.add('hidden');
+}
+
+function renderHistoryList() {
+  const list = document.getElementById('historyList');
+  if (!list) return;
+  const filter = document.getElementById('historyFilterType')?.value || 'all';
+  let filtered = historyLog;
+  if (filter !== 'all') {
+    filtered = historyLog.filter(h => h.type === filter);
+  }
+  if (filtered.length === 0) {
+    list.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-muted);">لا توجد عمليات في السجل</div>';
+    return;
+  }
+  list.innerHTML = filtered.slice(0, 100).map(h => {
+    const time = new Date(h.timestamp).toLocaleString('ar-QA', { dateStyle:'short', timeStyle:'short' });
+    const actionIcons = { create:'➕', update:'✏️', delete:'🗑️' };
+    const actionLabel = { create:'أنشأ', update:'عدّل', delete:'حذف' };
+    return `<div class="history-entry ${h.action||'update'}">
+      <div class="history-entry-meta">
+        <span>${h.role==='ops'?'🌐':'👔'} ${h.user}</span>
+        <span>${time}</span>
+      </div>
+      <div class="history-entry-text">${actionIcons[h.action]||'📝'} ${actionLabel[h.action]||'حدّث'} <strong>${h.target||''}</strong>${h.details?` — ${h.details}`:''}</div>
+    </div>`;
+  }).join('');
+}
+
+function clearHistory() {
+  if (!confirm('هل أنت متأكد من مسح كل سجل التغييرات؟ لا يمكن التراجع.')) return;
+  historyLog = [];
+  localStorage.setItem('blaban_history', '[]');
+  renderHistoryList();
+  showNotif('🗑️ تم مسح السجل', 'info');
+}
+
+function exportHistoryExcel() {
+  if (historyLog.length === 0) { showNotif('⚠️ لا توجد عمليات للتصدير','error'); return; }
+  const wb = XLSX.utils.book_new();
+  const rows = [['التاريخ والوقت','المستخدم','الدور','نوع العملية','الإجراء','الهدف','التفاصيل']];
+  historyLog.forEach(h => {
+    rows.push([
+      new Date(h.timestamp).toLocaleString('ar-QA'),
+      h.user||'-',
+      h.role==='ops'?'مدير التشغيل':'مدير الفرع',
+      h.type||'-',
+      h.action||'-',
+      h.target||'-',
+      h.details||'-'
+    ]);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  XLSX.utils.book_append_sheet(wb, ws, 'سجل التغييرات');
+  XLSX.writeFile(wb, `سجل_التغييرات_${new Date().toISOString().split('T')[0]}.xlsx`);
+  showNotif('✅ تم التصدير!', 'success');
+}
+
+// ============ PUSH NOTIFICATIONS ============
+let notificationPermission = 'default';
+
+function requestNotificationPermission() {
+  if (!('Notification' in window)) {
+    showNotif('⚠️ المتصفح لا يدعم الإشعارات', 'error');
+    return;
+  }
+  if (Notification.permission === 'granted') {
+    notificationPermission = 'granted';
+    return;
+  }
+  Notification.requestPermission().then(perm => {
+    notificationPermission = perm;
+    if (perm === 'granted') {
+      showNotif('🔔 تم تفعيل الإشعارات', 'success');
+    }
+  });
+}
+
+function pushNotify(title, body, options) {
+  options = options || {};
+  // Always show in-app toast
+  showPushToast(title, body);
+  // Try native notification if permitted and tab is hidden
+  if (notificationPermission === 'granted' && document.hidden) {
+    try {
+      const n = new Notification(title, {
+        body,
+        icon: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Crect width=%22100%22 height=%22100%22 fill=%22%236B1B2A%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2260%22 text-anchor=%22middle%22 fill=%22%23C9A84C%22%3E🥛%3C/text%3E%3C/svg%3E',
+        tag: options.tag || 'blaban-' + Date.now(),
+        ...options
+      });
+      n.onclick = () => { window.focus(); n.close(); };
+      setTimeout(() => n.close(), 8000);
+    } catch(e) { console.warn('Notification failed:', e); }
+  }
+}
+
+function showPushToast(title, body) {
+  const toast = document.getElementById('pushToast');
+  const t = document.getElementById('pushToastTitle');
+  const b = document.getElementById('pushToastBody');
+  if (!toast) return;
+  t.textContent = title;
+  b.textContent = body;
+  toast.classList.add('show');
+  // Audio chime (small beep)
+  try {
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.frequency.value = 800; g.gain.value = 0.04;
+    o.start(); o.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.15);
+    o.stop(ctx.currentTime + 0.15);
+  } catch(e) {}
+  setTimeout(hidePushToast, 6000);
+}
+
+function hidePushToast() {
+  const toast = document.getElementById('pushToast');
+  if (toast) toast.classList.remove('show');
+}
+
+// ============ FIREBASE SYNC ============
+function openSyncModal() {
+  const m = document.getElementById('syncModal');
+  if (!m) return;
+  // Populate fields
+  if (fbConfig) {
+    document.getElementById('fbConfigInput').value = JSON.stringify(fbConfig, null, 2);
+  }
+  document.getElementById('fbWorkspaceInput').value = fbWorkspace;
+  document.getElementById('fbUserNameInput').value = fbUserName;
+  // Update status panel
+  refreshFbStatusPanel();
+  // Show/hide disconnect button
+  const dis = document.getElementById('fbDisconnectBtn');
+  if (dis) dis.style.display = fbApp ? '' : 'none';
+  m.classList.remove('hidden');
+}
+
+function closeSyncModal() {
+  const m = document.getElementById('syncModal');
+  if (m) m.classList.add('hidden');
+}
+
+function refreshFbStatusPanel() {
+  const badge = document.getElementById('fbStatusBadge');
+  const lastSync = document.getElementById('fbLastSync');
+  const userId = document.getElementById('fbUserId');
+  const projectId = document.getElementById('fbProjectId');
+  if (!badge) return;
+  badge.classList.remove('online','offline','error');
+  if (syncState === 'online' || syncState === 'syncing') {
+    badge.classList.add('online');
+    badge.textContent = '🟢 متصل';
+  } else if (syncState === 'error') {
+    badge.classList.add('error');
+    badge.textContent = '🔴 خطأ';
+  } else {
+    badge.classList.add('offline');
+    badge.textContent = '⚫ غير متصل';
+  }
+  lastSync.textContent = fbLastSyncTime ? new Date(fbLastSyncTime).toLocaleString('ar-QA') : '—';
+  userId.textContent = fbCurrentUser?.uid?.substring(0,12) + '...' || '—';
+  projectId.textContent = fbConfig?.projectId || '—';
+}
+
+async function connectFirebase() {
+  const cfgText = document.getElementById('fbConfigInput').value.trim();
+  const workspace = document.getElementById('fbWorkspaceInput').value.trim();
+  const userName = document.getElementById('fbUserNameInput').value.trim();
+
+  if (!workspace) {
+    showNotif('⚠️ يجب إدخال Workspace ID', 'error');
+    return;
+  }
+  if (!userName) {
+    showNotif('⚠️ يجب إدخال اسم المستخدم', 'error');
+    return;
+  }
+
+  // Save user name + workspace regardless
+  fbWorkspace = workspace;
+  fbUserName = userName;
+  localStorage.setItem('blaban_fb_workspace', workspace);
+  localStorage.setItem('blaban_fb_username', userName);
+
+  if (!cfgText) {
+    showNotif('💡 تم حفظ الإعدادات. لتفعيل المزامنة، أدخل بيانات Firebase.', 'info');
+    closeSyncModal();
+    return;
+  }
+
+  let config;
+  try {
+    config = JSON.parse(cfgText);
+  } catch(e) {
+    showNotif('❌ صيغة JSON غير صحيحة', 'error');
+    return;
+  }
+  if (!config.databaseURL || !config.projectId) {
+    showNotif('❌ بيانات Firebase ناقصة (يلزم databaseURL و projectId)', 'error');
+    return;
+  }
+
+  fbConfig = config;
+  localStorage.setItem('blaban_fb_config', JSON.stringify(config));
+
+  // Disconnect existing if any
+  if (fbApp) {
+    try {
+      await firebase.app().delete();
+      fbApp = null; fbDb = null; fbAuth = null; fbCurrentUser = null;
+    } catch(e) {}
+  }
+
+  updateSyncIndicator('syncing', '🔄 جاري الاتصال...');
+
+  try {
+    fbApp = firebase.initializeApp(config);
+    fbAuth = firebase.auth();
+    fbDb = firebase.database();
+
+    // Anonymous sign-in
+    const cred = await fbAuth.signInAnonymously();
+    fbCurrentUser = cred.user;
+
+    // Setup listeners
+    setupFirebaseListeners();
+
+    // Initial pull and merge
+    await initialPullAndMerge();
+
+    updateSyncIndicator('online', '☁️ متصل');
+    fbLastSyncTime = Date.now();
+    refreshFbStatusPanel();
+    closeSyncModal();
+    showNotif('✅ تم الاتصال بالسحابة! المزامنة تعمل الآن.', 'success');
+    pushNotify('☁️ تم الاتصال', `أنت متصل الآن بـ ${config.projectId}. المزامنة فعّالة.`);
+  } catch(err) {
+    console.error('Firebase connection failed:', err);
+    fbApp = null; fbDb = null; fbAuth = null;
+    updateSyncIndicator('error', '⚠️ خطأ');
+    refreshFbStatusPanel();
+    showNotif('❌ فشل الاتصال: ' + (err.message||err.code), 'error');
+  }
+}
+
+async function disconnectFirebase() {
+  if (!confirm('هل تريد قطع الاتصال بالسحابة؟ ستبقى البيانات المحلية كما هي.')) return;
+  try {
+    if (fbApp) await firebase.app().delete();
+  } catch(e) {}
+  fbApp = null; fbDb = null; fbAuth = null; fbCurrentUser = null;
+  fbConfig = null;
+  localStorage.removeItem('blaban_fb_config');
+  updateSyncIndicator('offline', '⚫ غير متصل');
+  refreshFbStatusPanel();
+  closeSyncModal();
+  showNotif('🔌 تم قطع الاتصال', 'info');
+}
+
+function setupFirebaseListeners() {
+  if (!fbDb || !fbWorkspace) return;
+  const base = `workspaces/${fbWorkspace}`;
+
+  // Listen to evaluations
+  fbDb.ref(`${base}/evaluations`).on('value', snapshot => {
+    if (isApplyingRemoteUpdate) return;
+    const remote = snapshot.val();
+    if (!remote) return;
+    if (JSON.stringify(remote) === JSON.stringify(appData)) return;
+    isApplyingRemoteUpdate = true;
+    appData = remote;
+    saveDataLocal();
+    // Re-render currently active page
+    refreshCurrentView();
+    fbLastSyncTime = Date.now();
+    refreshFbStatusPanel();
+    isApplyingRemoteUpdate = false;
+  });
+
+  // Listen to tasks
+  fbDb.ref(`${base}/tasks`).on('value', snapshot => {
+    if (isApplyingRemoteUpdate) return;
+    const remote = snapshot.val() || [];
+    const remoteArr = Array.isArray(remote) ? remote : Object.values(remote||{});
+    if (JSON.stringify(remoteArr) === JSON.stringify(tasksData)) return;
+    isApplyingRemoteUpdate = true;
+    // Detect new tasks (for notification to managers)
+    const oldIds = new Set(tasksData.map(t=>t.id));
+    const newTasks = remoteArr.filter(t => !oldIds.has(t.id));
+    tasksData = remoteArr;
+    saveTasksLocal();
+    updateTasksBadge();
+    refreshCurrentView();
+    // Notify if new tasks targeting this user
+    if (currentRole === 'manager') {
+      const myBranch = localStorage.getItem('blaban_my_branch') || 'all';
+      newTasks.forEach(t => {
+        if (t.branch === 'all' || t.branch === myBranch) {
+          pushNotify('📋 مهمة جديدة!', `${t.title}${t.priority?` — ${t.priority}`:''}`, { tag: 'task-' + t.id });
+        }
+      });
+    } else if (currentRole === 'ops' && newTasks.length > 0) {
+      // Operations manager sees task completion notifications instead - handled below
+    }
+    fbLastSyncTime = Date.now();
+    refreshFbStatusPanel();
+    isApplyingRemoteUpdate = false;
+  });
+
+  // Listen to history (just receive remote logs)
+  fbDb.ref(`${base}/history`).limitToLast(50).on('child_added', snapshot => {
+    const entry = snapshot.val();
+    if (!entry || !entry.id) return;
+    if (historyLog.find(h => h.id === entry.id)) return;
+    historyLog.unshift(entry);
+    if (historyLog.length > 200) historyLog = historyLog.slice(0, 200);
+    try { localStorage.setItem('blaban_history', JSON.stringify(historyLog)); } catch(e) {}
+  });
+
+  // Connection state
+  fbDb.ref('.info/connected').on('value', snap => {
+    if (snap.val() === true) {
+      if (syncState !== 'syncing') updateSyncIndicator('online');
+    } else {
+      updateSyncIndicator('offline', '⚫ غير متصل');
+    }
+  });
+}
+
+async function initialPullAndMerge() {
+  if (!fbDb) return;
+  const base = `workspaces/${fbWorkspace}`;
+  try {
+    const evalSnap = await fbDb.ref(`${base}/evaluations`).once('value');
+    const tasksSnap = await fbDb.ref(`${base}/tasks`).once('value');
+    const remoteEval = evalSnap.val();
+    const remoteTasks = tasksSnap.val();
+
+    isApplyingRemoteUpdate = true;
+    // If remote is empty, push local
+    if (!remoteEval) {
+      await fbDb.ref(`${base}/evaluations`).set(appData);
+    } else {
+      // Merge: remote wins for conflicts (last-write-wins). Add anything local that's missing.
+      const merged = { ...remoteEval };
+      Object.keys(appData||{}).forEach(k => {
+        if (!merged[k]) merged[k] = appData[k];
+      });
+      appData = merged;
+      saveDataLocal();
+      await fbDb.ref(`${base}/evaluations`).set(merged);
+    }
+
+    if (!remoteTasks) {
+      if (tasksData.length > 0) {
+        await fbDb.ref(`${base}/tasks`).set(tasksData);
+      }
+    } else {
+      const remoteArr = Array.isArray(remoteTasks) ? remoteTasks : Object.values(remoteTasks||{});
+      const ids = new Set(remoteArr.map(t=>t.id));
+      const localOnly = tasksData.filter(t => !ids.has(t.id));
+      tasksData = [...remoteArr, ...localOnly];
+      saveTasksLocal();
+      if (localOnly.length > 0) {
+        await fbDb.ref(`${base}/tasks`).set(tasksData);
+      }
+    }
+    isApplyingRemoteUpdate = false;
+  } catch(err) {
+    isApplyingRemoteUpdate = false;
+    console.error('initial pull failed:', err);
+  }
+}
+
+// Local-only save (without firebase push)
+function saveDataLocal() {
+  try { localStorage.setItem('blaban_data_v3', JSON.stringify(appData)); } catch(e) { console.warn(e); }
+}
+function saveTasksLocal() {
+  try { localStorage.setItem('blaban_tasks_v1', JSON.stringify(tasksData)); } catch(e) { console.warn(e); }
+}
+
+// Push to firebase (debounced)
+let _pushDataTimer = null;
+function pushDataToFirebase() {
+  if (!fbDb || isApplyingRemoteUpdate) return;
+  clearTimeout(_pushDataTimer);
+  _pushDataTimer = setTimeout(async () => {
+    if (!fbDb) return;
+    try {
+      updateSyncIndicator('syncing');
+      const base = `workspaces/${fbWorkspace}`;
+      await fbDb.ref(`${base}/evaluations`).set(appData);
+      await fbDb.ref(`${base}/tasks`).set(tasksData);
+      fbLastSyncTime = Date.now();
+      updateSyncIndicator('online');
+      refreshFbStatusPanel();
+    } catch(err) {
+      console.error('push failed', err);
+      updateSyncIndicator('error', '⚠️ خطأ في الرفع');
+    }
+  }, 800);
+}
+
+function pushHistoryToFirebase(entry) {
+  if (!fbDb) return;
+  const base = `workspaces/${fbWorkspace}`;
+  try {
+    fbDb.ref(`${base}/history`).push(entry);
+  } catch(e) { console.warn('history push failed', e); }
+}
+
+// Refresh active view after remote change
+function refreshCurrentView() {
+  const activePage = document.querySelector('.page.active');
+  if (!activePage) return;
+  const id = activePage.id;
+  if (id === 'branch-view') {
+    BRANCHES.forEach(b => {
+      const sub = document.getElementById(`branch-${b}`);
+      if (sub && sub.style.display !== 'none') renderBranch(b);
+      else if (typeof selectedBranch !== 'undefined' && b === selectedBranch) renderBranch(b);
+    });
+  } else if (id === 'tasks') renderTasksPage();
+  else if (id === 'managers') renderManagersPage();
+  else if (id === 'analytics') renderAnalyticsPage();
+  else if (id === 'recommendations') renderRecommendationsPage();
+  else if (id === 'ops-manager') renderOpsPage();
+  else if (id === 'other-depts') renderDeptsPage();
+  else if (id === 'dashboard') renderDashboardPage();
+}
+
+// ============ AUTO BACKUP ============
+function downloadBackup() {
+  const backup = {
+    version: '1.0',
+    exportedAt: new Date().toISOString(),
+    exportedBy: fbUserName || 'unknown',
+    workspace: fbWorkspace,
+    data: {
+      evaluations: appData,
+      tasks: tasksData,
+      phones: savedPhones,
+      emails: savedEmails,
+      history: historyLog
+    }
+  };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type:'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `blaban_backup_${new Date().toISOString().split('T')[0]}_${new Date().getHours()}h.json`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  lastBackupTime = Date.now();
+  localStorage.setItem('blaban_last_backup', String(lastBackupTime));
+  showNotif('💾 تم تحميل النسخة الاحتياطية!', 'success');
+}
+
+function openRestoreModal() {
+  document.getElementById('restoreModal').classList.remove('hidden');
+}
+function closeRestoreModal() {
+  document.getElementById('restoreModal').classList.add('hidden');
+}
+
+function executeRestore() {
+  const fileInput = document.getElementById('restoreFileInput');
+  if (!fileInput?.files?.[0]) { showNotif('⚠️ اختر ملفاً','error'); return; }
+  if (!confirm('⚠️ سيتم استبدال كل البيانات الحالية. هل أنت متأكد؟')) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const backup = JSON.parse(e.target.result);
+      if (!backup.data) throw new Error('ملف غير صالح');
+      appData = backup.data.evaluations || {};
+      tasksData = backup.data.tasks || [];
+      if (backup.data.history) historyLog = backup.data.history;
+      saveDataLocal();
+      saveTasksLocal();
+      try { localStorage.setItem('blaban_history', JSON.stringify(historyLog)); } catch(_){}
+      closeRestoreModal();
+      refreshCurrentView();
+      updateTasksBadge();
+      pushDataToFirebase();
+      showNotif('✅ تم الاستعادة بنجاح!','success');
+    } catch(err) {
+      showNotif('❌ خطأ في الملف: '+err.message, 'error');
+    }
+  };
+  reader.readAsText(fileInput.files[0]);
+}
+
+// Auto-backup every 6 hours
+function checkAutoBackup() {
+  const SIX_HOURS = 6 * 60 * 60 * 1000;
+  if (!lastBackupTime || (Date.now() - lastBackupTime) > SIX_HOURS) {
+    // Don't auto-download (intrusive). Instead, notify user.
+    if (Date.now() - lastBackupTime > 24*60*60*1000) {
+      pushNotify('💾 تذكير: نسخة احتياطية', 'لم تأخذ نسخة احتياطية منذ 24 ساعة. اضغط ☁️ مزامنة → نسخة احتياطية الآن.');
+    }
+  }
+}
+
+// ============ DASHBOARD ============
+function renderDashboardPage() {
+  const container = document.getElementById('dashboard-content');
+  if (!container) return;
+
+  // Compute KPIs across last 7 days
+  const today = new Date();
+  const last7 = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    last7.push({ m: d.getMonth(), d: d.getDate() });
+  }
+
+  // Per-branch averages over last 7 days
+  const branchKpi = {};
+  let allScores = [];
+  BRANCHES.forEach(b => {
+    let sum = 0, count = 0, fails = 0, visits = 0;
+    last7.forEach(({m,d}) => {
+      const { pct, answered, deducted } = calcSmartScore(b, m, d);
+      if (answered > 0 && pct !== null) { sum += pct; count++; visits++; allScores.push(pct); fails += deducted; }
+    });
+    branchKpi[b] = {
+      avg: count > 0 ? Math.round(sum/count) : null,
+      visits, fails
+    };
+  });
+  const overallAvg = allScores.length > 0 ? Math.round(allScores.reduce((a,b)=>a+b,0)/allScores.length) : null;
+  const totalVisits = allScores.length;
+
+  // Tasks KPIs
+  const totalTasks = tasksData.length;
+  const completedTasks = tasksData.filter(t => isTaskFullyCompleted(t)).length;
+  const overdueTasks = tasksData.filter(t => {
+    if (isTaskFullyCompleted(t)) return false;
+    if (!t.deadline) return false;
+    return new Date(t.deadline) < new Date(new Date().toDateString());
+  }).length;
+  const urgentTasks = tasksData.filter(t => !isTaskFullyCompleted(t) && t.priority === 'عاجلة').length;
+
+  // Manager KPIs
+  const stats = buildManagerStats();
+  const managerCount = Object.keys(stats).length;
+  let topManager = null, worstManager = null;
+  if (managerCount > 0) {
+    const sorted = Object.entries(stats).map(([n,s]) => ({
+      name: n,
+      avg: s.visits.reduce((t,v)=>t+v.pct,0)/s.visits.length
+    })).sort((a,b)=>b.avg-a.avg);
+    topManager = sorted[0];
+    worstManager = sorted[sorted.length-1];
+  }
+
+  // Critical alerts
+  const alerts = [];
+  // Branches with avg < 70
+  BRANCHES.forEach(b => {
+    if (branchKpi[b].avg !== null && branchKpi[b].avg < 70) {
+      alerts.push({ severity:'critical', icon:'🔴', text:`فرع ${BRANCH_NAMES[b]} متوسطه ${branchKpi[b].avg}% — تدخل عاجل`, time:'اليوم' });
+    }
+  });
+  if (overdueTasks > 0) alerts.push({ severity:'critical', icon:'⏰', text:`${overdueTasks} مهمة متأخرة عن موعدها`, time:'الآن' });
+  if (urgentTasks > 0) alerts.push({ severity:'warning', icon:'🚨', text:`${urgentTasks} مهمة عاجلة قيد التنفيذ`, time:'الآن' });
+  // Branches with no visits in last 7 days
+  BRANCHES.forEach(b => {
+    if (branchKpi[b].visits === 0) alerts.push({ severity:'warning', icon:'⚠️', text:`فرع ${BRANCH_NAMES[b]}: لم تتم زيارة في آخر 7 أيام`, time:'هذا الأسبوع' });
+  });
+  if (worstManager && worstManager.avg < 70) {
+    alerts.push({ severity:'critical', icon:'👔', text:`المدير ${worstManager.name}: متوسط ${Math.round(worstManager.avg)}% — اجتماع مطلوب`, time:'هذا الأسبوع' });
+  }
+
+  // Recent activity (last 5 from history)
+  const recentActivity = historyLog.slice(0, 5);
+
+  const overallColor = overallAvg === null ? '' : overallAvg >= 90 ? 'green' : overallAvg >= 70 ? 'orange' : 'red';
+
+  container.innerHTML = `
+  <div class="card" style="background:linear-gradient(135deg,rgba(201,168,76,0.1),rgba(107,27,42,0.15));border-color:var(--gold);">
+    <div class="card-title">📡 لوحة المعلومات الرئيسية — لمدير التشغيل</div>
+    <p style="color:var(--text-muted);font-size:var(--fs-sm);margin-bottom:6px;">
+      نظرة سريعة على المؤشرات الحيوية. تُحدَّث تلقائياً بناءً على آخر 7 أيام.
+    </p>
+    <div style="font-size:var(--fs-xs);color:var(--text-muted);">
+      آخر تحديث: ${new Date().toLocaleString('ar-QA')}
+      ${syncState==='online' ? ' • <span style="color:var(--green);">☁️ مُزامَن</span>' : ''}
+    </div>
+  </div>
+
+  <!-- Hero KPIs -->
+  <div class="dashboard-grid">
+    <div class="kpi-card ${overallColor}">
+      <div class="kpi-icon">📊</div>
+      <div class="kpi-label">متوسط الأداء العام (7 أيام)</div>
+      <div class="kpi-value">${overallAvg !== null ? overallAvg + '%' : '—'}</div>
+      <div class="kpi-trend">${totalVisits} زيارة في الأسبوع</div>
+    </div>
+    
+    <div class="kpi-card ${urgentTasks > 0 ? 'red' : overdueTasks > 0 ? 'orange' : 'green'}">
+      <div class="kpi-icon">📋</div>
+      <div class="kpi-label">المهام النشطة</div>
+      <div class="kpi-value">${totalTasks - completedTasks}</div>
+      <div class="kpi-trend">
+        ${overdueTasks > 0 ? `<span class="down">⏰ ${overdueTasks} متأخرة</span>` : ''}
+        ${urgentTasks > 0 ? ` • 🔴 ${urgentTasks} عاجلة` : ''}
+        ${overdueTasks === 0 && urgentTasks === 0 ? `<span class="up">✓ كل شيء تحت السيطرة</span>` : ''}
+      </div>
+    </div>
+    
+    <div class="kpi-card blue">
+      <div class="kpi-icon">✅</div>
+      <div class="kpi-label">المهام المُنجزة</div>
+      <div class="kpi-value">${completedTasks}</div>
+      <div class="kpi-trend">${totalTasks > 0 ? Math.round((completedTasks/totalTasks)*100)+'% معدل الإنجاز' : 'لا توجد بعد'}</div>
+    </div>
+    
+    <div class="kpi-card ${alerts.filter(a=>a.severity==='critical').length > 0 ? 'red' : 'green'}">
+      <div class="kpi-icon">🚨</div>
+      <div class="kpi-label">التنبيهات الحرجة</div>
+      <div class="kpi-value">${alerts.filter(a=>a.severity==='critical').length}</div>
+      <div class="kpi-trend">${alerts.length} إجمالي • انظر القائمة أدناه</div>
+    </div>
+  </div>
+
+  <!-- Branches snapshot -->
+  <div class="card">
+    <div class="card-title">🏪 نظرة سريعة على الفروع</div>
+    <div class="dashboard-grid">
+      ${BRANCHES.map(b => {
+        const k = branchKpi[b];
+        const cls = k.avg === null ? '' : k.avg>=90?'green':k.avg>=70?'blue':k.avg>=60?'orange':'red';
+        return `<div class="kpi-card ${cls}" onclick="onBranchSelectChange('${b}');document.getElementById('branchSelector').value='${b}';showPage('branch-view');" style="cursor:pointer;">
+          <div class="kpi-icon">🏪</div>
+          <div class="kpi-label">فرع ${BRANCH_NAMES[b]}</div>
+          <div class="kpi-value">${k.avg !== null ? k.avg+'%' : '—'}</div>
+          <div class="kpi-trend">${k.visits} زيارة • ${k.fails} مخصوم</div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>
+
+  <!-- Critical Alerts -->
+  <div class="card">
+    <div class="card-title">🚨 التنبيهات والأولويات</div>
+    <div class="alert-bell-section ${alerts.length === 0 ? 'empty' : ''}">
+      ${alerts.length === 0 ? 
+        `<div style="text-align:center;padding:20px;color:var(--green);"><div style="font-size:36px;">✅</div><div style="font-weight:700;">لا توجد تنبيهات حرجة — كل شيء على ما يُرام!</div></div>` :
+        alerts.map(a => `<div class="alert-bell-item ${a.severity==='critical'?'':a.severity==='warning'?'warning':'info'}">
+          <span class="alert-bell-text">${a.icon} ${a.text}</span>
+          <span class="alert-bell-time">${a.time}</span>
+        </div>`).join('')
+      }
+    </div>
+  </div>
+
+  <!-- Top performers + Recent activity -->
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">🏆 أفضل وأقل أداءً</div>
+      ${topManager ? `<div style="background:rgba(39,174,96,0.1);border:1px solid var(--green);border-radius:10px;padding:12px;margin-bottom:8px;">
+        <div style="font-size:var(--fs-xs);color:var(--text-muted);font-weight:700;">🥇 الأفضل أداءً</div>
+        <div style="font-size:16px;font-weight:800;color:var(--gold-light);">${topManager.name}</div>
+        <div style="font-size:var(--fs-sm);color:var(--green);font-weight:700;">${Math.round(topManager.avg)}% متوسط</div>
+      </div>` : ''}
+      ${worstManager && worstManager !== topManager ? `<div style="background:rgba(192,57,43,0.08);border:1px solid var(--red);border-radius:10px;padding:12px;">
+        <div style="font-size:var(--fs-xs);color:var(--text-muted);font-weight:700;">⚠️ يحتاج متابعة</div>
+        <div style="font-size:16px;font-weight:800;color:var(--gold-light);">${worstManager.name}</div>
+        <div style="font-size:var(--fs-sm);color:var(--red);font-weight:700;">${Math.round(worstManager.avg)}% متوسط</div>
+      </div>` : ''}
+      ${!topManager ? `<div style="color:var(--text-muted);text-align:center;padding:20px;">لا توجد بيانات كافية</div>` : ''}
+    </div>
+
+    <div class="card">
+      <div class="card-title">📜 آخر النشاطات</div>
+      ${recentActivity.length === 0 ? `<div style="color:var(--text-muted);text-align:center;padding:20px;">لا توجد نشاطات بعد</div>` :
+        recentActivity.map(h => {
+          const time = new Date(h.timestamp).toLocaleString('ar-QA',{hour:'2-digit',minute:'2-digit',day:'numeric',month:'numeric'});
+          const icons = { create:'➕', update:'✏️', delete:'🗑️' };
+          return `<div style="padding:8px 10px;background:var(--bg-card2);border-radius:8px;margin-bottom:6px;border-right:3px solid var(--blue);">
+            <div style="display:flex;justify-content:space-between;font-size:var(--fs-xs);color:var(--text-muted);margin-bottom:2px;font-weight:600;">
+              <span>${h.user||'—'}</span><span>${time}</span>
+            </div>
+            <div style="font-size:var(--fs-sm);">${icons[h.action]||'📝'} ${h.target||''}${h.details?` — ${h.details}`:''}</div>
+          </div>`;
+        }).join('')
+      }
+      <div style="margin-top:8px;text-align:center;">
+        <button class="btn btn-primary btn-sm" onclick="openHistoryModal()">📜 عرض كل السجل</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick actions -->
+  <div class="card">
+    <div class="card-title">⚡ إجراءات سريعة</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-green btn-sm" onclick="setRole('ops');showPage('tasks');openAddTaskModal();">➕ إضافة مهمة عاجلة</button>
+      <button class="btn btn-blue btn-sm" onclick="showPage('analytics')">📊 عرض التحليلات</button>
+      <button class="btn btn-gold btn-sm" onclick="showPage('managers')">👔 تقييم المديرين</button>
+      <button class="btn btn-purple" onclick="downloadBackup()">💾 نسخة احتياطية الآن</button>
+    </div>
+  </div>
+
+  <!-- CRITICAL POINTS REPORT -->
+  ${(() => {
+    const criticalFindings = (typeof renderCriticalReport === 'function') ? renderCriticalReport() : [];
+    const failedCritical = criticalFindings.filter(f => f.result === 'fail');
+    if (failedCritical.length === 0) {
+      return `
+      <div class="card" style="border:2px solid var(--green);background:linear-gradient(135deg,rgba(39,174,96,0.06),rgba(46,204,113,0.03));">
+        <div class="card-title" style="color:var(--green);">🚨 تقرير النقاط الحرجة لكل الفروع</div>
+        <div class="alert alert-success" style="margin:0;">
+          ✅ لا توجد نقاط حرجة فاشلة حالياً — جميع الفروع ملتزمة بالبنود الحرجة.
+        </div>
+      </div>`;
+    }
+    
+    // Group by branch
+    const byBranch = {};
+    failedCritical.forEach(f => {
+      if (!byBranch[f.branch]) byBranch[f.branch] = [];
+      byBranch[f.branch].push(f);
+    });
+    
+    return `
+    <div class="card" style="border:2px solid var(--red);background:linear-gradient(135deg,rgba(192,57,43,0.08),rgba(231,76,60,0.04));box-shadow:0 0 20px rgba(192,57,43,0.2);">
+      <div class="card-title" style="color:var(--red);">🚨 تقرير النقاط الحرجة لكل الفروع — ${failedCritical.length} حالة</div>
+      <p style="color:var(--text-muted);font-size:var(--fs-sm);margin-bottom:12px;">
+        ⚠️ هذه البنود حرجة وفشلت في الالتزام. يجب المعالجة الفورية:
+      </p>
+      
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;">
+        ${Object.entries(byBranch).map(([b, items]) => `
+          <div style="background:rgba(192,57,43,0.06);border:1px solid var(--red);border-radius:10px;padding:10px;">
+            <div style="font-weight:800;color:var(--red);font-size:var(--fs-base);margin-bottom:8px;">
+              🏪 ${BRANCH_NAMES[b]} — ${items.length} بند حرج
+            </div>
+            ${items.slice(0, 5).map(f => {
+              const apIcon = f.apStatus === 'done' ? '✅' : f.apStatus === 'in-progress' ? '🔄' : '⏳';
+              const apColor = f.apStatus === 'done' ? 'var(--green)' : f.apStatus === 'in-progress' ? 'var(--orange)' : 'var(--red)';
+              return `
+              <div style="background:rgba(0,0,0,0.2);padding:8px;border-radius:6px;margin-bottom:5px;border-right:3px solid var(--red);">
+                <div style="font-size:var(--fs-sm);font-weight:700;color:var(--text-light);margin-bottom:3px;">
+                  ${f.item.icon} ${f.item.text}
+                </div>
+                <div style="font-size:var(--fs-xs);color:var(--text-muted);display:flex;gap:10px;flex-wrap:wrap;">
+                  <span>📅 ${f.dateStr}</span>
+                  <span>👤 ${f.manager}</span>
+                  <span style="color:${apColor};font-weight:700;">${apIcon} ${f.apStatus === 'done' ? 'مكتمل' : f.apStatus === 'in-progress' ? 'قيد التنفيذ' : 'لم يبدأ'}</span>
+                  ${f.isUserCritical ? '<span style="color:var(--purple);">🚨 وُسم كحرج يدوياً</span>' : ''}
+                </div>
+              </div>`;
+            }).join('')}
+            ${items.length > 5 ? `<div style="font-size:var(--fs-xs);color:var(--text-muted);text-align:center;margin-top:4px;">+ ${items.length - 5} حالة أخرى</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+      
+      <div style="margin-top:12px;">
+        <button class="btn btn-gold btn-sm" onclick="exportCriticalReportExcel()">📊 تصدير تقرير النقاط الحرجة</button>
+      </div>
+    </div>
+    `;
+  })()}
+
+  <div class="page-footer">
+    
+    <div class="footer-actions">
+      <button class="btn btn-primary btn-sm" onclick="window.print()">🖨️ طباعة</button>
+      <button class="btn btn-gold" onclick="openShareModal('all',null,'لوحة المعلومات')">📤 مشاركة</button>
+    </div>
+  </div>`;
+}
+// ===================== AI CHATBOT ASSISTANT =====================
+// Local intelligent assistant that analyzes app data and answers questions
+// Uses pattern matching + data introspection — no external API needed
+
+const chatbotState = {
+  messages: [],
+  isOpen: false
+};
+
+function openChatbot() {
+  let modal = document.getElementById('chatbotModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'chatbotModal';
+    modal.className = 'chatbot-modal';
+    modal.innerHTML = `
+      <div class="chatbot-header">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="chatbot-avatar">🤖</div>
+          <div>
+            <div style="font-weight:800;font-size:16px;color:var(--gold-light);">المساعد الذكي</div>
+            <div style="font-size:11px;color:var(--text-muted);">محلل بيانات ب لبن قطر</div>
+          </div>
+        </div>
+        <button class="chatbot-close" onclick="closeChatbot()">✕</button>
+      </div>
+      <div class="chatbot-messages" id="chatbotMessages"></div>
+      <div class="chatbot-quick-prompts" id="chatbotQuickPrompts"></div>
+      <div class="chatbot-input-area">
+        <input type="text" id="chatbotInput" placeholder="اسأل عن أي تحليل... (مثلاً: مين أحسن مدير؟)" onkeypress="if(event.key==='Enter')sendChatbotMessage()">
+        <button class="chatbot-send" onclick="sendChatbotMessage()">📤</button>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  }
+  modal.classList.add('open');
+  chatbotState.isOpen = true;
+  
+  // Welcome message on first open
+  if (chatbotState.messages.length === 0) {
+    addChatbotMessage('bot', `👋 أهلاً! أنا المساعد الذكي.\n\nأقدر أحلل لك بيانات السيستم وأجاوب على أسئلتك:\n• مين أحسن/أسوأ مدير؟\n• أي فرع الأعلى أداءً؟\n• كم بند حرج فاشل؟\n• ما هي أكثر البنود فشلاً؟\n• تحليل أداء فرع معين\n• توصيات تحسين\n\nاسأل أي سؤال أو اختر من الاقتراحات!`);
+    showQuickPrompts();
+  }
+  
+  setTimeout(() => document.getElementById('chatbotInput')?.focus(), 100);
+}
+
+function closeChatbot() {
+  const modal = document.getElementById('chatbotModal');
+  if (modal) modal.classList.remove('open');
+  chatbotState.isOpen = false;
+}
+
+function addChatbotMessage(role, text) {
+  chatbotState.messages.push({ role, text, timestamp: Date.now() });
+  const msgsEl = document.getElementById('chatbotMessages');
+  if (!msgsEl) return;
+  const div = document.createElement('div');
+  div.className = `chatbot-msg chatbot-msg-${role}`;
+  div.innerHTML = text.replace(/\n/g, '<br>');
+  msgsEl.appendChild(div);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+}
+
+function showQuickPrompts() {
+  const el = document.getElementById('chatbotQuickPrompts');
+  if (!el) return;
+  const prompts = [
+    'مين أحسن مدير؟',
+    'مين أسوأ مدير؟',
+    'أعلى فرع أداءً',
+    'أكثر بند فاشل',
+    'النقاط الحرجة',
+    'تحليل الأسبوع',
+    'توصيات عامة'
+  ];
+  el.innerHTML = prompts.map(p => 
+    `<button class="chatbot-quick-btn" onclick="sendChatbotMessageFromPrompt('${p.replace(/'/g,"\\'")}')">${p}</button>`
+  ).join('');
+}
+
+function sendChatbotMessageFromPrompt(text) {
+  const input = document.getElementById('chatbotInput');
+  if (input) input.value = text;
+  sendChatbotMessage();
+}
+
+function sendChatbotMessage() {
+  const input = document.getElementById('chatbotInput');
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  
+  addChatbotMessage('user', text);
+  input.value = '';
+  
+  // "Typing..." indicator
+  const msgsEl = document.getElementById('chatbotMessages');
+  const typing = document.createElement('div');
+  typing.className = 'chatbot-msg chatbot-msg-bot chatbot-typing';
+  typing.innerHTML = '🤖 جاري التفكير<span class="chatbot-dots">...</span>';
+  msgsEl.appendChild(typing);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+  
+  setTimeout(() => {
+    typing.remove();
+    const response = analyzeChatbotQuery(text);
+    addChatbotMessage('bot', response);
+  }, 500 + Math.random() * 800);
+}
+
+// THE BRAIN: analyze the question and produce a data-driven answer
+function analyzeChatbotQuery(query) {
+  const q = query.toLowerCase().trim();
+  
+  // ============ Manager analysis ============
+  if (/(أحسن|أفضل|أقوى|أعلى).*(مدير|مدراء|المديرين)/.test(q) || /best.*(manager)/i.test(q)) {
+    const stats = buildManagerStats();
+    if (Object.keys(stats).length === 0) return '❌ لا توجد بيانات مديرين حالياً. أدخل أسماء المديرين في صفحات الفروع أولاً.';
+    
+    const sorted = Object.entries(stats).map(([name, s]) => ({
+      name,
+      avg: Math.round(s.visits.reduce((t,v)=>t+v.pct,0) / s.visits.length),
+      visits: s.visits.length,
+      branches: [...s.branches]
+    })).sort((a,b) => b.avg - a.avg);
+    
+    const top = sorted[0];
+    let resp = `🏆 **أفضل مدير في النظام:**\n\n`;
+    resp += `👤 **${top.name}**\n`;
+    resp += `📊 متوسط الأداء: **${top.avg}%**\n`;
+    resp += `📅 عدد الزيارات: ${top.visits}\n`;
+    resp += `🏪 الفروع: ${top.branches.map(b=>BRANCH_NAMES[b]).join(', ')}\n\n`;
+    
+    if (sorted.length > 1) {
+      resp += `**باقي الترتيب:**\n`;
+      sorted.slice(1, 4).forEach((m, i) => {
+        resp += `${i+2}. ${m.name} — ${m.avg}%\n`;
+      });
+    }
+    return resp;
+  }
+  
+  if (/(أسوأ|أضعف|أقل|أدنى).*(مدير|مدراء|المديرين)/.test(q) || /worst.*(manager)/i.test(q)) {
+    const stats = buildManagerStats();
+    if (Object.keys(stats).length === 0) return '❌ لا توجد بيانات مديرين حالياً.';
+    
+    const sorted = Object.entries(stats).map(([name, s]) => ({
+      name,
+      avg: Math.round(s.visits.reduce((t,v)=>t+v.pct,0) / s.visits.length),
+      visits: s.visits.length,
+      failItems: Object.entries(s.failItems || {}).sort((a,b)=>b[1]-a[1]).slice(0,3)
+    })).sort((a,b) => a.avg - b.avg);
+    
+    const worst = sorted[0];
+    let resp = `🔴 **المدير الأقل أداءً:**\n\n`;
+    resp += `👤 **${worst.name}**\n`;
+    resp += `📊 متوسط الأداء: **${worst.avg}%** ${worst.avg < 70 ? '⚠️ يحتاج إنذار رسمي' : ''}\n`;
+    resp += `📅 عدد الزيارات: ${worst.visits}\n\n`;
+    
+    if (worst.failItems.length > 0) {
+      resp += `**أكثر البنود فشلاً عنده:**\n`;
+      worst.failItems.forEach(([id, cnt]) => {
+        const item = CHECKLIST.flatMap(s=>s.items).find(i=>i.id===id);
+        if (item) resp += `• ${item.icon} ${item.text} (${cnt}×)\n`;
+      });
+    }
+    
+    resp += `\n💡 **توصيتي:** برنامج تدريب مكثف + خطة تطوير أسبوعية.`;
+    return resp;
+  }
+  
+  // ============ Branch analysis ============
+  if (/(أعلى|أحسن|أفضل|أقوى).*(فرع|الفروع)/.test(q)) {
+    const branchAvgs = BRANCHES.map(b => {
+      const months = Array.from({length:12},(_,m)=>m);
+      let totalPct = 0, count = 0;
+      months.forEach(m => {
+        for (let d = 1; d <= MONTH_DAYS[m]; d++) {
+          const { pct, answered } = calcSmartScore(b, m, d);
+          if (answered > 0) { totalPct += pct; count++; }
+        }
+      });
+      return { branch: b, name: BRANCH_NAMES[b], avg: count > 0 ? Math.round(totalPct/count) : 0, visits: count };
+    }).filter(b => b.visits > 0).sort((a,b) => b.avg - a.avg);
+    
+    if (branchAvgs.length === 0) return '❌ لا توجد بيانات تقييم بعد.';
+    
+    const top = branchAvgs[0];
+    let resp = `🏆 **أفضل فرع أداءً:**\n\n🏪 **${top.name}**\n📊 متوسط الأداء: **${top.avg}%**\n📅 عدد الزيارات: ${top.visits}\n\n`;
+    resp += `**ترتيب جميع الفروع:**\n`;
+    branchAvgs.forEach((b, i) => {
+      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
+      resp += `${medal} ${b.name} — ${b.avg}% (${b.visits} زيارة)\n`;
+    });
+    return resp;
+  }
+  
+  if (/(أسوأ|أضعف|أقل|أدنى).*(فرع|الفروع)/.test(q)) {
+    const branchAvgs = BRANCHES.map(b => {
+      let totalPct = 0, count = 0;
+      for (let m = 0; m < 12; m++) {
+        for (let d = 1; d <= MONTH_DAYS[m]; d++) {
+          const { pct, answered } = calcSmartScore(b, m, d);
+          if (answered > 0) { totalPct += pct; count++; }
+        }
+      }
+      return { branch: b, name: BRANCH_NAMES[b], avg: count > 0 ? Math.round(totalPct/count) : 0, visits: count };
+    }).filter(b => b.visits > 0).sort((a,b) => a.avg - b.avg);
+    
+    if (branchAvgs.length === 0) return '❌ لا توجد بيانات.';
+    
+    const worst = branchAvgs[0];
+    let resp = `🔴 **الفرع الأقل أداءً:**\n\n🏪 **${worst.name}**\n📊 متوسط الأداء: **${worst.avg}%**\n📅 عدد الزيارات: ${worst.visits}\n\n`;
+    resp += `💡 **توصيتي:** زيارات تفقدية مكثفة + اجتماع تطوير مع المدراء.`;
+    return resp;
+  }
+  
+  // ============ Critical points ============
+  if (/(حرج|حرجة|critical|خطير)/.test(q)) {
+    const findings = (typeof renderCriticalReport === 'function') ? renderCriticalReport() : [];
+    const failed = findings.filter(f => f.result === 'fail');
+    
+    if (failed.length === 0) {
+      return `✅ **خبر سار!**\n\nلا توجد نقاط حرجة فاشلة حالياً. جميع الفروع ملتزمة بالبنود الحرجة. استمر في المتابعة!`;
+    }
+    
+    let resp = `🚨 **تقرير النقاط الحرجة:**\n\nإجمالي البنود الحرجة الفاشلة: **${failed.length}**\n\n`;
+    
+    const byBranch = {};
+    failed.forEach(f => {
+      if (!byBranch[f.branch]) byBranch[f.branch] = [];
+      byBranch[f.branch].push(f);
+    });
+    
+    Object.entries(byBranch).forEach(([b, items]) => {
+      resp += `🏪 **${BRANCH_NAMES[b]}** (${items.length} حالة):\n`;
+      items.slice(0, 3).forEach(f => {
+        resp += `  ⚠️ ${f.item.text} — ${f.dateStr}\n`;
+      });
+      if (items.length > 3) resp += `  + ${items.length - 3} حالة أخرى\n`;
+    });
+    
+    resp += `\n💡 **توصيتي:** هذه البنود تتطلب معالجة فورية. افتح الـ Dashboard لمشاهدة التقرير الكامل.`;
+    return resp;
+  }
+  
+  // ============ Most failed items ============
+  if (/(أكثر|أكتر).*(بند|بنود|فشل|فاشل|تكرار)/.test(q)) {
+    const failCounts = {};
+    BRANCHES.forEach(b => {
+      Object.keys(appData).filter(k => k.startsWith(b+'_')).forEach(key => {
+        const visit = appData[key];
+        if (!visit?.results) return;
+        Object.entries(visit.results).forEach(([id, r]) => {
+          if (r === 'fail') failCounts[id] = (failCounts[id]||0) + 1;
+        });
+      });
+    });
+    
+    const top = Object.entries(failCounts).sort((a,b) => b[1]-a[1]).slice(0, 7);
+    if (top.length === 0) return '✅ لا توجد بنود فاشلة! ممتاز.';
+    
+    let resp = `📉 **أكثر البنود فشلاً (عبر كل الفروع):**\n\n`;
+    top.forEach(([id, cnt], i) => {
+      const item = CHECKLIST.flatMap(s=>s.items).find(i=>i.id===id);
+      if (item) resp += `${i+1}. ${item.icon} ${item.text} — **${cnt} مرة**\n`;
+    });
+    
+    resp += `\n💡 ركّز عمليات التدريب على هذه البنود تحديداً لتحقيق أكبر تحسن.`;
+    return resp;
+  }
+  
+  // ============ Weekly analysis ============
+  if (/(أسبوع|الأسبوع|weekly|7 أيام)/.test(q)) {
+    const today = new Date();
+    const weeklyData = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const m = d.getMonth(), day = d.getDate();
+      let dayTotal = 0, dayCount = 0;
+      BRANCHES.forEach(b => {
+        const { pct, answered } = calcSmartScore(b, m, day);
+        if (answered > 0) { dayTotal += pct; dayCount++; }
+      });
+      if (dayCount > 0) {
+        weeklyData.push({ date: `${day} ${MONTHS[m]}`, avg: Math.round(dayTotal/dayCount), count: dayCount });
+      }
+    }
+    
+    if (weeklyData.length === 0) return '❌ لا توجد بيانات للأسبوع الماضي.';
+    
+    const overall = Math.round(weeklyData.reduce((s,d) => s+d.avg, 0) / weeklyData.length);
+    let resp = `📊 **تحليل آخر 7 أيام:**\n\n`;
+    resp += `📈 متوسط الأسبوع: **${overall}%**\n`;
+    resp += `📅 أيام مع بيانات: ${weeklyData.length}/7\n\n`;
+    
+    resp += `**التفاصيل اليومية:**\n`;
+    weeklyData.forEach(d => {
+      const emoji = d.avg>=90?'🟢':d.avg>=70?'🔵':d.avg>=60?'🟡':'🔴';
+      resp += `${emoji} ${d.date}: ${d.avg}% (${d.count} فرع)\n`;
+    });
+    
+    const trend = weeklyData[0].avg > weeklyData[weeklyData.length-1].avg ? 'تحسن' : 'تراجع';
+    resp += `\n📈 **الاتجاه:** ${trend}\n`;
+    return resp;
+  }
+  
+  // ============ General recommendations ============
+  if (/(توصية|توصيات|recommend|نصيحة|اقترح)/.test(q)) {
+    const failCounts = {};
+    BRANCHES.forEach(b => {
+      Object.keys(appData).filter(k => k.startsWith(b+'_')).forEach(key => {
+        const visit = appData[key];
+        if (!visit?.results) return;
+        Object.entries(visit.results).forEach(([id, r]) => {
+          if (r === 'fail') failCounts[id] = (failCounts[id]||0) + 1;
+        });
+      });
+    });
+    const top = Object.entries(failCounts).sort((a,b) => b[1]-a[1]).slice(0, 5);
+    
+    let resp = `💡 **توصيات ذكية بناءً على البيانات:**\n\n`;
+    
+    if (top.length > 0) {
+      resp += `**1️⃣ ركّز على البنود التالية في التدريب:**\n`;
+      top.forEach(([id, cnt]) => {
+        const item = CHECKLIST.flatMap(s=>s.items).find(i=>i.id===id);
+        if (item) resp += `  • ${item.text} (فشل ${cnt}×)\n`;
+      });
+      resp += `\n`;
+    }
+    
+    const stats = buildManagerStats();
+    const low = Object.entries(stats).filter(([n, s]) => {
+      const avg = s.visits.reduce((t,v)=>t+v.pct,0) / s.visits.length;
+      return avg < 70;
+    });
+    if (low.length > 0) {
+      resp += `**2️⃣ مدراء يحتاجون متابعة عاجلة (أداء أقل من 70%):**\n`;
+      low.forEach(([n]) => resp += `  • ${n}\n`);
+      resp += `\n`;
+    }
+    
+    const findings = (typeof renderCriticalReport === 'function') ? renderCriticalReport().filter(f => f.result === 'fail') : [];
+    if (findings.length > 0) {
+      resp += `**3️⃣ ⚠️ ${findings.length} نقطة حرجة تحتاج معالجة فورية!**\n  افتح "تقرير النقاط الحرجة" في Dashboard.\n\n`;
+    }
+    
+    resp += `**4️⃣ خطوات عامة:**\n  • زيارات تفقدية أسبوعية للفروع الأقل أداءً\n  • برامج تدريب على البنود الأكثر فشلاً\n  • مكافأة المدراء المتميزين لتحفيز الباقي\n  • متابعة الأكشن بلان أسبوعياً`;
+    
+    return resp;
+  }
+  
+  // ============ Statistics summary ============
+  if (/(إحصائيات|stats|ملخص|نظرة عامة|status|الوضع)/.test(q)) {
+    let totalEvals = 0, totalFail = 0, totalOk = 0;
+    BRANCHES.forEach(b => {
+      Object.keys(appData).filter(k => k.startsWith(b+'_')).forEach(key => {
+        const visit = appData[key];
+        if (!visit?.results) return;
+        Object.values(visit.results).forEach(r => {
+          totalEvals++;
+          if (r === 'fail') totalFail++;
+          else if (r === 'ok') totalOk++;
+        });
+      });
+    });
+    
+    const taskStats = (typeof tasksData !== 'undefined') ? {
+      total: tasksData.length,
+      done: tasksData.filter(t => t.status === 'completed').length,
+      pending: tasksData.filter(t => t.status !== 'completed').length
+    } : { total: 0, done: 0, pending: 0 };
+    
+    let resp = `📊 **إحصائيات شاملة للنظام:**\n\n`;
+    resp += `📝 **التقييمات:**\n`;
+    resp += `  • إجمالي البنود المُقيَّمة: ${totalEvals}\n`;
+    resp += `  • مطابقة: ${totalOk} (${totalEvals>0?Math.round(totalOk/totalEvals*100):0}%)\n`;
+    resp += `  • غير مطابقة: ${totalFail} (${totalEvals>0?Math.round(totalFail/totalEvals*100):0}%)\n\n`;
+    resp += `📋 **المهام:**\n`;
+    resp += `  • الإجمالي: ${taskStats.total}\n`;
+    resp += `  • مكتملة: ${taskStats.done}\n`;
+    resp += `  • معلقة: ${taskStats.pending}\n\n`;
+    resp += `🏪 **الفروع المُقيَّمة:** ${BRANCHES.length}\n`;
+    resp += `👔 **المدراء المسجَّلين:** ${Object.keys(buildManagerStats()).length}\n`;
+    return resp;
+  }
+  
+  // ============ Specific branch analysis ============
+  for (const b of BRANCHES) {
+    const name = BRANCH_NAMES[b];
+    if (q.includes(name) || q.includes(b)) {
+      let totalPct = 0, count = 0;
+      const failCounts = {};
+      Object.keys(appData).filter(k => k.startsWith(b+'_')).forEach(key => {
+        const visit = appData[key];
+        if (!visit?.results) return;
+        const parts = key.split('_');
+        const m = parseInt(parts[1]), d = parseInt(parts[2]);
+        const { pct, answered } = calcSmartScore(b, m, d);
+        if (answered > 0) { totalPct += pct; count++; }
+        Object.entries(visit.results).forEach(([id, r]) => {
+          if (r === 'fail') failCounts[id] = (failCounts[id]||0) + 1;
+        });
+      });
+      
+      if (count === 0) return `❌ لا توجد بيانات تقييم بعد لفرع ${name}.`;
+      
+      const avg = Math.round(totalPct/count);
+      const top = Object.entries(failCounts).sort((a,b)=>b[1]-a[1]).slice(0,5);
+      
+      let resp = `🏪 **تحليل فرع ${name}:**\n\n`;
+      resp += `📊 متوسط الأداء: **${avg}%**\n`;
+      resp += `📅 عدد الزيارات: ${count}\n\n`;
+      
+      if (top.length > 0) {
+        resp += `**أكثر البنود فشلاً:**\n`;
+        top.forEach(([id, cnt]) => {
+          const item = CHECKLIST.flatMap(s=>s.items).find(i=>i.id===id);
+          if (item) resp += `• ${item.icon} ${item.text} (${cnt}×)\n`;
+        });
+      }
+      
+      const verdict = avg>=90?'🌟 ممتاز — استمر!':avg>=70?'👍 جيد':avg>=60?'⚠️ متوسط':'🔴 ضعيف — يحتاج تدخل فوري';
+      resp += `\n**التقييم:** ${verdict}`;
+      return resp;
+    }
+  }
+  
+  // ============ Help / unknown ============
+  if (/(مساعدة|help|كيف|ماذا تفعل)/.test(q)) {
+    return `🤖 **أنا مساعدك الذكي. أقدر أحلل:**\n\n• **المديرين:** أحسن، أسوأ، أداء معين\n• **الفروع:** ترتيب، أداء فرع محدد\n• **البنود:** أكثر فشلاً، النقاط الحرجة\n• **الإحصائيات:** ملخص شامل\n• **التحليل الزمني:** آخر أسبوع، اتجاهات\n• **التوصيات:** اقتراحات مبنية على البيانات\n\n**أمثلة للأسئلة:**\n- "مين أحسن مدير؟"\n- "تحليل فرع النصر"\n- "أكثر بند فاشل"\n- "النقاط الحرجة"\n- "توصيات لتحسين الأداء"`;
+  }
+  
+  // ============ Fallback ============
+  return `🤔 ما فهمت سؤالك بدقة. جرّب صياغة مختلفة، مثلاً:\n\n• "مين أحسن مدير؟"\n• "أعلى فرع أداءً"\n• "أكثر بند فاشل"\n• "النقاط الحرجة"\n• "توصيات"\n• "تحليل فرع [الاسم]"\n\nأو اكتب **"مساعدة"** لرؤية كل ما يمكنني فعله.`;
+}
+
+// ===================== ITEMS MANAGER (UI) =====================
+function openItemsManager() {
+  if (typeof canEditNow === 'function' && !canEditNow()) {
+    requireOpsPin(openItemsManager);
+    return;
+  }
+  let modal = document.getElementById('itemsManagerModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'itemsManagerModal';
+    modal.className = 'modal-overlay';
+    document.body.appendChild(modal);
+  }
+  renderItemsManager(modal);
+  modal.classList.remove('hidden');
+}
+
+function renderItemsManager(modal) {
+  let html = `
+    <div class="modal-box" style="max-width:760px;max-height:90vh;overflow-y:auto;">
+      <h3>⚙️ إدارة بنود التقييم</h3>
+      <p style="font-size:var(--fs-sm);color:var(--text-muted);margin-bottom:14px;">
+        يمكنك إضافة بنود جديدة، تعديل البنود الموجودة، أو حذف أي بند. التعديلات تُحفظ تلقائياً.
+      </p>
+      
+      <!-- Add new item form -->
+      <div style="background:linear-gradient(135deg,rgba(39,174,96,0.10),rgba(46,204,113,0.05));border:1px solid var(--green);border-radius:12px;padding:14px;margin-bottom:14px;">
+        <h4 style="color:var(--green);margin-bottom:10px;">➕ إضافة بند جديد</h4>
+        <div class="form-row">
+          <div class="form-group">
+            <label>القسم</label>
+            <select id="newItemSection" style="width:100%;">
+              ${CHECKLIST.map(s => `<option value="${s.section}">${s.section}</option>`).join('')}
+              <option value="__new__">+ قسم جديد...</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>الأيقونة</label>
+            <input type="text" id="newItemIcon" placeholder="🎯" value="📌" style="width:100%;text-align:center;font-size:18px;">
+          </div>
+        </div>
+        <div class="form-group" id="newSectionWrap" style="display:none;">
+          <label>اسم القسم الجديد (مع emoji)</label>
+          <input type="text" id="newSectionName" placeholder="🎯 قسم جديد" style="width:100%;">
+        </div>
+        <div class="form-group">
+          <label>نص البند</label>
+          <textarea id="newItemText" rows="2" placeholder="مثلاً: التأكد من سلامة معدات السلامة..." style="width:100%;"></textarea>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);cursor:pointer;color:var(--gold-light);font-weight:700;">
+          <input type="checkbox" id="newItemCritical" style="cursor:pointer;width:18px;height:18px;accent-color:var(--red);">
+          🚨 بند حرج (CRITICAL) — تنبيه شديد عند الإخفاق
+        </label>
+        <div style="text-align:center;margin-top:10px;">
+          <button class="btn btn-green" onclick="submitNewItem()" style="font-weight:800;padding:10px 24px;">✅ إضافة البند</button>
+        </div>
+      </div>
+      
+      <!-- Existing items list -->
+      <h4 style="color:var(--gold-light);margin:14px 0 10px;">📋 البنود الموجودة (${CHECKLIST.reduce((a,s)=>a+s.items.length,0)})</h4>
+  `;
+  
+  CHECKLIST.forEach((section, sIdx) => {
+    html += `<details ${sIdx < 2 ? 'open' : ''} style="margin-bottom:10px;">
+      <summary style="cursor:pointer;font-weight:800;color:var(--gold);padding:8px 12px;background:var(--bg-card2);border-radius:8px;font-size:var(--fs-base);">
+        ${section.section} <span style="color:var(--text-muted);font-size:var(--fs-xs);">(${section.items.length} بند)</span>
+      </summary>
+      <div style="padding:8px 0;">`;
+    
+    section.items.forEach(item => {
+      const isCustom = item.custom || item.id.startsWith('cust_');
+      html += `
+        <div style="display:flex;align-items:center;gap:6px;padding:8px;background:rgba(0,0,0,0.15);border-radius:8px;margin-bottom:4px;border-right:3px solid ${item.critical?'var(--red)':'var(--border)'};${isCustom?'background:rgba(39,174,96,0.06);border-right-color:var(--green);':''}">
+          <span style="font-size:20px;">${item.icon}</span>
+          <span style="flex:1;font-size:var(--fs-sm);color:var(--text-light);">
+            ${item.text}
+            ${item.critical?'<span style="color:var(--red);font-weight:800;font-size:11px;"> 🚨 حرج</span>':''}
+            ${isCustom?'<span style="color:var(--green);font-weight:700;font-size:11px;"> ✚ مخصص</span>':''}
+          </span>
+          <button class="btn btn-blue btn-sm" style="font-size:11px;padding:4px 8px;" onclick="openEditItemDialog('${item.id}')">✏️ تعديل</button>
+          <button class="btn btn-red btn-sm" style="font-size:11px;padding:4px 8px;" onclick="confirmDeleteItem('${item.id}')">🗑️ حذف</button>
+        </div>`;
+    });
+    
+    html += `</div></details>`;
+  });
+  
+  html += `
+      <div class="modal-actions">
+        <button class="btn btn-primary" onclick="document.getElementById('itemsManagerModal').classList.add('hidden')">إغلاق</button>
+      </div>
+    </div>
+  `;
+  modal.innerHTML = html;
+  
+  // Section selector handler
+  const sel = document.getElementById('newItemSection');
+  const wrap = document.getElementById('newSectionWrap');
+  if (sel && wrap) {
+    sel.addEventListener('change', () => {
+      wrap.style.display = sel.value === '__new__' ? '' : 'none';
+    });
+  }
+}
+
+function submitNewItem() {
+  const sec = document.getElementById('newItemSection').value;
+  const newSecName = document.getElementById('newSectionName')?.value.trim();
+  const icon = document.getElementById('newItemIcon').value.trim() || '📌';
+  const text = document.getElementById('newItemText').value.trim();
+  const critical = document.getElementById('newItemCritical').checked;
+  
+  if (!text) {
+    showNotif('⚠️ اكتب نص البند', 'error');
+    return;
+  }
+  const finalSection = (sec === '__new__') ? (newSecName || '📌 قسم جديد') : sec;
+  addCustomItem(finalSection, text, icon, critical);
+  showNotif('✅ تم إضافة البند', 'success');
+  // Refresh UI
+  renderItemsManager(document.getElementById('itemsManagerModal'));
+  // Re-render current branch if open
+  if (typeof renderBranch === 'function' && typeof selectedBranch !== 'undefined') {
+    renderBranch(selectedBranch);
+  }
+}
+
+function openEditItemDialog(itemId) {
+  const item = CHECKLIST.flatMap(s => s.items).find(i => i.id === itemId);
+  if (!item) return;
+  
+  let modal = document.getElementById('editItemModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'editItemModal';
+    modal.className = 'modal-overlay';
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = `
+    <div class="modal-box" style="max-width:520px;">
+      <h3>✏️ تعديل البند</h3>
+      <div class="form-group">
+        <label>الأيقونة</label>
+        <input type="text" id="editItemIcon" value="${item.icon}" style="width:100%;text-align:center;font-size:18px;">
+      </div>
+      <div class="form-group">
+        <label>نص البند</label>
+        <textarea id="editItemText" rows="2" style="width:100%;">${item.text}</textarea>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);cursor:pointer;color:var(--gold-light);font-weight:700;">
+        <input type="checkbox" id="editItemCritical" ${item.critical?'checked':''} style="cursor:pointer;width:18px;height:18px;accent-color:var(--red);">
+        🚨 بند حرج (CRITICAL)
+      </label>
+      <div class="modal-actions">
+        <button class="btn btn-primary" onclick="document.getElementById('editItemModal').classList.add('hidden')">إلغاء</button>
+        <button class="btn btn-gold" onclick="submitEditItem('${itemId}')">💾 حفظ</button>
+      </div>
+    </div>
+  `;
+  modal.classList.remove('hidden');
+}
+
+function submitEditItem(itemId) {
+  const icon = document.getElementById('editItemIcon').value.trim() || '📌';
+  const text = document.getElementById('editItemText').value.trim();
+  const critical = document.getElementById('editItemCritical').checked;
+  if (!text) { showNotif('⚠️ نص البند مطلوب', 'error'); return; }
+  editChecklistItem(itemId, text, icon, critical);
+  showNotif('✅ تم التعديل', 'success');
+  document.getElementById('editItemModal').classList.add('hidden');
+  renderItemsManager(document.getElementById('itemsManagerModal'));
+  if (typeof renderBranch === 'function' && typeof selectedBranch !== 'undefined') {
+    renderBranch(selectedBranch);
+  }
+}
+
+function confirmDeleteItem(itemId) {
+  const item = CHECKLIST.flatMap(s => s.items).find(i => i.id === itemId);
+  if (!item) return;
+  if (!confirm(`حذف البند "${item.text}"؟\nسيتم إخفاؤه من قائمة التقييم.`)) return;
+  deleteChecklistItem(itemId);
+  showNotif('🗑️ تم الحذف', 'info');
+  renderItemsManager(document.getElementById('itemsManagerModal'));
+  if (typeof renderBranch === 'function' && typeof selectedBranch !== 'undefined') {
+    renderBranch(selectedBranch);
+  }
+}
+
+window.openItemsManager = openItemsManager;
+window.submitNewItem = submitNewItem;
+window.openEditItemDialog = openEditItemDialog;
+window.submitEditItem = submitEditItem;
+window.confirmDeleteItem = confirmDeleteItem;
+
+// ===================== ACTION PLAN EXCEL IMPORT =====================
+function openActionPlanImport() {
+  if (typeof canEditNow === 'function' && !canEditNow()) {
+    requireOpsPin(openActionPlanImport);
+    return;
+  }
+  let modal = document.getElementById('apImportModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'apImportModal';
+    modal.className = 'modal-overlay';
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = `
+    <div class="modal-box" style="max-width:560px;">
+      <h3>📂 استيراد الأكشن بلان من Excel</h3>
+      <p style="font-size:var(--fs-sm);color:var(--text-muted);margin-bottom:12px;">
+        ارفع ملف Excel فيه تنفيذ الأكشن بلان من الفرع. السيستم يقرأه ويحدّث الحالات تلقائياً.
+      </p>
+      <div style="background:var(--bg-card2);padding:12px;border-radius:10px;margin-bottom:12px;font-size:var(--fs-sm);">
+        <strong style="color:var(--gold-light);">صيغة الملف المتوقعة:</strong>
+        <table style="width:100%;margin-top:8px;font-size:var(--fs-xs);">
+          <tr style="background:rgba(201,168,76,0.2);">
+            <th style="padding:4px;">الفرع</th>
+            <th style="padding:4px;">معرّف البند</th>
+            <th style="padding:4px;">الحالة</th>
+            <th style="padding:4px;">ملاحظة</th>
+          </tr>
+          <tr>
+            <td style="padding:4px;">nasr</td>
+            <td style="padding:4px;">c01</td>
+            <td style="padding:4px;">done</td>
+            <td style="padding:4px;">تم التصحيح</td>
+          </tr>
+        </table>
+        <div style="margin-top:8px;font-size:var(--fs-xs);color:var(--text-muted);">
+          الحالات المقبولة: <code>done</code> | <code>in-progress</code> | <code>pending</code>
+        </div>
+      </div>
+      <div style="margin-bottom:12px;">
+        <button class="btn btn-blue btn-sm" onclick="downloadActionPlanTemplate()">📥 تنزيل قالب الأكشن بلان</button>
+      </div>
+      <input type="file" id="apImportFile" accept=".xlsx,.xls" style="width:100%;padding:10px;background:var(--bg-card2);border:2px dashed var(--gold);border-radius:8px;color:var(--text-light);cursor:pointer;">
+      <div class="modal-actions">
+        <button class="btn btn-primary" onclick="document.getElementById('apImportModal').classList.add('hidden')">إلغاء</button>
+        <button class="btn btn-gold" onclick="importActionPlanExcel()">⬆️ رفع وتحليل</button>
+      </div>
+    </div>
+  `;
+  modal.classList.remove('hidden');
+}
+
+function downloadActionPlanTemplate() {
+  const wb = XLSX.utils.book_new();
+  const data = [
+    ['🥛 ب لبن قطر — قالب الأكشن بلان للرفع'],
+    ['تعليمات: املأ الأعمدة الأربعة لكل بند تم العمل عليه. الحالات: done / in-progress / pending'],
+    [],
+    ['الفرع (id)', 'معرّف البند', 'الحالة', 'ملاحظة / تعليق'],
+  ];
+  // Pre-populate with current pending action plan items
+  BRANCHES.forEach(b => {
+    Object.keys(appData).filter(k => k.startsWith(b+'_')).forEach(key => {
+      const visit = appData[key];
+      if (!visit?.results) return;
+      Object.entries(visit.results).forEach(([id, r]) => {
+        if (r === 'fail') {
+          const status = visit.actionStatus?.[id]?.status || 'pending';
+          if (status !== 'done') {
+            data.push([b, id, status, '']);
+          }
+        }
+      });
+    });
+  });
+  data.push(['', '', '', '']);
+  data.push(['ملاحظات:']);
+  data.push(['• معرّفات الفروع: ' + BRANCHES.join(', ')]);
+  data.push(['• الحالات المقبولة: done | in-progress | pending']);
+  
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = [{wch:14},{wch:14},{wch:14},{wch:36}];
+  XLSX.utils.book_append_sheet(wb, ws, 'الأكشن بلان');
+  XLSX.writeFile(wb, `قالب_الاكشن_بلان_${new Date().toISOString().split('T')[0]}.xlsx`);
+  showNotif('📥 تم تنزيل القالب', 'success');
+}
+
+async function importActionPlanExcel() {
+  const fileInput = document.getElementById('apImportFile');
+  if (!fileInput?.files?.[0]) {
+    showNotif('⚠️ اختر ملف Excel أولاً', 'error');
+    return;
+  }
+  const file = fileInput.files[0];
+  try {
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data);
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+    
+    let updated = 0, errors = 0;
+    rows.forEach(row => {
+      if (!Array.isArray(row) || row.length < 3) return;
+      const [branch, itemId, status, note] = row;
+      if (!branch || !itemId || !status) return;
+      if (!BRANCHES.includes(String(branch).trim())) return;
+      const validStatus = ['done', 'in-progress', 'pending'];
+      const sNorm = String(status).trim().toLowerCase();
+      if (!validStatus.includes(sNorm)) return;
+      
+      // Find which day this item is failed on (most recent fail)
+      let found = false;
+      Object.keys(appData).filter(k => k.startsWith(branch+'_')).sort().reverse().forEach(key => {
+        if (found) return;
+        const visit = appData[key];
+        if (visit?.results?.[itemId] === 'fail') {
+          if (!visit.actionStatus) visit.actionStatus = {};
+          if (!visit.actionStatus[itemId]) visit.actionStatus[itemId] = { entries: [] };
+          visit.actionStatus[itemId].status = sNorm;
+          if (note) {
+            visit.actionStatus[itemId].entries.push({
+              author: 'Excel Import',
+              role: 'ops',
+              text: String(note),
+              timestamp: new Date().toISOString()
+            });
+          }
+          if (sNorm === 'done') {
+            visit.actionStatus[itemId].completedAt = new Date().toISOString();
+            visit.actionStatus[itemId].completedBy = 'Excel Import';
+          }
+          updated++;
+          found = true;
+        }
+      });
+      if (!found) errors++;
+    });
+    
+    saveData();
+    if (typeof renderBranch === 'function' && typeof selectedBranch !== 'undefined') {
+      renderBranch(selectedBranch);
+    }
+    document.getElementById('apImportModal').classList.add('hidden');
+    showNotif(`✅ تم تحديث ${updated} بند${errors > 0 ? ` (${errors} لم يُعثر عليها)` : ''}`, 'success');
+    
+    if (typeof addHistoryEntry === 'function') {
+      addHistoryEntry({
+        type: 'system', action: 'update',
+        target: 'استيراد أكشن بلان',
+        details: `تم تحديث ${updated} بند من ملف Excel`
+      });
+    }
+  } catch(err) {
+    console.error(err);
+    showNotif('❌ خطأ في قراءة الملف: ' + err.message, 'error');
+  }
+}
+
+window.openActionPlanImport = openActionPlanImport;
+window.downloadActionPlanTemplate = downloadActionPlanTemplate;
+window.importActionPlanExcel = importActionPlanExcel;
+
+// ===================== BRANCHES MANAGER =====================
+function openBranchesManager() {
+  // PIN protected
+  if (typeof canEditNow === 'function' && !canEditNow()) {
+    if (typeof requireOpsPin === 'function') {
+      requireOpsPin(() => openBranchesManager());
+      return;
+    }
+  }
+  
+  let modal = document.getElementById('branchesManagerModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'branchesManagerModal';
+    modal.className = 'modal-overlay';
+    document.body.appendChild(modal);
+  }
+  
+  renderBranchesManagerContent();
+  modal.classList.remove('hidden');
+}
+
+function renderBranchesManagerContent() {
+  const modal = document.getElementById('branchesManagerModal');
+  if (!modal) return;
+  
+  reloadBranches();
+  
+  let branchesHtml = '';
+  BRANCHES.forEach(bid => {
+    const isDefault = DEFAULT_BRANCHES.includes(bid);
+    const name = BRANCH_NAMES[bid] || bid;
+    
+    // Count evaluations for this branch
+    let evalCount = 0;
+    try {
+      const data = JSON.parse(localStorage.getItem('blaban_data_v3') || '{}');
+      evalCount = data[bid] ? Object.keys(data[bid]).length : 0;
+    } catch(e) {}
+    
+    branchesHtml += `
+      <div style="background:rgba(255,255,255,0.05);border:1px solid var(--gold);border-radius:10px;padding:14px;margin-bottom:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:200px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <span style="font-size:20px;">🏪</span>
+            <span style="font-size:17px;font-weight:800;color:var(--gold-light);">${name}</span>
+            ${isDefault ? '<span style="font-size:10px;background:var(--gold);color:#4A0F1A;padding:2px 6px;border-radius:4px;font-weight:800;">افتراضي</span>' : '<span style="font-size:10px;background:var(--green);color:#fff;padding:2px 6px;border-radius:4px;font-weight:800;">مُضاف</span>'}
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);font-family:monospace;">المعرّف: <span style="color:var(--gold);">${bid}</span></div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">📊 ${evalCount} تقييم محفوظ</div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-sm" style="background:#3498DB;color:#fff;font-size:12px;padding:6px 10px;border:none;border-radius:6px;cursor:pointer;" onclick="promptEditBranch('${bid}')">✏️ تعديل</button>
+          ${!isDefault ? `<button class="btn btn-sm" style="background:#E74C3C;color:#fff;font-size:12px;padding:6px 10px;border:none;border-radius:6px;cursor:pointer;" onclick="confirmDeleteBranch('${bid}')">🗑️ حذف</button>` : ''}
+        </div>
+      </div>
+    `;
+  });
+  
+  modal.innerHTML = `
+    <div class="modal-box" style="max-width:680px;max-height:85vh;overflow-y:auto;">
+      <h3>🏪 إدارة الفروع</h3>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">
+        إدارة الفروع المتاحة في النظام. الفروع الافتراضية لا يمكن حذفها لكن يمكن إعادة تسميتها.
+      </p>
+      
+      <!-- Add new branch form -->
+      <div style="background:linear-gradient(135deg,rgba(46,204,113,0.15),rgba(39,174,96,0.1));border:2px solid var(--green);border-radius:12px;padding:14px;margin-bottom:14px;">
+        <h4 style="color:var(--green);margin:0 0 10px;display:flex;align-items:center;gap:6px;">
+          <span style="font-size:18px;">➕</span> إضافة فرع جديد
+        </h4>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+          <div>
+            <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">اسم الفرع بالعربية *</label>
+            <input id="newBranchName" type="text" placeholder="مثال: الدفنة"
+              style="width:100%;padding:9px;border-radius:6px;border:1px solid var(--gold);background:rgba(0,0,0,0.3);color:var(--text);font-family:inherit;font-size:14px;">
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">المعرّف (إنجليزي) *</label>
+            <input id="newBranchId" type="text" placeholder="dafna" pattern="[a-z0-9_]+"
+              style="width:100%;padding:9px;border-radius:6px;border:1px solid var(--gold);background:rgba(0,0,0,0.3);color:var(--text);font-family:monospace;font-size:14px;text-transform:lowercase;">
+          </div>
+        </div>
+        <button onclick="submitNewBranch()" style="width:100%;padding:10px;background:linear-gradient(135deg,var(--green),#27AE60);color:#fff;border:none;border-radius:6px;font-weight:800;font-size:14px;cursor:pointer;">
+          ✨ إضافة الفرع
+        </button>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:8px;line-height:1.5;">
+          💡 المعرّف يُستخدم داخلياً لحفظ بيانات الفرع. استخدم حروف إنجليزية صغيرة فقط بدون مسافات (مثال: <code>dafna</code>, <code>west_bay</code>).
+        </div>
+      </div>
+      
+      <!-- Existing branches list -->
+      <h4 style="color:var(--gold-light);margin:14px 0 10px;">📋 الفروع الحالية (${BRANCHES.length})</h4>
+      <div id="branchesListContainer">
+        ${branchesHtml}
+      </div>
+      
+      <div class="modal-actions">
+        <button class="btn btn-primary" onclick="document.getElementById('branchesManagerModal').classList.add('hidden')">إغلاق</button>
+      </div>
+    </div>
+  `;
+  
+  // Auto-suggest English id from Arabic name
+  setTimeout(() => {
+    const nameInput = document.getElementById('newBranchName');
+    const idInput = document.getElementById('newBranchId');
+    if (nameInput && idInput) {
+      nameInput.addEventListener('input', () => {
+        // Only auto-fill if user hasn't typed in ID yet
+        if (!idInput.dataset.manuallyEdited) {
+          // Simple Arabic→English translit for common words
+          const ar2en = {
+            'النصر':'nasr','الفروسية':'farosiya','الغرافة':'gharafa','الوكرة':'wakra','الخيسة':'khaisa',
+            'الدفنة':'dafna','الريان':'rayyan','الدوحة':'doha','الخور':'khor','الشمال':'shamal',
+            'الجنوب':'janoob','الغرب':'gharb','الشرق':'sharq','اللؤلؤة':'pearl','الكورنيش':'corniche',
+            'السد':'sadd','الوعب':'wuab','معيذر':'maither','أم صلال':'umslal','الثمامة':'thumama'
+          };
+          let suggested = ar2en[nameInput.value.trim()];
+          if (!suggested) {
+            // Simple fallback: timestamp-based
+            suggested = 'br_' + Date.now().toString().slice(-6);
+          }
+          idInput.value = suggested;
+        }
+      });
+      idInput.addEventListener('input', () => {
+        idInput.dataset.manuallyEdited = '1';
+        // Sanitize as user types
+        idInput.value = idInput.value.toLowerCase().replace(/[^a-z0-9_]/g, '');
+      });
+    }
+  }, 100);
+}
+
+function submitNewBranch() {
+  const name = document.getElementById('newBranchName').value.trim();
+  const id = document.getElementById('newBranchId').value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+  
+  if (!name) {
+    showNotif('❌ أدخل اسم الفرع', 'error');
+    return;
+  }
+  if (!id) {
+    showNotif('❌ أدخل معرّف الفرع', 'error');
+    return;
+  }
+  
+  if (addCustomBranch(id, name)) {
+    // Re-render
+    renderBranchesManagerContent();
+    // Update branch selectors throughout app
+    refreshBranchSelectors();
+    
+    // Sync to cloud if connected
+    if (typeof window.syncEnabled === 'function' && window.syncEnabled() && window.supabaseClient) {
+      try {
+        const custom = JSON.parse(localStorage.getItem('blaban_custom_branches') || '[]');
+        const names = JSON.parse(localStorage.getItem('blaban_custom_branch_names') || '{}');
+        window.supabaseClient.from('blaban_settings').upsert({
+          key: 'custom_branches',
+          value: { custom, names },
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'key' }).then(() => console.log('[Supabase] Branches synced'));
+      } catch(e) {}
+    }
+  }
+}
+
+function promptEditBranch(branchId) {
+  const currentName = BRANCH_NAMES[branchId] || branchId;
+  const newName = prompt(`تعديل اسم الفرع "${currentName}":`, currentName);
+  if (newName && newName.trim() && newName !== currentName) {
+    if (editCustomBranch(branchId, newName.trim())) {
+      renderBranchesManagerContent();
+      refreshBranchSelectors();
+    }
+  }
+}
+
+function confirmDeleteBranch(branchId) {
+  const name = BRANCH_NAMES[branchId] || branchId;
+  let evalCount = 0;
+  try {
+    const data = JSON.parse(localStorage.getItem('blaban_data_v3') || '{}');
+    evalCount = data[branchId] ? Object.keys(data[branchId]).length : 0;
+  } catch(e) {}
+  
+  const msg = evalCount > 0 
+    ? `هل أنت متأكد من حذف فرع "${name}"؟\n\n⚠️ تحذير: سيتم حذف ${evalCount} تقييم محفوظ لهذا الفرع نهائياً!`
+    : `هل أنت متأكد من حذف فرع "${name}"؟`;
+  
+  if (confirm(msg)) {
+    if (deleteCustomBranch(branchId)) {
+      // If currently selected, switch to first available
+      if (selectedBranch === branchId) {
+        selectedBranch = BRANCHES[0];
+        localStorage.setItem('blaban_selected_branch', selectedBranch);
+      }
+      renderBranchesManagerContent();
+      refreshBranchSelectors();
+    }
+  }
+}
+
+// Refresh all branch selectors in the app after add/edit/delete
+function refreshBranchSelectors() {
+  // Ensure DOM containers exist for any new branches
+  if (typeof ensureBranchPages === 'function') ensureBranchPages();
+  
+  // Header branch selector (nav)
+  const bsSelect = document.getElementById('branchSelector');
+  if (bsSelect) {
+    const current = bsSelect.value;
+    bsSelect.innerHTML = BRANCHES.map(b => 
+      `<option value="${b}" ${b === current ? 'selected' : ''}>${BRANCH_NAMES[b]}</option>`
+    ).join('');
+    // If current value no longer exists (e.g. deleted), select first
+    if (!BRANCHES.includes(current)) {
+      bsSelect.value = BRANCHES[0];
+      if (typeof onBranchSelectChange === 'function') onBranchSelectChange(BRANCHES[0]);
+    }
+  }
+  
+  // Render branch page if currently viewing a new branch
+  if (typeof selectedBranch !== 'undefined' && BRANCHES.includes(selectedBranch)) {
+    if (typeof renderBranch === 'function') {
+      try { renderBranch(selectedBranch); } catch(e) {}
+    }
+  }
+  
+  // Re-render current page if it shows branches
+  if (typeof currentPage !== 'undefined' && typeof showPage === 'function') {
+    try { showPage(currentPage); } catch(e) {}
+  }
+  
+  // Update Dashboard
+  if (typeof renderDashboard === 'function') {
+    try { renderDashboard(); } catch(e) {}
+  }
+}
+
+window.openBranchesManager = openBranchesManager;
+window.submitNewBranch = submitNewBranch;
+window.promptEditBranch = promptEditBranch;
+window.confirmDeleteBranch = confirmDeleteBranch;
+window.refreshBranchSelectors = refreshBranchSelectors;
+window.renderBranchesManagerContent = renderBranchesManagerContent;
+
+</script>

@@ -1,0 +1,586 @@
+<script>
+// ===================== WEEKLY ANALYSIS =====================
+function getWeekRange(month, day) {
+  // Returns last 7 days from selected day (inclusive)
+  const days = [];
+  let m = month, d = day;
+  for (let i = 0; i < 7; i++) {
+    days.unshift({ m, d });
+    d--;
+    if (d < 1) {
+      m--;
+      if (m < 0) { m = 11; }
+      d = MONTH_DAYS[m];
+    }
+  }
+  return days;
+}
+
+function renderWeeklyAnalysis() {
+  const container = document.getElementById('weekly-content');
+  if (!container) return;
+  
+  const monthOpts = MONTHS.map((m,i) => `<option value="${i}" ${i===currentMonth?'selected':''}>${m} 2026</option>`).join('');
+  const daysCount = MONTH_DAYS[currentMonth];
+  const dayOpts = Array.from({length:daysCount},(_,i)=>`<option value="${i+1}" ${i+1===currentDay?'selected':''}>${i+1}</option>`).join('');
+
+  container.innerHTML = `
+  <div class="card">
+    <div class="card-title">📅 تحليل أداء الأسبوع</div>
+    <p style="color:var(--text-muted);margin-bottom:14px;">حلل أداء الأسبوع الكامل (آخر 7 أيام) لجميع الفروع بضغطة زر واحدة</p>
+    
+    <div class="form-row">
+      <div class="form-group">
+        <label>الشهر</label>
+        <select id="weekly_month" onchange="updateWeeklyDays()">${monthOpts}</select>
+      </div>
+      <div class="form-group">
+        <label>اليوم النهائي للأسبوع</label>
+        <select id="weekly_day">${dayOpts}</select>
+      </div>
+      <div class="form-group" style="display:flex;align-items:flex-end;">
+        <button class="btn btn-purple" style="width:100%;" onclick="runWeeklyAnalysis()">⚡ حلّل أداء الأسبوع</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="weekly_results"></div>
+
+  <div class="page-footer">
+    <div class="footer-sig">بِلَال الأَنْصَارِي ✦</div>
+    <div class="footer-actions">
+      <button class="btn btn-gold" onclick="openShareModal('weekly',null,'تحليل الأسبوع')">📤 مشاركة</button>
+    </div>
+  </div>`;
+}
+
+function updateWeeklyDays() {
+  const month = parseInt(document.getElementById('weekly_month').value);
+  const daysCount = MONTH_DAYS[month];
+  const daySel = document.getElementById('weekly_day');
+  const curDay = parseInt(daySel.value);
+  daySel.innerHTML = Array.from({length:daysCount},(_,i)=>`<option value="${i+1}" ${i+1===Math.min(curDay,daysCount)?'selected':''}>${i+1}</option>`).join('');
+}
+
+function runWeeklyAnalysis() {
+  const month = parseInt(document.getElementById('weekly_month').value);
+  const day = parseInt(document.getElementById('weekly_day').value);
+  const week = getWeekRange(month, day);
+  const resultsDiv = document.getElementById('weekly_results');
+  
+  // Compute per-branch per-day scores
+  const branchData = {};
+  const failCounts = {}; // overall fail count by item across all branches/days
+  let totalVisits = 0, totalScore = 0;
+  
+  BRANCHES.forEach(b => {
+    branchData[b] = {
+      days: week.map(({m,d}) => {
+        const { pct, answered, ok, excused, deducted } = calcSmartScore(b, m, d);
+        if (answered === 0) return null;
+        const visit = getVisitData(b, m, d);
+        // Count fails
+        Object.entries(visit.results||{}).forEach(([id,val])=>{
+          if (val === 'fail') failCounts[id] = (failCounts[id]||0)+1;
+        });
+        totalVisits++; totalScore += pct;
+        return { m, d, pct, ok, excused, deducted, manager: visit.manager, shift: visit.shift };
+      }),
+      avg: 0,
+      visits: 0,
+      bestDay: null,
+      worstDay: null,
+      trend: 'stable'
+    };
+    const valid = branchData[b].days.filter(x=>x!==null);
+    branchData[b].visits = valid.length;
+    if (valid.length > 0) {
+      branchData[b].avg = Math.round(valid.reduce((s,d)=>s+d.pct,0)/valid.length);
+      branchData[b].bestDay = valid.reduce((b,d)=>d.pct>b.pct?d:b);
+      branchData[b].worstDay = valid.reduce((b,d)=>d.pct<b.pct?d:b);
+      // Trend: compare first half to second half
+      if (valid.length >= 2) {
+        const half = Math.ceil(valid.length/2);
+        const first = valid.slice(0, half);
+        const last = valid.slice(-half);
+        const avgF = first.reduce((s,d)=>s+d.pct,0)/first.length;
+        const avgL = last.reduce((s,d)=>s+d.pct,0)/last.length;
+        const delta = avgL - avgF;
+        branchData[b].trend = delta > 3 ? 'up' : delta < -3 ? 'down' : 'stable';
+        branchData[b].trendDelta = Math.round(delta);
+      }
+    }
+  });
+  
+  const overallAvg = totalVisits > 0 ? Math.round(totalScore/totalVisits) : 0;
+  const topFails = Object.entries(failCounts).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  
+  // Best & worst branches
+  const sortedBranches = BRANCHES.filter(b=>branchData[b].visits>0).sort((a,b)=>branchData[b].avg-branchData[a].avg);
+  const bestBranch = sortedBranches[0];
+  const worstBranch = sortedBranches[sortedBranches.length-1];
+  
+  const startLabel = `${week[0].d} ${MONTHS[week[0].m]}`;
+  const endLabel = `${week[6].d} ${MONTHS[week[6].m]}`;
+  
+  let html = `
+  <div class="weekly-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+      <h3 style="color:var(--gold);font-size:var(--fs-lg);">📊 ملخص الأسبوع: ${startLabel} → ${endLabel}</h3>
+      <span class="tag tag-purple" style="font-size:14px;padding:6px 12px;">${totalVisits} زيارة</span>
+    </div>
+    
+    <div class="weekly-stat-grid">
+      <div class="stat-card"><div class="stat-icon">📈</div><div class="stat-value" style="color:${overallAvg>=90?'var(--green)':overallAvg>=70?'var(--orange)':'var(--red)'}">${overallAvg}%</div><div class="stat-label">متوسط الأسبوع</div></div>
+      <div class="stat-card"><div class="stat-icon">🏆</div><div class="stat-value" style="color:var(--green);font-size:18px;">${bestBranch?BRANCH_NAMES[bestBranch]:'—'}</div><div class="stat-label">أفضل فرع (${bestBranch?branchData[bestBranch].avg+'%':''})</div></div>
+      <div class="stat-card"><div class="stat-icon">⚠️</div><div class="stat-value" style="color:var(--red);font-size:18px;">${worstBranch?BRANCH_NAMES[worstBranch]:'—'}</div><div class="stat-label">يحتاج تحسين (${worstBranch?branchData[worstBranch].avg+'%':''})</div></div>
+      <div class="stat-card"><div class="stat-icon">🔁</div><div class="stat-value">${Object.keys(failCounts).length}</div><div class="stat-label">بنود فشلت هذا الأسبوع</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📋 جدول الأداء اليومي</div>
+    <div style="overflow-x:auto;">
+    <div class="weekly-day-row header">
+      <div>التاريخ</div>
+      ${BRANCHES.map(b=>`<div style="color:${BRANCH_COLORS[b]}">${BRANCH_NAMES[b]}</div>`).join('')}
+    </div>
+    ${week.map(({m,d}, idx) => {
+      return `<div class="weekly-day-row">
+        <div style="font-weight:700;color:var(--gold-light);">${d} ${MONTHS[m].substring(0,4)}</div>
+        ${BRANCHES.map(b => {
+          const dayData = branchData[b].days[idx];
+          if (!dayData) return `<div class="weekly-cell empty">—</div>`;
+          const cls = dayData.pct>=90?'high':dayData.pct>=70?'mid':'low';
+          return `<div class="weekly-cell ${cls}" title="مدير: ${dayData.manager||'—'} | ${dayData.shift||'—'}">${dayData.pct}%</div>`;
+        }).join('')}
+      </div>`;
+    }).join('')}
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">📊 أداء الفروع</div>
+      ${BRANCHES.map(b => {
+        const data = branchData[b];
+        if (data.visits === 0) return `<div style="margin-bottom:10px;padding:10px;background:var(--bg-card2);border-radius:8px;color:var(--text-muted);font-size:var(--fs-xs);">${BRANCH_NAMES[b]}: لا توجد زيارات</div>`;
+        const cls = data.avg>=90?'high':data.avg>=70?'mid':'low';
+        const trendIcon = data.trend==='up'?'📈':data.trend==='down'?'📉':'➡️';
+        const trendColor = data.trend==='up'?'var(--green)':data.trend==='down'?'var(--red)':'var(--text-muted)';
+        return `<div style="background:var(--bg-card2);border-radius:10px;padding:10px;margin-bottom:8px;border-right:3px solid ${BRANCH_COLORS[b]};">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+            <span style="font-weight:800;color:${BRANCH_COLORS[b]};font-size:var(--fs-sm);">${BRANCH_NAMES[b]}</span>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <span class="tag tag-${cls==='high'?'green':cls==='mid'?'orange':'red'}">${data.avg}%</span>
+              <span style="color:${trendColor};font-size:var(--fs-xs);font-weight:700;">${trendIcon} ${data.trendDelta>0?'+':''}${data.trendDelta||0}%</span>
+            </div>
+          </div>
+          <div class="progress-wrap"><div class="progress-bar"><div class="progress-fill ${cls}" style="width:${data.avg}%"></div></div></div>
+          <div style="font-size:var(--fs-xs);color:var(--text-muted);margin-top:4px;">
+            زيارات: ${data.visits}/7 | أعلى: <strong style="color:var(--green);">${data.bestDay?.pct||0}%</strong> | أدنى: <strong style="color:var(--red);">${data.worstDay?.pct||0}%</strong>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+
+    <div class="card">
+      <div class="card-title">🔴 أكثر البنود تكراراً (فشلاً)</div>
+      ${topFails.length === 0 ? '<div class="alert alert-success">✅ لا توجد بنود فاشلة هذا الأسبوع</div>' :
+        topFails.map(([id, cnt]) => {
+          const item = CHECKLIST.flatMap(s=>s.items).find(i=>i.id===id);
+          if (!item) return '';
+          return `<div style="background:var(--bg-card2);border-radius:8px;padding:10px;margin-bottom:6px;border-right:3px solid var(--red);">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+              <span style="font-size:var(--fs-sm);">${item.icon} ${item.text}</span>
+              <span class="tag tag-red">${cnt} مرة</span>
+            </div>
+          </div>`;
+        }).join('')
+      }
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📈 رسم بياني للأسبوع</div>
+    <div class="chart-wrap-tall"><canvas id="chart_weekly"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">💡 توصيات الأسبوع</div>
+    <div class="reco-box">
+      <h4>🎯 إجراءات مقترحة بناءً على تحليل الأسبوع:</h4>
+      <ul>
+        ${overallAvg < 70 ? '<li>🚨 الأداء العام ضعيف — اجتماع طارئ مع جميع المديرين خلال 24 ساعة</li>' : ''}
+        ${overallAvg >= 70 && overallAvg < 90 ? '<li>⚠️ الأداء متوسط — خطة تطوير أسبوعية مشتركة</li>' : ''}
+        ${overallAvg >= 90 ? '<li>🌟 أداء ممتاز — استمر في النهج الحالي وكافئ الفروع المتميزة</li>' : ''}
+        ${worstBranch ? `<li>🎯 التركيز على فرع ${BRANCH_NAMES[worstBranch]} — زيارات يومية مكثفة لمدة أسبوع</li>` : ''}
+        ${bestBranch && bestBranch !== worstBranch ? `<li>🏆 مشاركة تجربة فرع ${BRANCH_NAMES[bestBranch]} مع باقي الفروع</li>` : ''}
+        ${topFails.length > 0 ? `<li>🔁 معالجة جذرية للبنود المتكررة (أبرزها: ${topFails[0] ? CHECKLIST.flatMap(s=>s.items).find(i=>i.id===topFails[0][0])?.text.substring(0,40)+'...' : ''})</li>` : ''}
+        <li>📋 إنشاء مهام محددة من قسم "المهام" لمعالجة البنود الحرجة</li>
+        ${BRANCHES.some(b=>branchData[b].trend==='down') ? `<li>📉 فروع في تراجع: ${BRANCHES.filter(b=>branchData[b].trend==='down').map(b=>BRANCH_NAMES[b]).join('، ')} — تدخل فوري</li>` : ''}
+        ${BRANCHES.some(b=>branchData[b].trend==='up') ? `<li>📈 فروع في تحسن: ${BRANCHES.filter(b=>branchData[b].trend==='up').map(b=>BRANCH_NAMES[b]).join('، ')} — تشجيع واستمرار</li>` : ''}
+      </ul>
+    </div>
+  </div>`;
+  
+  resultsDiv.innerHTML = html;
+  
+  // Save weekly analysis state for sharing
+  window._lastWeeklyAnalysis = { month, day, week, branchData, overallAvg, topFails, totalVisits, bestBranch, worstBranch, startLabel, endLabel };
+  
+  // Draw chart
+  setTimeout(() => drawWeeklyChart(week, branchData), 100);
+  
+  showNotif('✅ تم تحليل أداء الأسبوع!', 'success');
+}
+
+function drawWeeklyChart(week, branchData) {
+  const ctx = document.getElementById('chart_weekly')?.getContext('2d');
+  if (!ctx) return;
+  if (activeCharts['weekly']) activeCharts['weekly'].destroy();
+  const labels = week.map(({m,d}) => `${d} ${MONTHS[m].substring(0,4)}`);
+  activeCharts['weekly'] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: BRANCHES.map(b => ({
+        label: BRANCH_NAMES[b],
+        data: branchData[b].days.map(d => d ? d.pct : null),
+        borderColor: BRANCH_COLORS[b],
+        backgroundColor: BRANCH_COLORS[b]+'30',
+        borderWidth: 3,
+        tension: 0.4,
+        fill: false,
+        pointRadius: 6,
+        pointBackgroundColor: BRANCH_COLORS[b],
+        spanGaps: true
+      }))
+    },
+    options: chartDefaults('y_pct')
+  });
+}
+
+// ===================== TASKS PAGE =====================
+function updateTasksBadge() {
+  const pending = tasksData.filter(t => t.status !== 'completed').length;
+  const badge = document.getElementById('tasksBadge');
+  if (!badge) return;
+  if (pending > 0) {
+    badge.textContent = pending;
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
+}
+
+function renderTasksPage() {
+  const container = document.getElementById('tasks-content');
+  if (!container) return;
+  
+  const isOps = currentRole === 'ops';
+  const myBranch = localStorage.getItem('blaban_my_branch') || 'all';
+  
+  // Filter tasks based on role
+  let visibleTasks = [...tasksData];
+  if (!isOps) {
+    visibleTasks = visibleTasks.filter(t => t.branch === 'all' || t.branch === myBranch);
+  }
+  
+  // Sort: pending first by priority, then completed
+  const priorityOrder = { 'عاجلة':0, 'عالية':1, 'متوسطة':2, 'عادية':3 };
+  visibleTasks.sort((a,b) => {
+    if (a.status === 'completed' && b.status !== 'completed') return 1;
+    if (b.status === 'completed' && a.status !== 'completed') return -1;
+    return (priorityOrder[a.priority]||4) - (priorityOrder[b.priority]||4);
+  });
+  
+  const stats = {
+    total: tasksData.length,
+    pending: tasksData.filter(t=>t.status==='pending').length,
+    inProgress: tasksData.filter(t=>t.status==='in-progress').length,
+    completed: tasksData.filter(t=>t.status==='completed').length,
+    overdue: tasksData.filter(t=>{
+      if (t.status==='completed') return false;
+      if (!t.deadline) return false;
+      return new Date(t.deadline) < new Date(new Date().toDateString());
+    }).length
+  };
+  
+  let html = `
+  <div class="card">
+    <div class="card-title">📋 قائمة المهام ${isOps?'— لوحة مدير التشغيل':'— لوحة مدير الفرع'}</div>
+    <p style="color:var(--text-muted);font-size:var(--fs-xs);margin-bottom:14px;">
+      ${isOps?'أنشئ مهام للمديرين، وتابع تنفيذها وتعليقاتهم في الوقت الفعلي':'مهامك المعلقة، اضغط "تم" بعد إنجازها وأضف تعليقك على كل خطوة'}
+    </p>
+    
+    <div class="grid-4">
+      <div class="stat-card"><div class="stat-icon">📌</div><div class="stat-value" style="color:var(--blue);">${stats.total}</div><div class="stat-label">إجمالي المهام</div></div>
+      <div class="stat-card"><div class="stat-icon">⏳</div><div class="stat-value" style="color:var(--orange);">${stats.pending+stats.inProgress}</div><div class="stat-label">قيد التنفيذ</div></div>
+      <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-value" style="color:var(--green);">${stats.completed}</div><div class="stat-label">منجزة</div></div>
+      <div class="stat-card"><div class="stat-icon">⚠️</div><div class="stat-value" style="color:var(--red);">${stats.overdue}</div><div class="stat-label">متأخرة</div></div>
+    </div>
+    
+    ${isOps ? `
+    <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-green" onclick="openAddTaskModal()">➕ إضافة مهمة جديدة</button>
+      <button class="btn btn-primary btn-sm" onclick="exportTasksExcel()">📊 تصدير Excel</button>
+    </div>
+    ` : `
+    <div style="margin-top:14px;">
+      <div class="form-group" style="max-width:280px;">
+        <label>🏪 اختر فرعك (لتصفية المهام)</label>
+        <select onchange="setMyBranch(this.value);renderTasksPage();" id="myBranchSelect">
+          <option value="all">🌐 جميع الفروع</option>
+          <option value="nasr" ${myBranch==='nasr'?'selected':''}>النصر</option>
+          <option value="farosiya" ${myBranch==='farosiya'?'selected':''}>الفروسية</option>
+          <option value="gharafa" ${myBranch==='gharafa'?'selected':''}>الغرافة</option>
+          <option value="wakra" ${myBranch==='wakra'?'selected':''}>الوكرة</option>
+        </select>
+      </div>
+    </div>
+    `}
+  </div>
+
+  <div class="card">
+    <div class="card-title">📝 ${isOps?'جميع المهام المُنشأة':'مهامي'}</div>`;
+  
+  if (visibleTasks.length === 0) {
+    html += `<div class="alert alert-info">${isOps?'لا توجد مهام بعد. اضغط "إضافة مهمة جديدة" لإنشاء أول مهمة.':'لا توجد مهام مخصصة لك حالياً. عُد لاحقاً.'}</div>`;
+  } else {
+    visibleTasks.forEach(task => {
+      html += renderTaskItem(task, isOps);
+    });
+  }
+  
+  html += `</div>
+  
+  <div class="page-footer">
+    <div class="footer-sig">بِلَال الأَنْصَارِي ✦</div>
+    <div class="footer-actions">
+      ${isOps ? `<button class="btn btn-gold btn-sm" onclick="exportTasksExcel()">📊 Excel</button>` : ''}
+    </div>
+  </div>`;
+  
+  container.innerHTML = html;
+}
+
+function renderTaskItem(task, isOps) {
+  const isCompleted = task.status === 'completed';
+  const isOverdue = task.deadline && !isCompleted && new Date(task.deadline) < new Date(new Date().toDateString());
+  const cls = isCompleted ? 'completed' : isOverdue ? 'overdue' : task.status === 'in-progress' ? 'in-progress' : '';
+  const branchLabel = task.branch === 'all' ? '🌐 جميع الفروع' : '🏪 ' + (BRANCH_NAMES[task.branch] || task.branch);
+  const priorityColors = { 'عاجلة':'tag-red', 'عالية':'tag-orange', 'متوسطة':'tag-blue', 'عادية':'tag-green' };
+  const priorityIcons = { 'عاجلة':'🔴', 'عالية':'🟠', 'متوسطة':'🟡', 'عادية':'🟢' };
+  
+  // Progress: based on comments count vs status
+  let progress = 0;
+  if (isCompleted) progress = 100;
+  else if (task.status === 'in-progress') progress = 50;
+  else if ((task.comments||[]).length > 0) progress = 25;
+  
+  const createdDate = new Date(task.createdAt).toLocaleDateString('ar-QA');
+  const completedDate = task.completedAt ? new Date(task.completedAt).toLocaleDateString('ar-QA') : '';
+  
+  return `
+  <div class="task-item ${cls}" id="task_${task.id}">
+    <div class="task-header">
+      <div class="task-title ${isCompleted?'completed':''}">${isCompleted?'✅ ':''}${task.title}</div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;">
+        <span class="tag ${priorityColors[task.priority]||'tag-blue'}">${priorityIcons[task.priority]||''} ${task.priority}</span>
+        ${isOverdue?'<span class="tag tag-red">⚠️ متأخرة</span>':''}
+        ${isCompleted?'<span class="tag tag-green">✓ مكتملة</span>':task.status==='in-progress'?'<span class="tag tag-orange">⏳ قيد التنفيذ</span>':'<span class="tag tag-blue">📌 معلقة</span>'}
+      </div>
+    </div>
+    
+    <div class="task-meta">
+      <span>${branchLabel}</span>
+      ${task.deadline?`<span>📅 الموعد: ${new Date(task.deadline).toLocaleDateString('ar-QA')}</span>`:''}
+      <span>📝 أُنشئت: ${createdDate}</span>
+      ${completedDate?`<span style="color:var(--green);">✓ أُنجزت: ${completedDate}</span>`:''}
+    </div>
+    
+    ${task.desc?`<div class="task-desc">${task.desc}</div>`:''}
+    
+    <div class="task-progress-bar"><div class="task-progress-fill" style="width:${progress}%"></div></div>
+    
+    ${(task.comments||[]).length > 0 ? `
+    <div class="task-comments-list">
+      <div style="font-size:var(--fs-xs);color:var(--gold);font-weight:700;margin-bottom:6px;">💬 سجل التعليقات (${task.comments.length})</div>
+      ${task.comments.map(c => `
+        <div class="task-comment" style="border-right-color:${c.role==='ops'?'var(--gold)':c.type==='completion'?'var(--green)':'var(--blue)'}">
+          <div class="task-comment-header">
+            <span>${c.role==='ops'?'🌐':'👔'} ${c.author||'مدير'} ${c.type==='completion'?'<span style="color:var(--green);">— أنهى المهمة</span>':c.type==='progress'?'<span style="color:var(--orange);">— تحديث تقدم</span>':''}</span>
+            <span style="color:var(--text-muted);font-size:10px;font-weight:400;">${new Date(c.timestamp).toLocaleString('ar-QA',{hour:'2-digit',minute:'2-digit',day:'numeric',month:'numeric'})}</span>
+          </div>
+          <div class="task-comment-text">${c.text}</div>
+        </div>
+      `).join('')}
+    </div>
+    ` : ''}
+    
+    ${!isCompleted ? `
+    <div class="add-comment-area">
+      <textarea id="comment_${task.id}" placeholder="${isOps?'أضف تعليق أو توجيه...':'اكتب ما أنجزته أو لاحظت في هذه المهمة...'}"></textarea>
+    </div>
+    <div class="task-actions">
+      ${!isOps ? `
+        <button class="btn btn-blue btn-sm" onclick="addTaskComment('${task.id}','progress')">💬 إضافة تحديث</button>
+        <button class="btn btn-green btn-sm" onclick="completeTask('${task.id}')">✅ تم الإنجاز</button>
+      ` : `
+        <button class="btn btn-gold btn-sm" onclick="addTaskComment('${task.id}','direction')">💬 إضافة توجيه</button>
+        <button class="btn btn-green btn-sm" onclick="completeTask('${task.id}')">✅ تأكيد الإنجاز</button>
+        <button class="btn btn-red btn-sm" onclick="deleteTask('${task.id}')">🗑️ حذف</button>
+      `}
+    </div>
+    ` : isOps ? `
+    <div class="task-actions">
+      <button class="btn btn-red btn-sm" onclick="deleteTask('${task.id}')">🗑️ حذف</button>
+    </div>` : ''}
+  </div>`;
+}
+
+function setMyBranch(branch) {
+  localStorage.setItem('blaban_my_branch', branch);
+}
+
+function openAddTaskModal() {
+  if (currentRole !== 'ops') {
+    showNotif('⚠️ هذه الميزة متاحة لمدير التشغيل فقط', 'error');
+    return;
+  }
+  document.getElementById('taskTitleInput').value = '';
+  document.getElementById('taskDescInput').value = '';
+  document.getElementById('taskBranchInput').value = 'all';
+  document.getElementById('taskPriorityInput').value = 'متوسطة';
+  // Set default deadline = 3 days from now
+  const d = new Date(); d.setDate(d.getDate()+3);
+  document.getElementById('taskDeadlineInput').value = d.toISOString().split('T')[0];
+  document.getElementById('addTaskModal').classList.remove('hidden');
+}
+
+function closeAddTaskModal() {
+  document.getElementById('addTaskModal').classList.add('hidden');
+}
+
+function submitNewTask() {
+  const title = document.getElementById('taskTitleInput').value.trim();
+  const desc = document.getElementById('taskDescInput').value.trim();
+  const branch = document.getElementById('taskBranchInput').value;
+  const priority = document.getElementById('taskPriorityInput').value;
+  const deadline = document.getElementById('taskDeadlineInput').value;
+  
+  if (!title) {
+    showNotif('⚠️ يجب إدخال عنوان المهمة', 'error');
+    return;
+  }
+  
+  const newTask = {
+    id: 'task_' + Date.now() + '_' + Math.random().toString(36).substr(2,5),
+    title, desc, branch, priority, deadline,
+    createdAt: new Date().toISOString(),
+    createdBy: 'مدير التشغيل',
+    status: 'pending',
+    completedAt: null,
+    comments: []
+  };
+  
+  tasksData.unshift(newTask);
+  saveTasks();
+  closeAddTaskModal();
+  renderTasksPage();
+  updateTasksBadge();
+  showNotif('✅ تم إنشاء المهمة! ستظهر للمدير فوراً', 'success');
+}
+
+function addTaskComment(taskId, type) {
+  const textarea = document.getElementById(`comment_${taskId}`);
+  if (!textarea) return;
+  const text = textarea.value.trim();
+  if (!text) {
+    showNotif('⚠️ اكتب تعليقاً أولاً', 'error');
+    return;
+  }
+  const task = tasksData.find(t=>t.id===taskId);
+  if (!task) return;
+  
+  if (!task.comments) task.comments = [];
+  task.comments.push({
+    author: currentRole === 'ops' ? 'مدير التشغيل' : 'مدير الفرع',
+    role: currentRole,
+    text,
+    timestamp: new Date().toISOString(),
+    type: type || 'comment'
+  });
+  
+  // Move to in-progress if it was pending
+  if (task.status === 'pending') task.status = 'in-progress';
+  
+  saveTasks();
+  textarea.value = '';
+  renderTasksPage();
+  showNotif('✅ تم حفظ التعليق!', 'success');
+}
+
+function completeTask(taskId) {
+  const task = tasksData.find(t=>t.id===taskId);
+  if (!task) return;
+  
+  // Get comment if any
+  const textarea = document.getElementById(`comment_${taskId}`);
+  const completionNote = textarea?.value.trim();
+  
+  if (completionNote) {
+    if (!task.comments) task.comments = [];
+    task.comments.push({
+      author: currentRole === 'ops' ? 'مدير التشغيل' : 'مدير الفرع',
+      role: currentRole,
+      text: completionNote,
+      timestamp: new Date().toISOString(),
+      type: 'completion'
+    });
+    if (textarea) textarea.value = '';
+  }
+  
+  task.status = 'completed';
+  task.completedAt = new Date().toISOString();
+  
+  saveTasks();
+  renderTasksPage();
+  updateTasksBadge();
+  showNotif('🎉 أُنجزت المهمة! ستظهر لمدير التشغيل فوراً', 'success');
+}
+
+function deleteTask(taskId) {
+  if (!confirm('هل أنت متأكد من حذف هذه المهمة؟ لا يمكن التراجع.')) return;
+  tasksData = tasksData.filter(t=>t.id!==taskId);
+  saveTasks();
+  renderTasksPage();
+  updateTasksBadge();
+  showNotif('🗑️ تم الحذف', 'info');
+}
+
+function exportTasksExcel() {
+  if (tasksData.length === 0) {
+    showNotif('⚠️ لا توجد مهام للتصدير', 'error');
+    return;
+  }
+  const wb = XLSX.utils.book_new();
+  const rows = [['ID','العنوان','الوصف','الفرع','الأولوية','الموعد','الحالة','تاريخ الإنشاء','تاريخ الإنجاز','عدد التعليقات','آخر تعليق']];
+  tasksData.forEach(t => {
+    const lastComment = (t.comments||[]).slice(-1)[0];
+    rows.push([
+      t.id, t.title, t.desc||'', t.branch==='all'?'جميع الفروع':BRANCH_NAMES[t.branch]||t.branch,
+      t.priority, t.deadline||'', t.status,
+      new Date(t.createdAt).toLocaleString('ar-QA'),
+      t.completedAt?new Date(t.completedAt).toLocaleString('ar-QA'):'',
+      (t.comments||[]).length,
+      lastComment?`${lastComment.author}: ${lastComment.text}`:''
+    ]);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  XLSX.utils.book_append_sheet(wb, ws, 'المهام');
+  XLSX.writeFile(wb, 'مهام_ب_لبن_2026.xlsx');
+  showNotif('✅ تم التصدير!', 'success');
+}
+</script>

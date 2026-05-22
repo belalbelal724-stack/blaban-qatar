@@ -1,0 +1,507 @@
+<!-- Loading -->
+<div class="loading-overlay hidden" id="loadingOverlay">
+  <div class="loading-spinner"></div>
+</div>
+
+<!-- Notification -->
+<div class="notif" id="notif"></div>
+
+<!-- Push Notification Toast -->
+<div class="push-toast" id="pushToast">
+  <button class="push-toast-close" onclick="hidePushToast()">×</button>
+  <div class="push-toast-title" id="pushToastTitle"></div>
+  <div class="push-toast-body" id="pushToastBody"></div>
+</div>
+
+<!-- PWA Install Banner (auto-shows on mobile when installable) -->
+<div id="pwaInstallBanner" style="display:none;position:fixed;bottom:0;left:0;right:0;background:linear-gradient(135deg,#6B1B2A,#8B2535);color:#F0E6D3;padding:12px 16px;z-index:9998;box-shadow:0 -4px 20px rgba(0,0,0,0.5);border-top:2px solid #C9A84C;">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+    <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:200px;">
+      <span style="font-size:28px;">📱</span>
+      <div>
+        <div style="font-weight:800;font-size:14px;color:#E8C96A;">ثبّت التطبيق على جهازك</div>
+        <div style="font-size:15px;color:#BCA98A;">للوصول السريع والعمل بدون إنترنت</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;">
+      <button onclick="dismissInstallBanner()" style="background:transparent;border:1px solid #BCA98A;color:#BCA98A;padding:6px 12px;border-radius:8px;font-family:Tajawal,sans-serif;font-size:14px;cursor:pointer;">لاحقاً</button>
+      <button onclick="triggerInstallPWA();dismissInstallBanner();" style="background:linear-gradient(135deg,#C9A84C,#E8C96A);border:none;color:#4A0F1A;padding:6px 14px;border-radius:8px;font-family:Tajawal,sans-serif;font-weight:800;font-size:14px;cursor:pointer;">📥 تثبيت الآن</button>
+    </div>
+  </div>
+</div>
+
+<!-- Sync Indicator (hidden — connection status no longer displayed as requested) -->
+<div class="sync-indicator offline" id="syncIndicator" onclick="openSyncModal()" title="إعدادات المزامنة" style="display:none !important;">
+  <span class="sync-dot"></span>
+  <span id="syncIndicatorText">غير متصل</span>
+</div>
+
+<!-- Sync / Firebase Setup Modal -->
+<div class="modal-overlay hidden" id="syncModal">
+  <div class="modal-box" style="max-width:520px;">
+    <h3>☁️ إعدادات المزامنة السحابية</h3>
+    <p style="font-size:14px;color:var(--text-muted);margin-bottom:14px;">
+      مزامنة البيانات بين كل أجهزة المديرين فورياً عبر Firebase Realtime Database
+    </p>
+
+    <div id="syncStatusPanel" style="background:var(--bg-card2);border-radius:10px;padding:12px;margin-bottom:12px;">
+      <div class="fb-status-row">
+        <span class="fb-status-label">حالة الاتصال</span>
+        <span class="fb-status-badge offline" id="fbStatusBadge">غير متصل</span>
+      </div>
+      <div class="fb-status-row">
+        <span class="fb-status-label">آخر مزامنة</span>
+        <span class="fb-status-value" id="fbLastSync">—</span>
+      </div>
+      <div class="fb-status-row">
+        <span class="fb-status-label">معرّف المستخدم</span>
+        <span class="fb-status-value" id="fbUserId">—</span>
+      </div>
+      <div class="fb-status-row">
+        <span class="fb-status-label">المشروع (Project ID)</span>
+        <span class="fb-status-value" id="fbProjectId">—</span>
+      </div>
+    </div>
+
+    <div class="modal-input-group">
+      <label>🔑 إعدادات Firebase (JSON)</label>
+      <textarea id="fbConfigInput" rows="6" placeholder='{"apiKey":"...","authDomain":"...","databaseURL":"https://....firebaseio.com","projectId":"..."}' style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:monospace;font-size:15px;outline:none;direction:ltr;text-align:left;resize:vertical;"></textarea>
+      <div style="font-size:15px;color:var(--text-muted);margin-top:6px;">
+        احصل على هذا من <strong>Firebase Console → Project settings → Your apps → SDK setup</strong>. اتركها فارغة لإيقاف المزامنة.
+      </div>
+    </div>
+
+    <div class="modal-input-group">
+      <label>🏢 معرّف فريقك (Workspace ID)</label>
+      <input type="text" id="fbWorkspaceInput" placeholder="blaban-qatar" value="blaban-qatar" 
+        style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:Tajawal,sans-serif;font-size:15px;outline:none;direction:ltr;text-align:left;">
+      <div style="font-size:15px;color:var(--text-muted);margin-top:6px;">
+        كل المستخدمين بنفس Workspace ID يتشاركون البيانات. ضع نفس القيمة على كل أجهزة الفريق.
+      </div>
+    </div>
+
+    <div class="modal-input-group">
+      <label>👤 اسم المستخدم (يظهر في سجل التغييرات)</label>
+      <input type="text" id="fbUserNameInput" placeholder="مثال: أحمد - مدير النصر" 
+        style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:Tajawal,sans-serif;font-size:15px;outline:none;">
+    </div>
+
+    <div class="alert alert-info" style="font-size:15px;">
+      💡 <strong>كيف تعمل:</strong> عند الحفظ، البيانات تُكتب محلياً + ترفع للسحابة. على الأجهزة الأخرى، التغييرات تظهر تلقائياً خلال ثانيتين.
+    </div>
+
+    <div class="modal-actions" style="flex-wrap:wrap;">
+      <button class="btn btn-primary btn-sm" onclick="closeSyncModal()">إلغاء</button>
+      <button class="btn btn-red btn-sm" onclick="disconnectFirebase()" id="fbDisconnectBtn" style="display:none;">🔌 قطع الاتصال</button>
+      <button class="btn btn-blue btn-sm" onclick="downloadBackup()">💾 نسخة احتياطية الآن</button>
+      <button class="btn btn-green" onclick="connectFirebase()">🔗 اتصال / حفظ</button>
+    </div>
+  </div>
+</div>
+
+<!-- Restore Backup Modal -->
+<div class="modal-overlay hidden" id="restoreModal">
+  <div class="modal-box">
+    <h3>📥 استعادة نسخة احتياطية</h3>
+    <p style="font-size:14px;color:var(--text-muted);margin-bottom:12px;">
+      ⚠️ هذه العملية ستستبدل كل البيانات الحالية. تأكد من أن لديك نسخة احتياطية أولاً.
+    </p>
+    <div class="modal-input-group">
+      <label>اختر ملف JSON للنسخة الاحتياطية</label>
+      <input type="file" id="restoreFileInput" accept=".json,application/json" 
+        style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:Tajawal,sans-serif;font-size:15px;outline:none;">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary btn-sm" onclick="closeRestoreModal()">إلغاء</button>
+      <button class="btn btn-orange" onclick="executeRestore()">📥 استعادة</button>
+    </div>
+  </div>
+</div>
+
+<!-- History Modal -->
+<div class="modal-overlay hidden" id="historyModal">
+  <div class="modal-box" style="max-width:640px;">
+    <h3>📜 سجل تاريخ التغييرات</h3>
+    <p style="font-size:14px;color:var(--text-muted);margin-bottom:10px;">آخر 100 عملية على البيانات</p>
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+      <select id="historyFilterType" onchange="renderHistoryList()" style="background:var(--bg-card2);border:1px solid var(--border);border-radius:8px;color:var(--text-light);padding:6px 10px;font-size:14px;font-family:Tajawal,sans-serif;">
+        <option value="all">كل العمليات</option>
+        <option value="evaluation">التقييمات</option>
+        <option value="task">المهام</option>
+        <option value="comment">التعليقات</option>
+        <option value="action-plan">الأكشن بلان</option>
+        <option value="auth">المصادقة</option>
+      </select>
+      <button class="btn btn-red btn-sm" onclick="clearHistory()">🗑️ مسح السجل</button>
+    </div>
+    <div class="history-list" id="historyList"></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary btn-sm" onclick="closeHistoryModal()">إغلاق</button>
+      <button class="btn btn-gold btn-sm" onclick="exportHistoryExcel()">📊 تصدير Excel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Manager Branch Picker Modal (first-time setup for branch managers) -->
+<div class="modal-overlay hidden" id="managerBranchModal">
+  <div class="modal-box" style="max-width:480px;">
+    <h3>🏪 اختر فرعك</h3>
+    <p style="font-size:15px;color:var(--text-muted);margin-bottom:14px;">
+      أنت في وضع <strong>مدير فرع</strong>. اختر الفرع الذي تديره — سيُحفظ ولن يُسأل مرة أخرى.
+    </p>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
+      <button class="btn btn-primary" onclick="selectMyBranch('nasr')" style="padding:18px;flex-direction:column;font-size:15px;">
+        🏪<br>النصر
+      </button>
+      <button class="btn btn-primary" onclick="selectMyBranch('farosiya')" style="padding:18px;flex-direction:column;font-size:15px;">
+        🏪<br>الفروسية
+      </button>
+      <button class="btn btn-primary" onclick="selectMyBranch('gharafa')" style="padding:18px;flex-direction:column;font-size:15px;">
+        🏪<br>الغرافة
+      </button>
+      <button class="btn btn-primary" onclick="selectMyBranch('wakra')" style="padding:18px;flex-direction:column;font-size:15px;">
+        🏪<br>الوكرة
+      </button>
+    </div>
+    <div class="modal-actions" style="margin-top:14px;">
+      <button class="btn btn-red btn-sm" onclick="closeManagerBranchModal()">إلغاء (والعودة لمدير التشغيل)</button>
+    </div>
+  </div>
+</div>
+
+<!-- Auth Modal (login / setup / change / reset) -->
+<div class="modal-overlay hidden" id="authModal" data-mode="login">
+  <div class="modal-box" style="max-width:480px;">
+    <h3 id="authModalTitle">🔐 المصادقة</h3>
+    <p id="authModalSubtitle" style="font-size:14px;color:var(--text-muted);margin-bottom:14px;"></p>
+    
+    <div id="authError" class="alert alert-danger" style="display:none;font-size:14px;"></div>
+    
+    <!-- Login section (current password) -->
+    <div id="authLoginSection">
+      <div class="modal-input-group">
+        <label>كلمة المرور</label>
+        <input type="password" id="authPwd" placeholder="كلمة المرور" autocomplete="current-password"
+          style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:Tajawal,sans-serif;font-size:14px;outline:none;">
+      </div>
+    </div>
+    
+    <!-- Setup section (new password) -->
+    <div id="authSetupSection" style="display:none;">
+      <div class="modal-input-group">
+        <label>كلمة المرور الجديدة</label>
+        <input type="password" id="authNewPwd" placeholder="كلمة المرور الجديدة (4 أحرف على الأقل)" autocomplete="new-password"
+          style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:Tajawal,sans-serif;font-size:14px;outline:none;">
+      </div>
+      <div class="modal-input-group">
+        <label>تأكيد كلمة المرور</label>
+        <input type="password" id="authNewPwdConfirm" placeholder="أعد كتابة كلمة المرور" autocomplete="new-password"
+          style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:Tajawal,sans-serif;font-size:14px;outline:none;">
+      </div>
+      <div id="authBiometricSetup" style="margin-top:8px;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:15px;color:var(--gold-light);">
+          <input type="checkbox" id="authBioCheckbox" style="width:18px;height:18px;cursor:pointer;">
+          👆 تسجيل البصمة / Face ID للتسجيل السريع لاحقاً
+        </label>
+        <div style="font-size:15px;color:var(--text-muted);margin-top:4px;margin-right:26px;">
+          (إذا كان الجهاز يدعم بصمة الإصبع أو التعرف على الوجه)
+        </div>
+      </div>
+    </div>
+    
+    <button id="authBiometricBtn" class="btn btn-purple" onclick="loginWithBiometric()" style="margin-top:10px;width:100%;display:none;">
+      👆 تسجيل دخول بالبصمة / Face ID
+    </button>
+    
+    <div class="modal-actions" style="margin-top:14px;flex-wrap:wrap;">
+      <button class="btn btn-primary btn-sm" onclick="closeAuthModal()">إلغاء</button>
+      <button class="btn btn-blue btn-sm" onclick="emergencyResetPassword()" id="authForgotBtn">نسيت كلمة المرور؟</button>
+      <button class="btn btn-green" onclick="submitAuth()">✓ تأكيد</button>
+    </div>
+  </div>
+</div>
+
+<!-- Auth Settings Modal -->
+<div class="modal-overlay hidden" id="authSettingsModal">
+  <div class="modal-box" style="max-width:460px;">
+    <h3>🔐 إعدادات الأمان — مدير التشغيل</h3>
+    <p style="font-size:14px;color:var(--text-muted);margin-bottom:14px;">
+      إدارة كلمة مرور وضع مدير التشغيل والبصمة
+    </p>
+    <div id="authSettingsContent"></div>
+    <div class="modal-actions" style="margin-top:14px;">
+      <button class="btn btn-primary btn-sm" onclick="closeAuthSettingsModal()">إغلاق</button>
+    </div>
+  </div>
+</div>
+
+<!-- Share Hub Modal (Choose channel: WA / TG / Email) -->
+<div class="modal-overlay hidden" id="shareModal">
+  <div class="modal-box">
+    <h3>📤 مشاركة التقرير</h3>
+    <div id="shareModalInfo" style="font-size:14px;color:var(--text-muted);margin-bottom:8px;"></div>
+    <p>اختر القناة وصيغة التقرير:</p>
+    
+    <div class="modal-input-group">
+      <label>📋 صيغة التقرير</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-primary btn-sm" id="fmtTextBtn" onclick="setShareFormat('text')">📝 نص (واتساب/تليجرام)</button>
+        <button class="btn btn-primary btn-sm" id="fmtExcelBtn" onclick="setShareFormat('excel')">📊 ملف Excel</button>
+        <button class="btn btn-primary btn-sm" id="fmtSheetsBtn" onclick="setShareFormat('sheets')">📋 Google Sheets</button>
+      </div>
+      <div style="font-size:15px;color:var(--text-muted);margin-top:6px;" id="fmtHint"></div>
+    </div>
+
+    <div class="modal-input-group">
+      <label>📡 قناة الإرسال</label>
+      <div class="share-options-grid">
+        <div class="share-opt" onclick="executeShare('whatsapp')" style="border-color:#25D366;">
+          <div class="share-opt-icon">💬</div>
+          <div class="share-opt-label" style="color:#25D366;">واتساب</div>
+          <div class="share-opt-desc">إرسال مباشر</div>
+        </div>
+        <div class="share-opt" onclick="executeShare('telegram')" style="border-color:#229ED9;">
+          <div class="share-opt-icon">✈️</div>
+          <div class="share-opt-label" style="color:#229ED9;">تليجرام</div>
+          <div class="share-opt-desc">عبر التطبيق</div>
+        </div>
+        <div class="share-opt" onclick="executeShare('email')" style="border-color:#EA4335;">
+          <div class="share-opt-icon">📧</div>
+          <div class="share-opt-label" style="color:#EA4335;">إيميل</div>
+          <div class="share-opt-desc">Gmail / Outlook</div>
+        </div>
+        <div class="share-opt" onclick="executeShare('download')" style="border-color:var(--gold);">
+          <div class="share-opt-icon">⬇️</div>
+          <div class="share-opt-label" style="color:var(--gold);">تحميل</div>
+          <div class="share-opt-desc">حفظ على الجهاز</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-primary btn-sm" onclick="closeShareModal()">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<!-- Phone/Email Input Modal -->
+<div class="modal-overlay hidden" id="contactModal">
+  <div class="modal-box">
+    <h3 id="contactModalTitle">📱 إرسال</h3>
+    <div id="contactModalInfo" style="font-size:14px;color:var(--text-muted);margin-bottom:12px;"></div>
+    
+    <div class="modal-input-group" id="phoneInputGroup">
+      <label id="phoneInputLabel">رقم الواتساب (مع رمز الدولة)</label>
+      <div class="phone-input-wrap">
+        <span class="phone-prefix">+</span>
+        <input type="tel" class="phone-input" id="contactPhoneInput" placeholder="97412345678" inputmode="numeric" maxlength="15" oninput="onContactPhoneInput(this)">
+      </div>
+      <div class="phone-quick-btns" id="contactQuickPhones">
+        <span style="font-size:15px;color:var(--text-muted);align-self:center;">أرقام سريعة:</span>
+      </div>
+      <div class="error-msg" id="contactPhoneError">⚠️ يرجى إدخال رقم صحيح (10-15 رقماً)</div>
+    </div>
+
+    <div class="modal-input-group hidden" id="emailInputGroup">
+      <label>📧 البريد الإلكتروني للمستلم</label>
+      <input type="email" id="contactEmailInput" placeholder="example@email.com" 
+        style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:Tajawal,sans-serif;font-size:15px;outline:none;direction:ltr;text-align:left;">
+      <div class="phone-quick-btns" id="contactQuickEmails">
+        <span style="font-size:15px;color:var(--text-muted);align-self:center;">إيميلات سريعة:</span>
+      </div>
+      <div class="error-msg" id="contactEmailError">⚠️ يرجى إدخال إيميل صحيح</div>
+    </div>
+
+    <div class="modal-input-group">
+      <label>👁️ معاينة الرسالة</label>
+      <div class="preview-box" id="contactPreview">جاري التحضير...</div>
+    </div>
+
+    <div id="fileAttachNote" class="alert alert-info hidden" style="font-size:15px;">
+      📎 سيتم تحميل ملف التقرير تلقائياً. أرفقه يدوياً بعد فتح التطبيق.
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-primary btn-sm" onclick="closeContactModal()">إلغاء</button>
+      <button class="btn btn-gold" id="contactSendBtn" onclick="executeContactSend()">📲 إرسال</button>
+    </div>
+    <div style="font-size:15px;color:var(--text-muted);margin-top:10px;text-align:center;" id="contactFooterNote">
+      ملاحظة: سيفتح التطبيق المختار مع الرسالة جاهزة
+    </div>
+  </div>
+</div>
+
+<!-- Add Task Modal (Operations Manager only) -->
+<div class="modal-overlay hidden" id="addTaskModal">
+  <div class="modal-box">
+    <h3>➕ إضافة مهمة جديدة</h3>
+    <p>أنشئ مهمة وستظهر فوراً للمدير المعني للعمل عليها</p>
+
+    <div class="modal-input-group">
+      <label>📌 عنوان المهمة *</label>
+      <input type="text" id="taskTitleInput" placeholder="مثال: تنظيف عميق لغرفة التبريد"
+        style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:Tajawal,sans-serif;font-size:15px;outline:none;">
+    </div>
+
+    <div class="modal-input-group">
+      <label>📝 وصف المهمة وتفاصيل التنفيذ</label>
+      <textarea id="taskDescInput" rows="3" placeholder="اكتب تفاصيل المهمة والمخرجات المطلوبة..."
+        style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:Tajawal,sans-serif;font-size:14px;outline:none;resize:vertical;"></textarea>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div class="modal-input-group">
+        <label>🏪 الفرع المعني *</label>
+        <select id="taskBranchInput"
+          style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:Tajawal,sans-serif;font-size:14px;outline:none;">
+          <option value="all">🌐 جميع الفروع</option>
+          <option value="nasr">النصر</option>
+          <option value="farosiya">الفروسية</option>
+          <option value="gharafa">الغرافة</option>
+          <option value="wakra">الوكرة</option>
+        </select>
+      </div>
+
+      <div class="modal-input-group">
+        <label>⚡ الأولوية</label>
+        <select id="taskPriorityInput"
+          style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:Tajawal,sans-serif;font-size:14px;outline:none;">
+          <option value="عادية">🟢 عادية</option>
+          <option value="متوسطة" selected>🟡 متوسطة</option>
+          <option value="عالية">🟠 عالية</option>
+          <option value="عاجلة">🔴 عاجلة</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="modal-input-group">
+      <label>📅 الموعد النهائي</label>
+      <input type="date" id="taskDeadlineInput"
+        style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:Tajawal,sans-serif;font-size:14px;outline:none;">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-primary btn-sm" onclick="closeAddTaskModal()">إلغاء</button>
+      <button class="btn btn-green" onclick="submitNewTask()">✅ إنشاء المهمة</button>
+    </div>
+  </div>
+</div>
+
+<!-- Device Switcher Bar -->
+<div class="device-bar">
+  <span style="font-size:15px;color:var(--text-muted);margin-left:10px;">🖥️ عرض:</span>
+  <button class="device-btn active" id="devDesktop" onclick="setDeviceView('desktop')">
+    <span class="dev-icon">💻</span> لابتوب
+  </button>
+  <button class="device-btn" id="devTablet" onclick="setDeviceView('tablet')">
+    <span class="dev-icon">📟</span> تابلت
+  </button>
+  <button class="device-btn" id="devMobile" onclick="setDeviceView('mobile')">
+    <span class="dev-icon">📱</span> موبايل
+  </button>
+</div>
+
+<!-- Role Switcher Bar (hidden in new permission model — kept for legacy code references) -->
+<div class="role-bar" style="display:none;">
+  <span style="font-size:14px;color:var(--text-muted);margin-left:8px;">👤 الدور:</span>
+  <button class="role-btn active" id="roleOps" onclick="setRole('ops')">🌐 مدير التشغيل</button>
+  <button class="role-btn" id="roleManager" onclick="setRole('manager')">👔 مدير فرع</button>
+</div>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-top">
+    <div class="header-brand">
+      <!-- Circular logo frame (user can upload custom logo) -->
+      <div class="logo-frame" onclick="openLogoUpload()" title="اضغط لتغيير الشعار">
+        <img id="brandLogo" src="" alt="الشعار" class="logo-image" style="display:none;">
+        <div id="logoPlaceholder" class="logo-placeholder">
+          <span style="font-size:32px;">🎯</span>
+          <span style="font-size:9px;color:var(--gold);margin-top:2px;font-weight:700;">اضغط لاختيار شعار</span>
+        </div>
+        <input type="file" id="logoFileInput" accept="image/*" style="display:none" onchange="handleLogoUpload(this)">
+      </div>
+      <div class="header-title">
+        <h1 class="brand-title-maram">إدارة تشغيل ب لبن قطر</h1>
+        <h2 class="brand-title-maram brand-title-sub">بلال الأنصاري</h2>
+      </div>
+      <!-- Digital clock in header -->
+      <div class="header-clock">
+        <div class="clock-time" id="headerClockTime">--:--:--</div>
+        <div class="clock-date" id="headerClockDate">--</div>
+      </div>
+    </div>
+    <div class="header-controls">
+      <button class="ctrl-btn" id="pwaInstallBtn" onclick="triggerInstallPWA()" style="display:none;background:linear-gradient(135deg,#27AE60,#2ECC71);color:#fff;font-weight:800;" title="تثبيت كتطبيق">📥 تثبيت</button>
+      <button class="ctrl-btn active" id="modeToggle" onclick="toggleMode()">🌙 داكن</button>
+      <button class="ctrl-btn ctrl-btn-gold" id="editModeBtn" onclick="toggleEditMode()" title="إعدادات الأمان وفتح التعديل">🔐 الأمان</button>
+      <button class="ctrl-btn" onclick="openItemsManager()" title="إدارة بنود التقييم">⚙️ البنود</button>
+      <button class="ctrl-btn" onclick="openBranchesManager()" title="إدارة الفروع">🏪 الفروع</button>
+      <button class="ctrl-btn" onclick="openSyncModal()" title="Firebase">🔥 Firebase</button>
+      <button class="ctrl-btn" id="cloudSyncBtn" onclick="openCloudAuthModal()" title="مزامنة السحابة (Supabase)">☁️ السحابة</button>
+      <button class="ctrl-btn" onclick="saveAllData()">💾 حفظ</button>
+    </div>
+  </div>
+</div>
+
+<!-- AI Chatbot Floating Launcher -->
+<button class="chatbot-fab" onclick="openChatbot()" title="المساعد الذكي">
+  <span style="font-size:28px;">🤖</span>
+</button>
+
+<!-- Branch Selector (integrated into nav-tabs below — this is just a hidden placeholder for legacy code) -->
+<div class="branch-selector-bar" id="branchSelectorBar" style="display:none;">
+  <span class="branch-selector-label">🏪 الفرع:</span>
+  <span class="branch-selector-hint">اختر الفرع لعرض التقييم وخطة العمل</span>
+</div>
+
+<!-- Edit Mode Banner (visible when ops PIN session is active — editing unlocked) -->
+<div id="editModeBanner" style="display:none;background:linear-gradient(90deg,#F5EDD8,#FBF3E8,#F5EDD8);color:#4A0F1A;padding:10px 14px;text-align:center;font-size:14px;font-weight:800;border-bottom:2px solid #C9A84C;border-top:1px solid #C9A84C;box-shadow:0 2px 8px rgba(0,0,0,0.3);">
+  🔓 <strong style="color:#6B1B2A;">وضع التعديل مفعّل</strong> — يمكنك تعديل التقييمات والبنود الأخرى
+  • <a href="#" onclick="toggleEditMode();return false;" style="color:#6B1B2A;text-decoration:underline;font-weight:800;">إدارة الجلسة</a>
+</div>
+
+<!-- Ops Preview Banner (legacy - kept for backwards compat but not actively used) -->
+<div id="opsPreviewBanner" style="display:none;"></div>
+
+<!-- Nav Tabs (with integrated branch selector) -->
+<div class="nav-tabs" id="navTabs">
+  <!-- Branch selector inline with tabs -->
+  <div class="nav-branch-selector">
+    <span class="nav-branch-icon">🏪</span>
+    <select id="branchSelector" onchange="onBranchSelectChange(this.value)" class="nav-branch-select">
+      <!-- Options populated dynamically by populateBranchSelector() -->
+    </select>
+  </div>
+  <div class="nav-tab-divider"></div>
+  <div class="nav-tab" onclick="showPage('dashboard')" data-page="dashboard" data-role="both"><span class="tab-icon">📡</span> Dashboard</div>
+  <div class="nav-tab active" onclick="showPage('branch-view')" data-page="branch-view" data-role="both"><span class="tab-icon">📋</span> التقييم</div>
+  <div class="nav-tab tab-tasks" onclick="showPage('tasks')" data-page="tasks" data-role="both">
+    <span class="tab-icon">📌</span> المهام
+    <span class="badge hidden" id="tasksBadge">0</span>
+  </div>
+  <div class="nav-tab" onclick="showPage('managers')" data-page="managers" data-role="both"><span class="tab-icon">👔</span> المديرون</div>
+  <div class="nav-tab" onclick="showPage('analytics')" data-page="analytics" data-role="both"><span class="tab-icon">📊</span> تحليلات</div>
+  <div class="nav-tab" onclick="showPage('recommendations')" data-page="recommendations" data-role="both"><span class="tab-icon">💡</span> توصيات</div>
+  <div class="nav-tab" onclick="showPage('ops-manager')" data-page="ops-manager" data-role="both"><span class="tab-icon">🌐</span> نظرة عامة</div>
+  <div class="nav-tab" onclick="showPage('other-depts')" data-page="other-depts" data-role="both"><span class="tab-icon">🔧</span> إدارات أخرى</div>
+</div>
+
+<div class="main" id="mainContent">
+  <div id="dashboard" class="page"><div id="dashboard-content"></div></div>
+  <div id="branch-view" class="page active">
+    <div id="branch-nasr" class="branch-page" style="display:block;"></div>
+    <div id="branch-farosiya" class="branch-page" style="display:none;"></div>
+    <div id="branch-gharafa" class="branch-page" style="display:none;"></div>
+    <div id="branch-wakra" class="branch-page" style="display:none;"></div>
+    <div id="branch-khaisa" class="branch-page" style="display:none;"></div>
+    <!-- Custom branch pages get created dynamically by ensureBranchPages() -->
+  </div>
+  <div id="tasks" class="page"><div id="tasks-content"></div></div>
+  <div id="managers" class="page"><div id="managers-content"></div></div>
+  <div id="analytics" class="page"><div id="analytics-content"></div></div>
+  <div id="recommendations" class="page"><div id="reco-content"></div></div>
+  <div id="ops-manager" class="page"><div id="ops-content"></div></div>
+  <div id="other-depts" class="page"><div id="depts-content"></div></div>
+</div>
+

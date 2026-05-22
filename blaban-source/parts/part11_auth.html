@@ -1,0 +1,661 @@
+<script>
+// ===================================================================
+// PART 11: Authentication System (Password + Biometric WebAuthn)
+// ===================================================================
+
+// ============ AUTH STATE ============
+// Stored in localStorage:
+// - blaban_auth_pwd_hash: SHA-256 hash of ops password
+// - blaban_auth_pwd_salt: random salt
+// - blaban_auth_webauthn_id: WebAuthn credential ID (if registered)
+// - blaban_auth_session: { until: timestamp } — session expiry (15 min idle)
+// - blaban_auth_initialized: flag
+
+const AUTH_SESSION_DURATION = 15 * 60 * 1000; // 15 minutes
+let authSession = null;
+try {
+  authSession = JSON.parse(localStorage.getItem('blaban_auth_session') || 'null');
+} catch(e) { authSession = null; }
+
+// ============ Utilities ============
+async function sha256Hash(text) {
+  const enc = new TextEncoder();
+  const buf = await crypto.subtle.digest('SHA-256', enc.encode(text));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+function generateSalt() {
+  const arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+function isAuthInitialized() {
+  return localStorage.getItem('blaban_auth_initialized') === '1' &&
+         localStorage.getItem('blaban_auth_pwd_hash');
+}
+
+function isOpsSessionValid() {
+  if (!authSession) return false;
+  if (Date.now() > authSession.until) {
+    authSession = null;
+    localStorage.removeItem('blaban_auth_session');
+    return false;
+  }
+  return true;
+}
+
+function startOpsSession() {
+  authSession = { until: Date.now() + AUTH_SESSION_DURATION };
+  localStorage.setItem('blaban_auth_session', JSON.stringify(authSession));
+  // Schedule auto-lock
+  scheduleAutoLock();
+}
+
+function endOpsSession() {
+  authSession = null;
+  localStorage.removeItem('blaban_auth_session');
+  if (typeof setRole === 'function' && currentRole === 'ops') {
+    setRole('manager');
+  }
+}
+
+let autoLockTimer = null;
+function scheduleAutoLock() {
+  clearTimeout(autoLockTimer);
+  if (!authSession) return;
+  const remaining = authSession.until - Date.now();
+  if (remaining <= 0) { endOpsSession(); return; }
+  autoLockTimer = setTimeout(() => {
+    if (currentRole === 'ops') {
+      showNotif('🔒 انتهت الجلسة — تم القفل تلقائياً', 'info');
+      endOpsSession();
+    }
+  }, remaining);
+}
+
+// ============ AUTH MODAL ============
+function openAuthModal(mode, callback) {
+  // mode: 'login' | 'setup' | 'reset' | 'change'
+  // callback: function called on success
+  const modal = document.getElementById('authModal');
+  if (!modal) return;
+  modal.dataset.mode = mode || 'login';
+  modal.dataset.hasCallback = callback ? '1' : '0';
+  if (callback) window._authCallback = callback;
+  
+  const title = document.getElementById('authModalTitle');
+  const subtitle = document.getElementById('authModalSubtitle');
+  const setupSection = document.getElementById('authSetupSection');
+  const loginSection = document.getElementById('authLoginSection');
+  const biometricBtn = document.getElementById('authBiometricBtn');
+  
+  if (mode === 'setup') {
+    title.textContent = '🔐 إعداد كلمة مرور مدير التشغيل';
+    subtitle.textContent = 'لحماية وضع مدير التشغيل من التعديل غير المصرح به. اختر كلمة مرور قوية.';
+    setupSection.style.display = '';
+    loginSection.style.display = 'none';
+    biometricBtn.style.display = 'none';
+  } else if (mode === 'reset') {
+    title.textContent = '🔄 إعادة تعيين كلمة المرور';
+    subtitle.textContent = '⚠️ سيتم مسح كلمة المرور الحالية وإعداد كلمة جديدة. ستحتاج للتحقق مرة قبل التغيير.';
+    setupSection.style.display = '';
+    loginSection.style.display = '';
+    biometricBtn.style.display = localStorage.getItem('blaban_auth_webauthn_id') ? '' : 'none';
+    document.getElementById('authNewPwd').placeholder = 'كلمة المرور الجديدة';
+  } else if (mode === 'change') {
+    title.textContent = '🔄 تغيير كلمة المرور';
+    subtitle.textContent = 'أدخل كلمة المرور الحالية ثم الجديدة';
+    setupSection.style.display = '';
+    loginSection.style.display = '';
+    biometricBtn.style.display = 'none';
+    document.getElementById('authNewPwd').placeholder = 'كلمة المرور الجديدة';
+  } else {
+    // login
+    title.textContent = '🔓 تسجيل دخول مدير التشغيل';
+    subtitle.textContent = 'أدخل كلمة المرور للوصول لوضع مدير التشغيل';
+    setupSection.style.display = 'none';
+    loginSection.style.display = '';
+    biometricBtn.style.display = localStorage.getItem('blaban_auth_webauthn_id') ? '' : 'none';
+  }
+  
+  // Reset error
+  const err = document.getElementById('authError');
+  if (err) err.style.display = 'none';
+  // Clear inputs
+  document.getElementById('authPwd').value = '';
+  document.getElementById('authNewPwd').value = '';
+  document.getElementById('authNewPwdConfirm').value = '';
+  
+  // Show/hide biometric registration option (only in setup if WebAuthn supported)
+  const bioSetup = document.getElementById('authBiometricSetup');
+  if (bioSetup) {
+    bioSetup.style.display = (mode === 'setup' && isWebAuthnSupported()) ? '' : 'none';
+  }
+  
+  modal.classList.remove('hidden');
+  setTimeout(() => {
+    if (mode === 'setup') document.getElementById('authNewPwd').focus();
+    else document.getElementById('authPwd').focus();
+  }, 100);
+}
+
+function closeAuthModal() {
+  const m = document.getElementById('authModal');
+  if (m) m.classList.add('hidden');
+  window._authCallback = null;
+}
+
+function showAuthError(msg) {
+  const err = document.getElementById('authError');
+  if (!err) return;
+  err.textContent = '⚠️ ' + msg;
+  err.style.display = 'block';
+}
+
+async function submitAuth() {
+  const modal = document.getElementById('authModal');
+  const mode = modal.dataset.mode;
+  const pwd = document.getElementById('authPwd').value;
+  const newPwd = document.getElementById('authNewPwd').value;
+  const newPwdConfirm = document.getElementById('authNewPwdConfirm').value;
+  
+  if (mode === 'setup') {
+    if (!newPwd || newPwd.length < 4) {
+      showAuthError('كلمة المرور يجب أن تكون 4 أحرف على الأقل');
+      return;
+    }
+    if (newPwd !== newPwdConfirm) {
+      showAuthError('كلمتا المرور غير متطابقتين');
+      return;
+    }
+    const salt = generateSalt();
+    const hash = await sha256Hash(newPwd + salt);
+    localStorage.setItem('blaban_auth_pwd_hash', hash);
+    localStorage.setItem('blaban_auth_pwd_salt', salt);
+    localStorage.setItem('blaban_auth_initialized', '1');
+    
+    // Optional biometric registration
+    const wantBio = document.getElementById('authBioCheckbox')?.checked;
+    if (wantBio && isWebAuthnSupported()) {
+      try {
+        await registerBiometric();
+        showNotif('✅ تم إعداد كلمة المرور والبصمة بنجاح!', 'success');
+      } catch(e) {
+        console.warn('Biometric registration failed:', e);
+        showNotif('✅ كلمة المرور أُعدت — لكن تسجيل البصمة فشل، يمكنك المحاولة لاحقاً', 'info');
+      }
+    } else {
+      showNotif('✅ تم إعداد كلمة المرور بنجاح!', 'success');
+    }
+    
+    if (typeof addHistoryEntry === 'function') {
+      addHistoryEntry({ type:'auth', action:'create', target:'كلمة مرور مدير التشغيل', details:'تم الإعداد لأول مرة' });
+    }
+    
+    startOpsSession();
+    closeAuthModal();
+    if (window._authCallback) {
+      const cb = window._authCallback;
+      window._authCallback = null;
+      cb();
+    }
+    return;
+  }
+  
+  if (mode === 'login') {
+    const storedHash = localStorage.getItem('blaban_auth_pwd_hash');
+    const salt = localStorage.getItem('blaban_auth_pwd_salt');
+    if (!storedHash || !salt) {
+      showAuthError('لم يتم إعداد كلمة المرور بعد');
+      return;
+    }
+    const hash = await sha256Hash(pwd + salt);
+    if (hash !== storedHash) {
+      showAuthError('كلمة المرور غير صحيحة');
+      // Add tiny delay to slow down brute force
+      await new Promise(r => setTimeout(r, 300));
+      return;
+    }
+    startOpsSession();
+    closeAuthModal();
+    if (typeof addHistoryEntry === 'function') {
+      addHistoryEntry({ type:'auth', action:'update', target:'دخول مدير التشغيل', details:'تم التحقق بكلمة المرور' });
+    }
+    if (window._authCallback) {
+      const cb = window._authCallback;
+      window._authCallback = null;
+      cb();
+    }
+    showNotif('✅ تم التحقق بنجاح', 'success');
+    return;
+  }
+  
+  if (mode === 'change' || mode === 'reset') {
+    // First verify old password (or for reset: just require it)
+    const storedHash = localStorage.getItem('blaban_auth_pwd_hash');
+    const salt = localStorage.getItem('blaban_auth_pwd_salt');
+    if (storedHash && salt) {
+      const hash = await sha256Hash(pwd + salt);
+      if (hash !== storedHash) {
+        showAuthError('كلمة المرور الحالية غير صحيحة');
+        await new Promise(r => setTimeout(r, 300));
+        return;
+      }
+    }
+    // Set new password
+    if (!newPwd || newPwd.length < 4) {
+      showAuthError('كلمة المرور الجديدة يجب أن تكون 4 أحرف على الأقل');
+      return;
+    }
+    if (newPwd !== newPwdConfirm) {
+      showAuthError('كلمتا المرور الجديدتان غير متطابقتين');
+      return;
+    }
+    const newSalt = generateSalt();
+    const newHash = await sha256Hash(newPwd + newSalt);
+    localStorage.setItem('blaban_auth_pwd_hash', newHash);
+    localStorage.setItem('blaban_auth_pwd_salt', newSalt);
+    if (typeof addHistoryEntry === 'function') {
+      addHistoryEntry({ type:'auth', action:'update', target:'كلمة مرور مدير التشغيل', details: mode==='reset'?'تمت إعادة التعيين':'تم التغيير' });
+    }
+    showNotif('✅ تم تحديث كلمة المرور', 'success');
+    closeAuthModal();
+    return;
+  }
+}
+
+// ============ EMERGENCY RESET (when user forgets) ============
+function emergencyResetPassword() {
+  const confirmText = prompt('⚠️ تحذير: ستفقد كلمة المرور الحالية ويتم إعداد جديدة.\n\nاكتب "موافق" للتأكيد:');
+  if (confirmText !== 'موافق') {
+    showNotif('❌ تم الإلغاء', 'info');
+    return;
+  }
+  // Optionally also remove biometric
+  if (confirm('هل تريد أيضاً إزالة البصمة المسجلة (إن وُجدت)؟')) {
+    localStorage.removeItem('blaban_auth_webauthn_id');
+    localStorage.removeItem('blaban_auth_webauthn_pubkey');
+  }
+  localStorage.removeItem('blaban_auth_pwd_hash');
+  localStorage.removeItem('blaban_auth_pwd_salt');
+  localStorage.removeItem('blaban_auth_initialized');
+  endOpsSession();
+  if (typeof addHistoryEntry === 'function') {
+    addHistoryEntry({ type:'auth', action:'delete', target:'كلمة مرور مدير التشغيل', details:'إعادة تعيين طارئة' });
+  }
+  closeAuthModal();
+  showNotif('🔓 تم إعادة التعيين — أعد إعداد كلمة مرور جديدة', 'info');
+  // Open setup
+  setTimeout(() => {
+    openAuthModal('setup', () => {});
+  }, 500);
+}
+
+// ============ WEB AUTHN (Biometric/Fingerprint) ============
+function isWebAuthnSupported() {
+  return typeof window.PublicKeyCredential !== 'undefined' &&
+         typeof navigator.credentials !== 'undefined' &&
+         typeof navigator.credentials.create === 'function';
+}
+
+async function isBiometricAvailable() {
+  if (!isWebAuthnSupported()) return false;
+  try {
+    return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+  } catch(e) { return false; }
+}
+
+async function registerBiometric() {
+  if (!isWebAuthnSupported()) {
+    showNotif('⚠️ هذا الجهاز لا يدعم البصمة', 'error');
+    return false;
+  }
+  
+  // Generate user ID + challenge
+  const userId = new TextEncoder().encode('blaban-ops-' + (fbWorkspace || 'default'));
+  const challenge = new Uint8Array(32);
+  crypto.getRandomValues(challenge);
+  
+  const publicKey = {
+    challenge: challenge,
+    rp: { name: 'ب لبن قطر — تقييم الأداء' },
+    user: {
+      id: userId,
+      name: 'ops@blaban-qatar',
+      displayName: 'مدير التشغيل'
+    },
+    pubKeyCredParams: [
+      { type: 'public-key', alg: -7 },   // ES256
+      { type: 'public-key', alg: -257 }  // RS256
+    ],
+    authenticatorSelection: {
+      authenticatorAttachment: 'platform', // require platform authenticator (built-in fingerprint/face)
+      userVerification: 'required',
+      requireResidentKey: false
+    },
+    timeout: 60000,
+    attestation: 'none'
+  };
+  
+  try {
+    const cred = await navigator.credentials.create({ publicKey });
+    if (!cred) throw new Error('No credential returned');
+    
+    // Store credential ID (and a challenge token for later verification)
+    const credIdArr = new Uint8Array(cred.rawId);
+    const credIdB64 = btoa(String.fromCharCode(...credIdArr));
+    localStorage.setItem('blaban_auth_webauthn_id', credIdB64);
+    
+    showNotif('✅ تم تسجيل البصمة بنجاح!', 'success');
+    if (typeof addHistoryEntry === 'function') {
+      addHistoryEntry({ type:'auth', action:'create', target:'بصمة مدير التشغيل', details:'تم التسجيل' });
+    }
+    return true;
+  } catch(err) {
+    console.error('WebAuthn registration error:', err);
+    if (err.name === 'NotAllowedError') {
+      showNotif('❌ تم إلغاء العملية', 'error');
+    } else {
+      showNotif('❌ فشل تسجيل البصمة: ' + (err.message||err.name), 'error');
+    }
+    return false;
+  }
+}
+
+async function verifyBiometric() {
+  if (!isWebAuthnSupported()) {
+    showNotif('⚠️ هذا الجهاز لا يدعم البصمة', 'error');
+    return false;
+  }
+  const credIdB64 = localStorage.getItem('blaban_auth_webauthn_id');
+  if (!credIdB64) {
+    showNotif('⚠️ لم يتم تسجيل بصمة بعد. سجّل أولاً من الإعدادات.', 'error');
+    return false;
+  }
+  
+  const credIdArr = Uint8Array.from(atob(credIdB64), c => c.charCodeAt(0));
+  const challenge = new Uint8Array(32);
+  crypto.getRandomValues(challenge);
+  
+  const publicKey = {
+    challenge,
+    allowCredentials: [{
+      type: 'public-key',
+      id: credIdArr,
+      transports: ['internal']
+    }],
+    userVerification: 'required',
+    timeout: 60000
+  };
+  
+  try {
+    const assertion = await navigator.credentials.get({ publicKey });
+    if (!assertion) return false;
+    
+    // We trust the platform's user verification (since we required it)
+    // Note: Without a server, we can't cryptographically verify the signature.
+    // This is a "presence + user verification" check — relies on platform security.
+    return true;
+  } catch(err) {
+    console.error('WebAuthn verification error:', err);
+    if (err.name === 'NotAllowedError') {
+      showNotif('❌ تم إلغاء أو فشل التحقق', 'error');
+    } else {
+      showNotif('❌ خطأ: ' + (err.message||err.name), 'error');
+    }
+    return false;
+  }
+}
+
+async function loginWithBiometric() {
+  const ok = await verifyBiometric();
+  if (!ok) return;
+  startOpsSession();
+  closeAuthModal();
+  if (typeof addHistoryEntry === 'function') {
+    addHistoryEntry({ type:'auth', action:'update', target:'دخول مدير التشغيل', details:'تم التحقق بالبصمة' });
+  }
+  if (window._authCallback) {
+    const cb = window._authCallback;
+    window._authCallback = null;
+    cb();
+  }
+  showNotif('✅ تم التحقق بالبصمة بنجاح', 'success');
+}
+
+// ============ SETUP / MANAGEMENT ============
+function openAuthSettingsModal() {
+  // Unified modal: edit-mode toggle (primary) + auth management
+  const initialized = isAuthInitialized();
+  const hasBio = !!localStorage.getItem('blaban_auth_webauthn_id');
+  const myBranch = localStorage.getItem('blaban_my_branch');
+  const editing = canEditNow();
+  
+  let html = '';
+  
+  // Top: edit-mode primary action
+  if (!initialized) {
+    html += `<div class="alert alert-info" style="margin-bottom:12px;">🔓 لم يتم إعداد رمز التعديل بعد. أنشئ رمزاً لحماية وضع مدير التشغيل من التعديل غير المصرح به.</div>
+      <button class="btn btn-gold" onclick="closeAuthSettingsModal();openAuthModal('setup',()=>{refreshEditModeButton();if(typeof selectedBranch!=='undefined'&&typeof renderBranch==='function'){try{renderBranch(selectedBranch);}catch(e){}}showNotif('🔓 تم الإعداد ووضع التعديل مفعّل','success');})" style="width:100%;font-size:14px;padding:12px;">
+        🆕 إنشاء رمز التعديل وفتحه
+      </button>`;
+  } else {
+    if (editing) {
+      html += `<div class="alert alert-success" style="margin-bottom:12px;">✅ <strong>وضع التعديل مفعّل</strong> — الجلسة فعّالة لمدة ${Math.ceil((authSession.until-Date.now())/60000)} دقيقة</div>
+        <button class="btn btn-red" onclick="lockEditFromMenu()" style="width:100%;font-size:14px;padding:12px;margin-bottom:14px;">
+          🔒 قفل التعديل (العودة للقراءة فقط)
+        </button>`;
+    } else {
+      html += `<div class="alert alert-info" style="margin-bottom:12px;">👁️ <strong>وضع القراءة فقط</strong> — لتعديل التقييم افتح وضع التعديل</div>
+        <button class="btn btn-gold" onclick="openEditFromMenu()" style="width:100%;font-size:14px;padding:12px;margin-bottom:14px;">
+          🔓 فتح وضع التعديل (يتطلب الرمز)
+        </button>`;
+    }
+    
+    // Secondary: management options
+    html += `<div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-top:14px;margin-bottom:8px;">⚙️ إدارة الأمان:</div>
+      <div style="display:grid;gap:8px;">
+        <button class="btn btn-blue" onclick="closeAuthSettingsModal();openAuthModal('change',()=>{})">🔄 تغيير الرمز</button>
+        ${hasBio 
+          ? `<button class="btn btn-orange" onclick="removeBiometric()">🗑️ حذف البصمة المسجلة</button>` 
+          : `<button class="btn btn-purple" onclick="setupBiometric()">👆 إضافة بصمة / Face ID</button>`}
+        ${myBranch ? `<button class="btn btn-orange" onclick="resetMyBranch()">🏪 إعادة تعيين فرعي (${BRANCH_NAMES[myBranch]||myBranch})</button>` : ''}
+        <button class="btn btn-red" onclick="emergencyResetPassword()">⚠️ إعادة تعيين طارئة (نسيت الرمز)</button>
+      </div>
+      <div style="margin-top:14px;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;font-size:11px;color:var(--text-muted);">
+        <strong>الحالة:</strong><br>
+        ${editing ? `🔓 الجلسة فعّالة لمدة ${Math.ceil((authSession.until-Date.now())/60000)} دقيقة` : '🔒 لا توجد جلسة نشطة'}<br>
+        ${hasBio ? '✅ البصمة مسجّلة' : '⚪ لا توجد بصمة مسجّلة'}
+      </div>`;
+  }
+  
+  const modal = document.getElementById('authSettingsModal');
+  if (!modal) return;
+  document.getElementById('authSettingsContent').innerHTML = html;
+  modal.classList.remove('hidden');
+}
+
+// Helper: open edit from inside settings menu
+function openEditFromMenu() {
+  closeAuthSettingsModal();
+  requireOpsPin(() => {
+    refreshEditModeButton();
+    if (typeof selectedBranch !== 'undefined' && typeof renderBranch === 'function') {
+      try { renderBranch(selectedBranch); } catch(e){}
+    }
+    showNotif('🔓 وضع التعديل مفعّل — لمدة 15 دقيقة', 'success');
+  });
+}
+
+// Helper: lock edit from inside settings menu
+function lockEditFromMenu() {
+  closeAuthSettingsModal();
+  endOpsSession();
+  showNotif('🔒 تم قفل التعديل — كل البيانات للقراءة الآن', 'info');
+  refreshEditModeButton();
+  if (typeof selectedBranch !== 'undefined' && typeof renderBranch === 'function') {
+    try { renderBranch(selectedBranch); } catch(e){}
+  }
+}
+
+function resetMyBranch() {
+  if (!confirm('هل تريد إعادة اختيار الفرع؟ سيتم سؤالك من جديد.')) return;
+  localStorage.removeItem('blaban_my_branch');
+  closeAuthSettingsModal();
+  showNotif('🏪 تم إعادة التعيين — اختر فرعك من جديد', 'info');
+  // Re-trigger setRole if currently in manager mode
+  if (currentRole === 'manager' && typeof window.setRole === 'function') {
+    setTimeout(() => window.setRole('manager'), 200);
+  }
+}
+
+function closeAuthSettingsModal() {
+  const m = document.getElementById('authSettingsModal');
+  if (m) m.classList.add('hidden');
+}
+
+async function setupBiometric() {
+  if (!isWebAuthnSupported()) {
+    showNotif('⚠️ المتصفح/الجهاز لا يدعم البصمة', 'error');
+    return;
+  }
+  const available = await isBiometricAvailable();
+  if (!available) {
+    showNotif('⚠️ لم يتم اكتشاف بصمة/Face ID مفعّل على هذا الجهاز', 'error');
+    return;
+  }
+  // Verify password first
+  closeAuthSettingsModal();
+  openAuthModal('login', async () => {
+    await registerBiometric();
+    setTimeout(openAuthSettingsModal, 500);
+  });
+}
+
+function removeBiometric() {
+  if (!confirm('هل تريد حذف البصمة المسجلة؟')) return;
+  localStorage.removeItem('blaban_auth_webauthn_id');
+  if (typeof addHistoryEntry === 'function') {
+    addHistoryEntry({ type:'auth', action:'delete', target:'بصمة مدير التشغيل', details:'تمت إزالتها' });
+  }
+  showNotif('🗑️ تم حذف البصمة', 'info');
+  openAuthSettingsModal();
+}
+
+// ============ ROLE SWITCHING (NO AUTHENTICATION REQUIRED) ============
+// Logic (NEW):
+//  - Switching between roles is FREE for everyone (read-only by default)
+//  - Editing data (evaluations, recommendations, etc.) requires the OPS PIN
+//  - Once PIN entered, an "edit session" is active for 15 minutes
+//  - The edit session works regardless of which role you're viewing
+const _originalSetRole = window.setRole || setRole;
+window.setRole = function(role) {
+  _originalSetRole(role);
+  // If switching, just keep the session if any
+  if (isOpsSessionValid()) scheduleAutoLock();
+};
+
+// ============ REQUIRE OPS PIN BEFORE EDITING ============
+// Wraps any action that modifies data. Shows PIN modal if no valid session.
+function requireOpsPin(callback, opts) {
+  opts = opts || {};
+  // Already authenticated? Just run.
+  if (isOpsSessionValid()) {
+    scheduleAutoLock();
+    callback();
+    return;
+  }
+  // No password set yet? Setup
+  if (!isAuthInitialized()) {
+    openAuthModal('setup', callback);
+    return;
+  }
+  // Need PIN
+  openAuthModal('login', callback);
+}
+
+// Helper for inline edit attempts: returns true if allowed, false otherwise (and triggers prompt)
+function canEditNow() {
+  return isOpsSessionValid();
+}
+
+function blockEditWithPrompt(callback) {
+  if (canEditNow()) { scheduleAutoLock(); return true; }
+  requireOpsPin(callback);
+  return false;
+}
+
+// Expose globally for cross-script access
+window.canEditNow = canEditNow;
+window.requireOpsPin = requireOpsPin;
+window.isOpsSessionValid = isOpsSessionValid;
+
+// Edit Mode + Security combined menu
+function toggleEditMode() {
+  // Open the unified security menu (which contains: lock/unlock + manage password + biometric + reset)
+  openAuthSettingsModal();
+}
+
+// Update the edit-mode button label/style based on session state
+function refreshEditModeButton() {
+  const btn = document.getElementById('editModeBtn');
+  if (!btn) return;
+  if (canEditNow()) {
+    btn.innerHTML = '🔓 تعديل مفعّل';
+    btn.classList.add('editing-active');
+    btn.title = 'وضع التعديل مفعّل — اضغط لإدارته';
+    // Show edit-mode banner
+    const banner = document.getElementById('editModeBanner');
+    if (banner) banner.style.display = '';
+  } else {
+    btn.classList.remove('editing-active');
+    if (!isAuthInitialized()) {
+      btn.innerHTML = '🆕 الأمان';
+      btn.title = 'أنشئ رمز مدير التشغيل لفتح التعديل';
+    } else {
+      btn.innerHTML = '🔐 الأمان';
+      btn.title = 'إعدادات الأمان وفتح التعديل';
+    }
+    const banner = document.getElementById('editModeBanner');
+    if (banner) banner.style.display = 'none';
+  }
+}
+
+// Auto-refresh button periodically
+setInterval(refreshEditModeButton, 5000);
+
+// Lock button (manual) — kept for backwards compat
+function lockOpsMode() {
+  toggleEditMode();
+}
+
+// Reset session timer on user activity (session-based, not role-based)
+['click','keydown','touchstart'].forEach(evt => {
+  document.addEventListener(evt, () => {
+    if (authSession) {
+      // Extend session
+      authSession.until = Date.now() + AUTH_SESSION_DURATION;
+      localStorage.setItem('blaban_auth_session', JSON.stringify(authSession));
+      scheduleAutoLock();
+    }
+  }, { passive: true });
+});
+
+// Restore session on load
+if (isOpsSessionValid()) {
+  scheduleAutoLock();
+} else if (currentRole === 'ops' && isAuthInitialized()) {
+  // Was ops but session expired — downgrade to manager
+  setTimeout(() => {
+    if (typeof _originalSetRole === 'function') {
+      _originalSetRole('manager');
+    }
+  }, 100);
+}
+
+// ============ Helper for readonly alerts ============
+function showReadonlyAlert() {
+  showNotif('🔒 وضع القراءة فقط — مدير الفرع لا يمكنه تعديل التقييم', 'info');
+}
+</script>

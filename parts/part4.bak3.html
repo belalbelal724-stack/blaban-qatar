@@ -1,0 +1,314 @@
+<script>
+// ===================== RENDER BRANCH =====================
+function renderBranch(branch) {
+  const branchName = BRANCH_NAMES[branch];
+  const container = document.getElementById(`branch-${branch}`);
+  if (!container) return;
+  const monthOpts = MONTHS.map((m,i) => `<option value="${i}" ${i===currentMonth?'selected':''}>${m} 2026</option>`).join('');
+  const daysCount = MONTH_DAYS[currentMonth];
+  const dayOpts = Array.from({length:daysCount},(_,i)=>`<option value="${i+1}" ${i+1===currentDay?'selected':''}>${i+1}</option>`).join('');
+  const visitData = getVisitData(branch, currentMonth, currentDay);
+
+  container.innerHTML = `
+  <div class="card">
+    <div class="card-title">🏪 فرع ${branchName} — 2026</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>الشهر</label>
+        <select id="${branch}_month" onchange="onMonthChange('${branch}')">${monthOpts}</select>
+      </div>
+      <div class="form-group">
+        <label>اليوم</label>
+        <select id="${branch}_day" onchange="onDayChange('${branch}')">${dayOpts}</select>
+      </div>
+      <div class="form-group">
+        <label>المدير المتواجد</label>
+        <input type="text" id="${branch}_manager" placeholder="اسم المدير" oninput="onManagerChange('${branch}')" value="${visitData.manager||''}">
+      </div>
+      <div class="form-group">
+        <label>الشيفت</label>
+        <select id="${branch}_shift" onchange="onShiftChange('${branch}')">
+          <option value="">اختر الشيفت</option>
+          <option value="صباحي" ${visitData.shift==='صباحي'?'selected':''}>☀️ صباحي</option>
+          <option value="مسائي" ${visitData.shift==='مسائي'?'selected':''}>🌙 مسائي</option>
+        </select>
+      </div>
+    </div>
+    <div id="${branch}_repeat_alert"></div>
+  </div>
+
+  <div id="${branch}_checklist"></div>
+
+  <div class="card">
+    <div class="card-title">📊 نتيجة التقييم</div>
+    <div class="grid-4">
+      <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-value" id="${branch}_ok_count">0</div><div class="stat-label">مطابق (شامل المعفى)</div></div>
+      <div class="stat-card"><div class="stat-icon">❌</div><div class="stat-value" id="${branch}_fail_count">0</div><div class="stat-label">مخصوم على الفرع</div></div>
+      <div class="stat-card" id="${branch}_excused_wrap"><div class="stat-icon">💙</div><div class="stat-value" id="${branch}_excused_count">0</div><div class="stat-label">معفى تلقائياً ✓</div></div>
+      <div class="stat-card"><div class="stat-icon">⭐</div><div class="stat-value" id="${branch}_pct">-</div><div class="stat-label">نسبة تقييم الفرع</div></div>
+    </div>
+    <div style="margin-top:14px;" id="${branch}_action_rec"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🎯 خطة العمل (الأكشن بلان) — فرع ${branchName}</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;font-style:italic;">⚠️ هذه البنود تخص فرع ${branchName} فقط — مبنية على التقييم الحالي</div>
+    <div id="${branch}_action_plan_items"></div>
+    <div class="img-upload-area" onclick="document.getElementById('${branch}_img_input').click()" style="margin-top:12px;">
+      📷 انقر لإرفاق صور توثيقية
+      <input type="file" id="${branch}_img_input" multiple accept="image/*" style="display:none" onchange="handleImages('${branch}', this)">
+    </div>
+    <div class="uploaded-imgs" id="${branch}_imgs"></div>
+  </div>
+
+  <div class="page-footer">
+    <div class="footer-sig">بِلَال الأَنْصَارِي ✦</div>
+    <div class="footer-actions">
+      <button class="btn btn-gold btn-sm" onclick="exportBranchExcel('${branch}','${branchName}')">📊 Excel</button>
+      <button class="btn btn-primary btn-sm" onclick="exportBranchPPTX('${branch}','${branchName}')">📑 PowerPoint</button>
+      <button class="btn btn-primary btn-sm" onclick="window.print()">🖨️ طباعة</button>
+      <button class="btn btn-gold" onclick="openShareModal('branch','${branch}','${branchName}')">📤 مشاركة التقرير</button>
+    </div>
+  </div>`;
+
+  renderChecklist(branch);
+  updateScore(branch);
+  renderImages(branch, currentMonth, currentDay);
+}
+
+function renderChecklist(branch) {
+  const container = document.getElementById(`${branch}_checklist`);
+  if (!container) return;
+  const month = getSelMonth(branch);
+  const day = getSelDay(branch);
+  const visitData = getVisitData(branch, month, day);
+  let html = '';
+  CHECKLIST.forEach(sec => {
+    html += `<div class="checklist-section"><div class="section-header">${sec.section}</div>`;
+    sec.items.forEach(item => {
+      const result = visitData.results[item.id];
+      const dept = visitData.deptAssign[item.id] || 'الفرع';
+      const reported = visitData.reported24h[item.id] === true;
+      const isRepeat = checkRepeated(branch, item.id, month, day);
+      const isOtherDept = result === 'fail' && dept !== 'الفرع';
+      const isAutoExcused = isOtherDept && reported;
+      const isAutoDeducted = isOtherDept && !reported;
+
+      html += `
+      <div class="check-item ${isRepeat&&result==='fail'?'repeated-error':''}" id="${branch}_item_${item.id}">
+        ${isRepeat&&result==='fail'?`<span class="repeat-badge">⚠️ مكرر</span>`:''}
+        <div class="check-label"><span class="item-icon">${item.icon}</span>${item.text}</div>
+        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+          <div class="check-options">
+            <button class="check-btn ok ${result==='ok'?'selected':''}" onclick="setResult('${branch}','${item.id}','ok')">✅ مطابق</button>
+            <button class="check-btn fail ${result==='fail'?'selected':''}" onclick="setResult('${branch}','${item.id}','fail')">❌ غير مطابق</button>
+          </div>
+          <select class="dept-select ${result==='fail'?'visible':''}" id="${branch}_dept_${item.id}" onchange="setDept('${branch}','${item.id}',this.value)">
+            ${DEPTS.map(d=>`<option value="${d}" ${dept===d?'selected':''}>${d}</option>`).join('')}
+          </select>
+          ${result==='fail' && dept !== 'الفرع' ? `
+          <div style="display:flex;align-items:center;gap:5px;margin-top:3px;background:rgba(52,152,219,0.1);border:1px solid #3498DB;border-radius:8px;padding:4px 8px;flex-wrap:wrap;">
+            <span style="font-size:11px;color:#7EC8E3;">📣 أُبلغ قبل 24 ساعة؟</span>
+            <button class="check-btn ok ${reported?'selected':''}" style="font-size:10px;padding:2px 8px;" onclick="setReported24h('${branch}','${item.id}',true)">نعم ✓</button>
+            <button class="check-btn fail ${!reported?'selected':''}" style="font-size:10px;padding:2px 8px;" onclick="setReported24h('${branch}','${item.id}',false)">لا</button>
+          </div>
+          ${isAutoExcused ? `<div class="auto-excuse-badge">✅ معفى تلقائياً — يُحسب للفرع (${dept})</div>` : ''}
+          ${isAutoDeducted ? `<div class="auto-deduct-badge">❌ يُخصم من الفرع (لم يُبلَّغ عن ${dept})</div>` : ''}
+          ` : ''}
+          ${isRepeat&&result==='fail'?`<span style="font-size:10px;color:var(--red);">📅 تكرار من: ${getRepeatDate(branch,item.id,month,day)}</span>`:''}
+          ${result==='fail' ? `
+          <div style="margin-top:6px;width:100%;">
+            <textarea rows="2" placeholder="💬 أضف ملاحظة أو تعليق على هذا البند..." 
+              style="width:100%;background:var(--bg-card);border:1px solid var(--border);color:var(--text-light);padding:6px 10px;border-radius:8px;font-family:Tajawal,sans-serif;font-size:calc(var(--fs-xs) - 2px);resize:vertical;min-height:52px;outline:none;"
+              oninput="saveComment('${branch}','${item.id}',this.value)">${visitData.comments&&visitData.comments[item.id]||''}</textarea>
+          </div>` : ''}
+        </div>
+      </div>`;
+    });
+    html += `</div>`;
+  });
+  container.innerHTML = html;
+}
+
+function getSelMonth(branch) { return parseInt(document.getElementById(`${branch}_month`)?.value ?? currentMonth); }
+function getSelDay(branch) { return parseInt(document.getElementById(`${branch}_day`)?.value ?? currentDay); }
+
+function setResult(branch, itemId, val) {
+  const month = getSelMonth(branch), day = getSelDay(branch);
+  const visit = getVisitData(branch, month, day);
+  const oldVal = visit.results[itemId];
+  visit.results[itemId] = val;
+  saveData(); renderChecklist(branch); updateScore(branch);
+  if (val === 'fail') checkRepeatedAlert(branch, itemId, month, day);
+  // History
+  if (typeof addHistoryEntry === 'function' && oldVal !== val) {
+    const itemText = CHECKLIST.flatMap(s=>s.items).find(i=>i.id===itemId)?.text || itemId;
+    addHistoryEntry({
+      type: 'evaluation', action: oldVal ? 'update' : 'create',
+      target: `${BRANCH_NAMES[branch]} • ${itemText.substring(0,40)}`,
+      details: `${val === 'ok' ? '✅ مطابق' : '❌ غير مطابق'} (${day} ${MONTHS[month]})`
+    });
+  }
+}
+
+function setDept(branch, itemId, val) {
+  const month = getSelMonth(branch), day = getSelDay(branch);
+  const visit = getVisitData(branch, month, day);
+  visit.deptAssign[itemId] = val;
+  if (val === 'الفرع') delete visit.reported24h[itemId];
+  saveData(); renderChecklist(branch); updateScore(branch);
+}
+
+function setReported24h(branch, itemId, val) {
+  const month = getSelMonth(branch), day = getSelDay(branch);
+  const visit = getVisitData(branch, month, day);
+  visit.reported24h[itemId] = val;
+  saveData(); renderChecklist(branch); updateScore(branch);
+}
+
+function checkRepeated(branch, itemId, month, day) {
+  for (let m = 0; m <= month; m++) {
+    const maxD = m === month ? day - 1 : MONTH_DAYS[m];
+    for (let d = 1; d <= maxD; d++) {
+      const key = getKey(branch, m, d);
+      if (appData[key]?.results[itemId] === 'fail') return true;
+    }
+  }
+  return false;
+}
+
+function getRepeatDate(branch, itemId, month, day) {
+  for (let m = 0; m <= month; m++) {
+    const maxD = m === month ? day - 1 : MONTH_DAYS[m];
+    for (let d = 1; d <= maxD; d++) {
+      const key = getKey(branch, m, d);
+      if (appData[key]?.results[itemId] === 'fail') return `${d} ${MONTHS[m]}`;
+    }
+  }
+  return '';
+}
+
+function checkRepeatedAlert(branch, itemId, month, day) {
+  if (checkRepeated(branch, itemId, month, day)) {
+    const itemText = CHECKLIST.flatMap(s=>s.items).find(i=>i.id===itemId)?.text || itemId;
+    const alertDiv = document.getElementById(`${branch}_repeat_alert`);
+    if (alertDiv) {
+      alertDiv.innerHTML = `<div class="alert alert-danger">⚠️ تنبيه: البند "<strong>${itemText.substring(0,40)}...</strong>" مكرر من زيارة سابقة!</div>`;
+      setTimeout(() => { alertDiv.innerHTML = ''; }, 5000);
+    }
+  }
+}
+
+function updateScore(branch) {
+  const month = getSelMonth(branch), day = getSelDay(branch);
+  const visit = getVisitData(branch, month, day);
+  const { pct, ok, excused, deducted } = calcSmartScore(branch, month, day);
+  const el = id => document.getElementById(`${branch}_${id}`);
+  if (el('ok_count')) el('ok_count').textContent = ok + excused;
+  if (el('fail_count')) el('fail_count').textContent = deducted;
+  if (el('excused_count')) el('excused_count').textContent = excused;
+  if (el('excused_wrap')) el('excused_wrap').style.opacity = excused > 0 ? '1' : '0.4';
+  if (el('pct')) el('pct').textContent = pct !== null ? `${pct}%` : '-';
+
+  const rec = el('action_rec');
+  if (rec && pct !== null) {
+    let msg = '', cls = '';
+    if (pct < 70) { msg = `🔴 <strong>إجراء عاجل:</strong> اجتماع فوري مع المدير، توثيق المخالفات، إنذار رسمي مع خطة تصحيحية في 48 ساعة.`; cls = 'alert-danger'; }
+    else if (pct < 90) { msg = `🟡 <strong>تحسين مطلوب:</strong> متابعة مكثفة، خطة تطوير أسبوعية، زيارة تفقدية خلال أسبوع.`; cls = 'alert-warning'; }
+    else { msg = `🟢 <strong>أداء ممتاز:</strong> تهنئة المدير والفريق، مشاركة التجربة مع الفروع، ترشيح للمكافأة الشهرية.`; cls = 'alert-success'; }
+    let excusedNote = excused > 0 ? `<div class="alert alert-info" style="margin-top:8px;">💡 <strong>${excused} بند معفى تلقائياً</strong> لأن المدير أبلغ مسبقاً — تُحسب للفرع.</div>` : '';
+    rec.innerHTML = `<div class="alert ${cls}">${msg}</div>${excusedNote}`;
+  }
+
+  const ap = el('action_plan_items');
+  if (ap) {
+    const allItems = CHECKLIST.flatMap(s => s.items);
+    const failItems = allItems.filter(i => visit.results[i.id] === 'fail');
+    if (failItems.length === 0) {
+      ap.innerHTML = `<div class="alert alert-success">✅ لا توجد بنود تحتاج إلى أكشن بلان</div>`;
+    } else {
+      ap.innerHTML = failItems.map(item => {
+        const dept = visit.deptAssign[item.id] || 'الفرع';
+        const reported = visit.reported24h[item.id];
+        const isExcused = dept !== 'الفرع' && reported === true;
+        return `<div class="action-plan-item" style="border-right-color:${isExcused?'var(--blue)':'var(--orange)'}">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:5px;margin-bottom:5px;">
+            <span style="font-weight:700;font-size:var(--fs-sm)">${item.icon} ${item.text}</span>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;">
+              <span class="tag ${dept==='الفرع'?'tag-red':'tag-blue'}">${dept}</span>
+              ${isExcused?`<span class="tag tag-green">معفى ✅</span>`:`<span class="tag tag-orange">مخصوم</span>`}
+            </div>
+          </div>
+          <input type="text" placeholder="الإجراء المطلوب..." style="width:100%;background:var(--bg-card);border:1px solid var(--border);color:var(--text-light);padding:6px 10px;border-radius:6px;font-family:Tajawal,sans-serif;font-size:var(--fs-xs);"
+            value="${visit.notes&&visit.notes[item.id]||''}"
+            oninput="saveNote('${branch}','${item.id}',this.value)">
+          ${visit.comments&&visit.comments[item.id]?`<div style="margin-top:5px;padding:6px 10px;background:rgba(52,152,219,0.1);border:1px solid var(--blue);border-radius:6px;font-size:calc(var(--fs-xs) - 2px);color:#7EC8E3;"><span style="opacity:0.7">💬 تعليق: </span>${visit.comments[item.id]}</div>`:''}
+        </div>`;
+      }).join('');
+    }
+  }
+}
+
+function saveNote(branch, itemId, val) {
+  const month = getSelMonth(branch), day = getSelDay(branch);
+  const visit = getVisitData(branch, month, day);
+  if (!visit.notes) visit.notes = {};
+  visit.notes[itemId] = val;
+  saveData();
+}
+
+function saveComment(branch, itemId, val) {
+  const month = getSelMonth(branch), day = getSelDay(branch);
+  const visit = getVisitData(branch, month, day);
+  if (!visit.comments) visit.comments = {};
+  visit.comments[itemId] = val;
+  saveData();
+}
+
+function onMonthChange(branch) {
+  const month = parseInt(document.getElementById(`${branch}_month`).value);
+  const daysCount = MONTH_DAYS[month];
+  const daySelect = document.getElementById(`${branch}_day`);
+  const curDay = parseInt(daySelect.value);
+  daySelect.innerHTML = Array.from({length:daysCount},(_,i)=>`<option value="${i+1}" ${i+1===Math.min(curDay,daysCount)?'selected':''}>${i+1}</option>`).join('');
+  renderChecklist(branch); updateScore(branch);
+}
+
+function onDayChange(branch) { renderChecklist(branch); updateScore(branch); }
+function onManagerChange(branch) {
+  const month = getSelMonth(branch), day = getSelDay(branch);
+  const visit = getVisitData(branch, month, day);
+  visit.manager = document.getElementById(`${branch}_manager`).value;
+  saveData();
+}
+function onShiftChange(branch) {
+  const month = getSelMonth(branch), day = getSelDay(branch);
+  const visit = getVisitData(branch, month, day);
+  visit.shift = document.getElementById(`${branch}_shift`).value;
+  saveData();
+}
+
+function handleImages(branch, input) {
+  const month = getSelMonth(branch), day = getSelDay(branch);
+  const visit = getVisitData(branch, month, day);
+  if (!visit.images) visit.images = {};
+  const files = Array.from(input.files);
+  let loaded = 0;
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      visit.images[Date.now() + '_' + Math.random()] = e.target.result;
+      loaded++;
+      if (loaded === files.length) { saveData(); renderImages(branch, month, day); }
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderImages(branch, month, day) {
+  const visit = getVisitData(branch, month, day);
+  const container = document.getElementById(`${branch}_imgs`);
+  if (!container) return;
+  container.innerHTML = Object.values(visit.images||{}).map(src=>`<img src="${src}" class="uploaded-img">`).join('');
+}
+</script>

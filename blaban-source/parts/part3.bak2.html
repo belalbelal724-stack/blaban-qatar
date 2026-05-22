@@ -1,0 +1,279 @@
+<script>
+// ===================== DATA DEFINITIONS =====================
+const BRANCHES = ['nasr','farosiya','gharafa','wakra'];
+const BRANCH_NAMES = { nasr:'النصر', farosiya:'الفروسية', gharafa:'الغرافة', wakra:'الوكرة' };
+const MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+const MONTH_DAYS = [31,28,31,30,31,30,31,31,30,31,30,31];
+const DEPTS = ['الفرع','الصيانة','الجودة','المصنع','الإدارة العليا'];
+
+const CHECKLIST = [
+  { section: '🧹 النظافة الخارجية', items: [
+    { id:'c01', icon:'🏪', text:'نظافة أمام الفرع واليافطة وزجاج الفرع من الخارج' },
+  ]},
+  { section: '🏠 الصالة الداخلية', items: [
+    { id:'c02', icon:'🪑', text:'الصالة الداخلية نظيفة وكل شيء مرتب بها وصندوق القمامة غير ممتلئ' },
+    { id:'c03', icon:'❄️', text:'ثلاجة الأيس كريم الفياسكات نظيفة وممتلئة ومعروضة بشكل جيد والثلاجة نظيفة من الداخل والخارج' },
+    { id:'c04', icon:'🛒', text:'يوجد عرض جيد للفرع بشكل عام من علب باكينج على الأرفف وثلاجة الأيس والعرض على رف الكريب الخارجي' },
+    { id:'c05', icon:'🧊', text:'ثلاجات العرض نظيفة وممتلئة ومرصوصة مرايات' },
+    { id:'c06', icon:'🫙', text:'الفياسكات بداخل الثلاجة مغطاة ونظيفة' },
+    { id:'c07', icon:'🏧', text:'كاونتر الكاشير نظيف ومرتب وأسفل الكاشير نظيف ومرتب' },
+  ]},
+  { section: '🧴 منطقة التحضير', items: [
+    { id:'c08', icon:'📐', text:'توجد مسافات بينية بين الأطباق تسمح لمرور التبريد بشكل جيد' },
+    { id:'c09', icon:'📦', text:'فصل المنتجات تشغيل أولاً عن باقي المنتجات' },
+    { id:'c10', icon:'🔄', text:'الالتزام بقاعدة FIFO في استخدام الخامات والمنتجات' },
+    { id:'c11', icon:'🫙', text:'كل الفياسكات في منطقة التحضير مرتبة ومنظمة ونظيفة' },
+    { id:'c12', icon:'🧹', text:'أسفل كاونتر التحضير منظم ومرتب ونظيف' },
+    { id:'c13', icon:'🌰', text:'فصل فياسكات المكسرات عن باقي الخامات' },
+    { id:'c14', icon:'✅', text:'يتم تحضير المنتجات بصورة مطابقة للتشغيل' },
+    { id:'c15', icon:'🚚', text:'كل خامات التشغيل متاحة في منطقة تحضير التيك أواي ومنطقة الديليفري بشكل منفصل تماماً' },
+  ]},
+  { section: '👔 المظهر والالتزام', items: [
+    { id:'c16', icon:'🧤', text:'كل العاملين بالفرع يرتدون قفازات وكوفر هيد ويونيفورم كامل' },
+    { id:'c17', icon:'🧼', text:'كل العاملين بالفرع ملتزمين بالنظافة الشخصية' },
+    { id:'c18', icon:'👮', text:'المدير ملتزم باليونيفورم وارتداء الكوفر هيد عند دخوله منطقة التحضير' },
+    { id:'c19', icon:'✂️', text:'المدير مهتم بالنظافة الشخصية من حلاقة ذقن ونظافة اليونيفورم وعدم ارتداء زي مخالف' },
+  ]},
+  { section: '⏱️ الأوقات والكفاءة', items: [
+    { id:'c20', icon:'⏰', text:'وقت تحضير الأوردرات مثالي 5 دقائق للعميل' },
+    { id:'c21', icon:'🛵', text:'وقت تحضير الأوردر مثالي في الديليفري' },
+    { id:'c22', icon:'👜', text:'تسليم الأوردر لسائق الديليفري عند وجود باوتش الديليفري فقط' },
+    { id:'c23', icon:'🚫', text:'لا توجد أوردرات خارج الثلاجة لفترة تزيد عن 10 دقائق' },
+  ]},
+  { section: '❄️ غرفة التبريد', items: [
+    { id:'c24', icon:'🚪', text:'أبواب غرفة التبريد محكمة الغلق وغرفة التبريد منظمة ونظيفة ومرتبة بشكل صحيح' },
+    { id:'c25', icon:'🍓', text:'تجهيز خامات التشغيل من فراولة ومانجو بناءاً على معدلات تشغيل وليس بشكل عشوائي' },
+    { id:'c26', icon:'⚠️', text:'عدم وجود منتجات أو خامات منتهية الصلاحية أو لا تصلح للتشغيل داخل الفرع (نقطة حرجة)' },
+    { id:'c27', icon:'📞', text:'التنسيق بخصوص المنتجات التي أشرفت على الدخول في صلاحية آخر يوم مع مدير التشغيل وباقي الفروع بوقت كافي' },
+    { id:'c28', icon:'🚫', text:'عدم وضع أي كراتين داخل غرف التبريد' },
+    { id:'c29', icon:'🍎', text:'فصل الفاكهة عن باقي الخامات في غرفة التبريد' },
+    { id:'c30', icon:'🥛', text:'فصل الحليب والكريمة عن باقي الخامات داخل غرفة التبريد' },
+  ]},
+  { section: '💰 الإدارة والتشغيل', items: [
+    { id:'c31', icon:'🎯', text:'عمل تارجت للكاشير للعمل عليه' },
+    { id:'c32', icon:'📉', text:'ترشيد استهلاك الباكينج والمنظفات والمناديل' },
+    { id:'c33', icon:'📋', text:'التزام كل الموظفين بحفظ ريسبي كل المنتجات' },
+    { id:'c34', icon:'🔬', text:'التزام جميع الموظفين بتعليمات الجودة' },
+    { id:'c35', icon:'📚', text:'جميع الموظفين على دراية تامة بكل المعلومات اللازمة بالجودة والتشغيل' },
+    { id:'c36', icon:'📊', text:'متابعة مدير الفرع لانحرافات الفرع وإدارة الانحرافات وتكلفة الفرع' },
+    { id:'c37', icon:'🌱', text:'عمل خطة من مدير الفرع لتطوير الموظفين كل موظف حسب إمكانياته' },
+    { id:'c38', icon:'🗓️', text:'عمل جدول نظافة يومي وأسبوعي للفرع والالتزام بالنظافة التفصيلية' },
+  ]},
+  { section: '📄 الموظفون والوثائق', items: [
+    { id:'c39', icon:'🪪', text:'كل الموظفين لديهم شهادة صحية وإعارة سارية وإقامة سارية' },
+    { id:'c40', icon:'🏠', text:'سكن الموظفين نظيف ومرتب ولا يوجد به ملاحظات' },
+    { id:'c41', icon:'🚶', text:'عمل زيارة دورية يومية من مدير الفرع لسكن الموظفين بشكل يومي وعمل جدول زيارة يومي وموثق' },
+  ]},
+  { section: '🗄️ المخزن والخلفية', items: [
+    { id:'c42', icon:'🗑️', text:'المنطقة الخلفية للفرع نظيفة بالكامل' },
+    { id:'c43', icon:'📦', text:'المخزن نظيف ومرتب' },
+    { id:'c44', icon:'🚰', text:'الأحواض نظيفة ولا توجد تراكمات تحتاج إلى نظافة' },
+    { id:'c45', icon:'🌰', text:'فصل المكسرات عن باقي الخامات في التخزين' },
+  ]},
+  { section: '🔧 الصيانة والسجلات', items: [
+    { id:'c46', icon:'🔔', text:'الإبلاغ ببنود الصيانة يومياً ومتابعتها على جروب الصيانة' },
+    { id:'c47', icon:'📁', text:'جميع الورقيات والمستندات الخاصة بالفرع موجودة في ملف خاص بها وكاملة' },
+    { id:'c48', icon:'📝', text:'الالتزام بالسجلات اليومية وتدوين ما يلزم في ساعته ووقته' },
+  ]},
+  { section: '🧪 المعدات والأدوات', items: [
+    { id:'c49', icon:'🍳', text:'جميع المعدات والأواني نظيفة تماماً' },
+    { id:'c50', icon:'🧽', text:'الالتزام باستخدام أدوات النظافة المناسبة المحددة وعدم مخالفة ذلك' },
+    { id:'c51', icon:'🗂️', text:'وضع أدوات النظافة في مكانها المناسب بشكل نظيف ومرتب' },
+  ]},
+  { section: '🌟 الإبداع والجمال', items: [
+    { id:'c52', icon:'🎨', text:'توجد لمسة جمالية في الفرع للعرض بشكل عام' },
+    { id:'c53', icon:'🧠', text:'المدير المتواجد يجد حلولاً للمشاكل ويتعامل مع المشاكل بشكل احترافي' },
+    { id:'c54', icon:'💡', text:'المدير المتواجد لديه حس إبداعي لإدارة الفرع وإخراج الفرع بأفضل صورة ممكنة' },
+  ]},
+  { section: '🏥 الصحة والجودة', items: [
+    { id:'c55', icon:'🏥', text:'اتباع تعليمات وتوصيات وزارة الصحة' },
+    { id:'c56', icon:'⭐', text:'عمل تقييم شهري لجميع الموظفين' },
+  ]}
+];
+
+// ===================== STORAGE =====================
+let appData = {};
+let tasksData = []; // [{id, title, desc, branch, priority, deadline, createdAt, status, completedAt, comments:[{author,role,text,timestamp,type}]}]
+
+function initData() {
+  try {
+    const saved = localStorage.getItem('blaban_data_v3');
+    if (saved) appData = JSON.parse(saved);
+    else {
+      const old = localStorage.getItem('blaban_data_v2');
+      if (old) { appData = JSON.parse(old); saveData(); }
+    }
+  } catch(e) { appData = {}; }
+  
+  try {
+    const tsk = localStorage.getItem('blaban_tasks_v1');
+    if (tsk) tasksData = JSON.parse(tsk);
+  } catch(e) { tasksData = []; }
+}
+
+function saveData() {
+  try { localStorage.setItem('blaban_data_v3', JSON.stringify(appData)); }
+  catch(e) { localStorage.removeItem('blaban_data_v2'); localStorage.setItem('blaban_data_v3', JSON.stringify(appData)); }
+}
+
+function saveTasks() {
+  try { localStorage.setItem('blaban_tasks_v1', JSON.stringify(tasksData)); }
+  catch(e) { console.error('Tasks save failed', e); }
+}
+
+function getKey(branch, month, day) { return `${branch}_${month}_${day}`; }
+
+function getVisitData(branch, month, day) {
+  const key = getKey(branch, month, day);
+  if (!appData[key]) appData[key] = { manager:'', shift:'', results:{}, deptAssign:{}, notes:{}, images:{}, reported24h:{}, comments:{} };
+  if (!appData[key].reported24h) appData[key].reported24h = {};
+  if (!appData[key].comments) appData[key].comments = {};
+  return appData[key];
+}
+
+// ===================== SMART SCORING =====================
+function calcSmartScore(branch, month, day) {
+  const visit = getVisitData(branch, month, day);
+  const allItems = CHECKLIST.flatMap(s => s.items);
+  let ok = 0, excused = 0, deducted = 0;
+  const excusedItems = [], deductedItems = [];
+  allItems.forEach(item => {
+    const result = visit.results[item.id];
+    if (result === 'ok') { ok++; return; }
+    if (result === 'fail') {
+      const dept = visit.deptAssign[item.id] || 'الفرع';
+      if (dept === 'الفرع') { deducted++; deductedItems.push({ item, dept }); }
+      else if (visit.reported24h[item.id] === true) { excused++; excusedItems.push({ item, dept }); }
+      else { deducted++; deductedItems.push({ item, dept }); }
+    }
+  });
+  const answered = ok + excused + deducted;
+  const pct = answered > 0 ? Math.round(((ok + excused) / answered) * 100) : null;
+  return { pct, ok, excused, deducted, answered, excusedItems, deductedItems };
+}
+
+// ===================== STATE =====================
+let currentMonth = new Date().getMonth();
+let currentDay = new Date().getDate();
+let isDark = true;
+let currentRole = 'ops'; // 'ops' or 'manager'
+let activeCharts = {};
+let waCurrentBranch = null;
+let savedPhones = JSON.parse(localStorage.getItem('blaban_phones') || '[]');
+let savedEmails = JSON.parse(localStorage.getItem('blaban_emails') || '[]');
+
+// Share state
+let shareState = {
+  branch: null,
+  branchName: '',
+  format: 'text', // 'text' | 'pptx' | 'excel'
+  channel: null,
+  scope: 'branch' // 'branch' | 'all' | 'weekly' | 'managers' | 'analytics' | 'action-plan'
+};
+
+let contactState = {
+  channel: null, // 'whatsapp' | 'telegram' | 'email'
+  format: 'text',
+  scope: 'branch',
+  branch: null
+};
+
+// ===================== DEVICE VIEW =====================
+function setDeviceView(mode) {
+  document.body.classList.remove('view-desktop','view-tablet','view-mobile');
+  if (mode !== 'desktop') document.body.classList.add(`view-${mode}`);
+  document.querySelectorAll('.device-btn').forEach(b => b.classList.remove('active'));
+  const id = `dev${mode.charAt(0).toUpperCase()+mode.slice(1)}`;
+  const el = document.getElementById(id);
+  if(el) el.classList.add('active');
+  localStorage.setItem('blaban_device', mode);
+}
+
+// ===================== ROLE SWITCHER =====================
+function setRole(role) {
+  currentRole = role;
+  document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(role==='ops'?'roleOps':'roleManager').classList.add('active');
+  
+  // Filter tabs by role
+  document.querySelectorAll('.nav-tab').forEach(tab => {
+    const tabRole = tab.getAttribute('data-role');
+    if (tabRole === 'both') tab.style.display = '';
+    else if (tabRole === role) tab.style.display = '';
+    else tab.style.display = 'none';
+  });
+
+  // Branch selector bar visible only for ops
+  const bsBar = document.getElementById('branchSelectorBar');
+  if (bsBar) bsBar.style.display = role === 'ops' ? '' : 'none';
+  
+  // If current page is hidden, switch to first available
+  const activeTab = document.querySelector('.nav-tab.active');
+  if (activeTab && activeTab.style.display === 'none') {
+    if (role === 'manager') showPage('tasks');
+    else showPage('branch-view');
+  }
+  
+  localStorage.setItem('blaban_role', role);
+  updateTasksBadge();
+  showNotif(role === 'ops' ? '🌐 وضع مدير التشغيل' : '👔 وضع مدير الفرع', 'info');
+}
+
+// Selected branch state (for the unified branch view)
+let selectedBranch = localStorage.getItem('blaban_selected_branch') || 'nasr';
+
+function onBranchSelectChange(branch) {
+  selectedBranch = branch;
+  localStorage.setItem('blaban_selected_branch', branch);
+  // Hide all branch sub-pages, show selected
+  document.querySelectorAll('.branch-page').forEach(p => p.style.display = 'none');
+  const target = document.getElementById(`branch-${branch}`);
+  if (target) target.style.display = 'block';
+  // Re-render that branch (in case data changed)
+  if (typeof renderBranch === 'function') renderBranch(branch);
+}
+
+// ===================== UI HELPERS =====================
+let notifTimer = null;
+function showNotif(msg, type = 'info') {
+  const n = document.getElementById('notif');
+  n.textContent = msg;
+  const colors = { success:'#1a5c2e', error:'#5c1a1a', info:'#1a2a5c', warning:'#5c3a1a' };
+  n.style.background = colors[type] || colors.info;
+  n.classList.add('show');
+  clearTimeout(notifTimer);
+  notifTimer = setTimeout(() => n.classList.remove('show'), 3500);
+}
+
+function toggleMode() {
+  isDark = !isDark;
+  document.body.classList.toggle('light-mode', !isDark);
+  document.getElementById('modeToggle').textContent = isDark ? '🌙 داكن' : '☀️ فاتح';
+  localStorage.setItem('blaban_mode', isDark ? 'dark' : 'light');
+}
+
+function showPage(pageId) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  const page = document.getElementById(pageId);
+  if (page) {
+    page.classList.add('active');
+    const renders = {
+      'tasks': renderTasksPage,
+      'managers': renderManagersPage,
+      'analytics': renderAnalyticsPage,
+      'recommendations': renderRecommendationsPage,
+      'ops-manager': renderOpsPage,
+      'other-depts': renderDeptsPage
+    };
+    if (renders[pageId]) renders[pageId]();
+    // Special handling: branch-view must re-render the currently selected branch
+    if (pageId === 'branch-view' && typeof renderBranch === 'function') {
+      renderBranch(selectedBranch);
+    }
+  }
+  document.querySelectorAll('.nav-tab').forEach(t => { if (t.getAttribute('data-page') === pageId) t.classList.add('active'); });
+  const activeTab = document.querySelector(`.nav-tab[data-page="${pageId}"]`);
+  if (activeTab) activeTab.scrollIntoView({ behavior:'smooth', block:'nearest', inline:'center' });
+}
+</script>

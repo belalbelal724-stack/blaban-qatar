@@ -1,0 +1,104 @@
+<script>
+// ===================== INIT =====================
+function saveAllData() {
+  saveData();
+  saveTasks();
+  showNotif('✅ تم حفظ البيانات بنجاح!', 'success');
+}
+
+initData();
+
+// Restore preferences
+const savedMode = localStorage.getItem('blaban_mode');
+if (savedMode === 'light') {
+  isDark = false;
+  document.body.classList.add('light-mode');
+  const mt = document.getElementById('modeToggle');
+  if (mt) mt.textContent = '☀️ فاتح';
+}
+
+const savedDevice = localStorage.getItem('blaban_device') || 'desktop';
+setDeviceView(savedDevice);
+
+// Restore role (default: ops manager)
+const savedRole = localStorage.getItem('blaban_role') || 'ops';
+setRole(savedRole);
+
+// Render all branches (so they're ready when switched)
+BRANCHES.forEach(b => renderBranch(b));
+
+// Sync branch selector to saved branch
+const branchSelectorEl = document.getElementById('branchSelector');
+if (branchSelectorEl) {
+  branchSelectorEl.value = selectedBranch;
+  // Show only the selected branch sub-page
+  document.querySelectorAll('.branch-page').forEach(p => p.style.display = 'none');
+  const targetEl = document.getElementById(`branch-${selectedBranch}`);
+  if (targetEl) targetEl.style.display = 'block';
+}
+
+// Migrate old tasks to add branchStatus
+let tasksNeedSave = false;
+tasksData.forEach(t => {
+  if (!t.branchStatus) {
+    t.branchStatus = {};
+    const branches = t.branch === 'all' ? BRANCHES.slice() : [t.branch];
+    branches.forEach(b => {
+      t.branchStatus[b] = {
+        status: t.status === 'completed' ? 'completed' : 'pending',
+        completedAt: t.status === 'completed' ? t.completedAt : null
+      };
+    });
+    tasksNeedSave = true;
+  }
+});
+if (tasksNeedSave) saveTasks();
+
+// Update tasks badge
+updateTasksBadge();
+
+// Auto-save every 30s
+setInterval(() => {
+  saveData();
+  saveTasks();
+}, 30000);
+
+// Modal overlay click-to-close handlers
+function attachOverlayClose(modalId, closeFn) {
+  const m = document.getElementById(modalId);
+  if (!m) return;
+  m.addEventListener('click', function(e) {
+    if (e.target === this) closeFn();
+  });
+}
+attachOverlayClose('shareModal', closeShareModal);
+attachOverlayClose('contactModal', closeContactModal);
+attachOverlayClose('addTaskModal', closeAddTaskModal);
+
+// Enter key in contact phone input
+const cpi = document.getElementById('contactPhoneInput');
+if (cpi) {
+  cpi.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') executeContactSend();
+  });
+}
+const cei = document.getElementById('contactEmailInput');
+if (cei) {
+  cei.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') executeContactSend();
+  });
+}
+
+// Show first allowed page based on role
+const navTabs = document.querySelectorAll('.nav-tab');
+let firstVisible = null;
+navTabs.forEach(t => {
+  if (t.style.display !== 'none' && !firstVisible) firstVisible = t;
+});
+if (firstVisible) {
+  const pageId = firstVisible.getAttribute('data-page');
+  if (pageId) showPage(pageId);
+}
+</script>
+</body>
+</html>

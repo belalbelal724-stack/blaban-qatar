@@ -1,0 +1,1280 @@
+<script>
+// ===================== EXPORTS MODULE =====================
+// Excel + Google Sheets export utilities
+// Color palette
+const C = { maroon:'4A0F1A', maroonLight:'8B2535', gold:'C9A84C', goldLight:'E8C96A',
+  green:'27AE60', red:'C0392B', orange:'D35400', blue:'2980B9', purple:'7D3C98',
+  white:'F0E6D3', dark:'1A0810', card:'2A1020', muted:'BCA98A' };
+
+// ===================== EXCEL EXPORTS =====================
+function exportBranchExcel(branch, branchName) {
+  showNotif('⏳ جاري التصدير...', 'info');
+  const wb = XLSX.utils.book_new();
+  const allItems = CHECKLIST.flatMap(s=>s.items.map(i=>({...i,section:s.section})));
+  for(let m=0;m<12;m++){
+    const sheetData=[['اليوم','المدير','الشيفت','القسم','البند','النتيجة','الإدارة المسؤولة','معفى؟','الإجراء','تعليق']];
+    for(let d=1;d<=MONTH_DAYS[m];d++){
+      const key=getKey(branch,m,d); if(!appData[key])continue;
+      const v=appData[key];
+      allItems.forEach(item=>{
+        const r=v.results?.[item.id]; if(!r)return;
+        const dept=v.deptAssign?.[item.id]||'الفرع';
+        const excused=r==='fail'&&dept!=='الفرع'&&v.reported24h?.[item.id]===true?'نعم':'لا';
+        sheetData.push([`${d} ${MONTHS[m]}`,v.manager||'',v.shift||'',item.section,item.text,r==='ok'?'مطابق':'غير مطابق',dept,excused,v.notes?.[item.id]||'',v.comments?.[item.id]||'']);
+      });
+    }
+    if(sheetData.length>1){const ws=XLSX.utils.aoa_to_sheet(sheetData);XLSX.utils.book_append_sheet(wb,ws,MONTHS[m].substring(0,8));}
+  }
+  XLSX.writeFile(wb,`فرع_${branchName}_2026.xlsx`);
+  showNotif('✅ تم التصدير!','success');
+}
+
+// ===== Daily Excel: ONLY current selected day, ONLY fail items + their action plan =====
+// Used for sharing with the branch via WhatsApp — does NOT include cumulative data
+function exportBranchDailyExcel(branch, branchName) {
+  const month = (typeof getSelMonth === 'function') ? getSelMonth(branch) : currentMonth;
+  const day = (typeof getSelDay === 'function') ? getSelDay(branch) : currentDay;
+  const key = getKey(branch, month, day);
+  const visit = appData[key];
+  if (!visit) {
+    showNotif('⚠️ لا توجد بيانات لهذا اليوم', 'error');
+    return;
+  }
+  const allItems = CHECKLIST.flatMap(s => s.items.map(i => ({ ...i, section: s.section })));
+  const failItems = allItems.filter(i => visit.results?.[i.id] === 'fail');
+  
+  if (failItems.length === 0) {
+    showNotif('✅ لا توجد بنود غير مطابقة لهذا اليوم — لا حاجة للأكشن بلان!', 'info');
+    return;
+  }
+  
+  const wb = XLSX.utils.book_new();
+  
+  // Sheet 1: Header info + fail items
+  const dateStr = `${day} ${MONTHS[month]} 2026`;
+  const summary = [
+    ['🥛 ب لبن قطر — تقرير يومي'],
+    [],
+    ['الفرع', branchName],
+    ['التاريخ', dateStr],
+    ['المدير المتواجد', visit.manager || 'غير محدد'],
+    ['الشيفت', visit.shift || 'غير محدد'],
+    ['عدد البنود غير المطابقة', failItems.length],
+    [],
+    ['', '⚠️ هذا التقرير يشمل البنود غير المطابقة فقط لهذا اليوم'],
+    ['', '🎯 يجب على مدير الفرع العمل على هذه البنود وتسجيل التنفيذ'],
+    [],
+    ['#', 'القسم', 'البند', 'الإدارة المسؤولة', 'معفى؟', 'توجيه مدير التشغيل', 'تعليق', 'حالة الأكشن بلان']
+  ];
+  
+  failItems.forEach((item, idx) => {
+    const dept = visit.deptAssign?.[item.id] || 'الفرع';
+    const reported = visit.reported24h?.[item.id] === true;
+    const excused = dept !== 'الفرع' && reported ? 'نعم (معفى)' : 'لا';
+    const aSt = visit.actionStatus?.[item.id] || { status: 'pending' };
+    const apStatus = aSt.status === 'done' ? '✅ مكتمل' : aSt.status === 'in-progress' ? '🔄 قيد التنفيذ' : '⏳ معلق';
+    summary.push([
+      idx + 1,
+      item.section,
+      `${item.icon} ${item.text}`,
+      dept,
+      excused,
+      visit.notes?.[item.id] || '',
+      visit.comments?.[item.id] || '',
+      apStatus
+    ]);
+  });
+  
+  const ws1 = XLSX.utils.aoa_to_sheet(summary);
+  // Set column widths
+  ws1['!cols'] = [{wch:5},{wch:18},{wch:50},{wch:14},{wch:12},{wch:30},{wch:30},{wch:18}];
+  XLSX.utils.book_append_sheet(wb, ws1, `تقييم ${day}-${month+1}`);
+  
+  // Sheet 2: Action plan with branch entries log
+  const apData = [
+    ['🎯 خطة العمل (الأكشن بلان) — تنفيذ مدير الفرع'],
+    [],
+    ['الفرع', branchName, '', 'التاريخ', dateStr],
+    [],
+    ['#', 'البند', 'حالة التنفيذ', 'المنفّذ', 'تاريخ الإنجاز', 'سجل التعليقات']
+  ];
+  
+  failItems.forEach((item, idx) => {
+    const aSt = visit.actionStatus?.[item.id] || { status: 'pending', entries: [] };
+    const apStatus = aSt.status === 'done' ? '✅ مكتمل' : aSt.status === 'in-progress' ? '🔄 قيد التنفيذ' : '⏳ لم يبدأ';
+    const completedAt = aSt.completedAt ? new Date(aSt.completedAt).toLocaleString('ar-QA') : '—';
+    const entries = (aSt.entries || []).map(e => `[${new Date(e.timestamp).toLocaleDateString('ar-QA')}] ${e.user || 'مدير'}: ${e.text}`).join(' | ');
+    apData.push([
+      idx + 1,
+      `${item.icon} ${item.text}`,
+      apStatus,
+      aSt.completedBy || '—',
+      completedAt,
+      entries || '—'
+    ]);
+  });
+  
+  const ws2 = XLSX.utils.aoa_to_sheet(apData);
+  ws2['!cols'] = [{wch:5},{wch:50},{wch:18},{wch:20},{wch:22},{wch:60}];
+  XLSX.utils.book_append_sheet(wb, ws2, 'الأكشن بلان');
+  
+  const fname = `${branchName}_${day}-${month+1}-2026.xlsx`;
+  XLSX.writeFile(wb, fname);
+  showNotif(`✅ تم تصدير تقرير ${dateStr} (البنود غير المطابقة فقط)`, 'success');
+}
+
+function exportManagersExcel() {
+  const wb=XLSX.utils.book_new();
+  const rows=[['المدير','الفروع','عدد الزيارات','متوسط التقييم','الاتجاه','الإجراء المقترح']];
+  const stats = buildManagerStats();
+  Object.entries(stats).forEach(([name,s])=>{
+    const avg=Math.round(s.visits.reduce((t,v)=>t+v.pct,0)/s.visits.length);
+    const trend = analyzeManagerTrend(s.visits);
+    const trendTxt = trend.trend==='up'?`تحسن +${trend.delta}%`:trend.trend==='down'?`تراجع ${trend.delta}%`:'مستقر';
+    rows.push([name,[...s.branches].map(b=>BRANCH_NAMES[b]).join(', '),s.visits.length,avg+'%',trendTxt,avg<70?'إنذار + خطة تصحيحية':avg<90?'متابعة مكثفة':'تقدير + مكافأة']);
+  });
+  const ws=XLSX.utils.aoa_to_sheet(rows);XLSX.utils.book_append_sheet(wb,ws,'المديرون');
+  XLSX.writeFile(wb,'تقييم_المديرين_2026.xlsx');showNotif('✅ تم التصدير!','success');
+}
+
+function exportAllExcel() {
+  const wb=XLSX.utils.book_new();
+  const allItems=CHECKLIST.flatMap(s=>s.items.map(i=>({...i,section:s.section})));
+  BRANCHES.forEach(branch=>{
+    const rows=[['الشهر','اليوم','المدير','الشيفت','القسم','البند','النتيجة','الإدارة','معفى؟','الملاحظة','تعليق']];
+    for(let m=0;m<12;m++) for(let d=1;d<=MONTH_DAYS[m];d++){
+      const key=getKey(branch,m,d); if(!appData[key])continue; const v=appData[key];
+      allItems.forEach(item=>{
+        const r=v.results?.[item.id]; if(!r)return;
+        const dept=v.deptAssign?.[item.id]||'الفرع';
+        const excused=r==='fail'&&dept!=='الفرع'&&v.reported24h?.[item.id]===true?'نعم':'لا';
+        rows.push([MONTHS[m],d,v.manager||'',v.shift||'',item.section,item.text,r==='ok'?'مطابق':'غير مطابق',dept,excused,v.notes?.[item.id]||'',v.comments?.[item.id]||'']);
+      });
+    }
+    if(rows.length>1){const ws=XLSX.utils.aoa_to_sheet(rows);XLSX.utils.book_append_sheet(wb,ws,BRANCH_NAMES[branch]);}
+  });
+  XLSX.writeFile(wb,'تقرير_ب_لبن_قطر_2026_كامل.xlsx');showNotif('✅ تم التصدير!','success');
+}
+
+function exportDeptExcel(dept) {
+  const wb=XLSX.utils.book_new(); const rows=[['الفرع','التاريخ','البند','ملاحظة','تعليق']];
+  BRANCHES.forEach(branch=>{
+    for(let m=0;m<12;m++) for(let d=1;d<=MONTH_DAYS[m];d++){
+      const key=getKey(branch,m,d); if(!appData[key])continue; const v=appData[key];
+      Object.entries(v.deptAssign||{}).forEach(([id,dept2])=>{
+        if(dept2===dept&&v.results?.[id]==='fail'){
+          const item=CHECKLIST.flatMap(s=>s.items).find(i=>i.id===id);
+          rows.push([BRANCH_NAMES[branch],`${d} ${MONTHS[m]}`,item?.text||id,v.notes?.[id]||'',v.comments?.[id]||'']);
+        }
+      });
+    }
+  });
+  const ws=XLSX.utils.aoa_to_sheet(rows);XLSX.utils.book_append_sheet(wb,ws,dept);
+  XLSX.writeFile(wb,`تقرير_${dept}_2026.xlsx`);showNotif('✅ تم التصدير!','success');
+}
+
+function exportDeptsExcel(){['الصيانة','الجودة','المصنع','الإدارة العليا'].forEach(exportDeptExcel);}
+
+function exportRecoExcel(){
+  const wb=XLSX.utils.book_new();
+  const failCounts = {};
+  BRANCHES.forEach(branch => {
+    for(let m=0;m<12;m++) for(let d=1;d<=MONTH_DAYS[m];d++){
+      const key=getKey(branch,m,d); if(!appData[key])continue;
+      Object.entries(appData[key].results||{}).forEach(([id,val])=>{if(val==='fail')failCounts[id]=(failCounts[id]||0)+1;});
+    }
+  });
+  const topFails = Object.entries(failCounts).sort((a,b)=>b[1]-a[1]).slice(0,15);
+  const rows=[['التوصية','عدد التكرارات','الأولوية']];
+  topFails.forEach(([id,cnt])=>{
+    const item = CHECKLIST.flatMap(s=>s.items).find(i=>i.id===id);
+    rows.push([item?.text||id, cnt, cnt>=5?'عالية':cnt>=3?'متوسطة':'منخفضة']);
+  });
+  rows.push(['','','']);
+  rows.push(['توصيات عامة','','']);
+  rows.push(['جدولة زيارات متوازنة بين الشيفتين','','عالية']);
+  rows.push(['اجتماع أسبوعي مع مديري الفروع','','عالية']);
+  rows.push(['مشاركة أفضل الممارسات','','متوسطة']);
+  rows.push(['تفعيل نظام المكافآت','','متوسطة']);
+  const ws=XLSX.utils.aoa_to_sheet(rows);XLSX.utils.book_append_sheet(wb,ws,'التوصيات');
+  XLSX.writeFile(wb,'التوصيات_2026.xlsx');showNotif('✅ تم التصدير!','success');
+}
+
+function exportActionPlanExcel(){
+  const wb=XLSX.utils.book_new(); const rows=[['الفرع','التاريخ','البند','الإدارة المسؤولة','معفى؟','الإجراء','تعليق']];
+  BRANCHES.forEach(branch=>{
+    for(let m=0;m<12;m++) for(let d=1;d<=MONTH_DAYS[m];d++){
+      const key=getKey(branch,m,d); if(!appData[key])continue; const v=appData[key];
+      Object.entries(v.results||{}).forEach(([id,val])=>{
+        if(val==='fail'){
+          const item=CHECKLIST.flatMap(s=>s.items).find(i=>i.id===id);
+          const dept=v.deptAssign?.[id]||'الفرع';
+          const excused=dept!=='الفرع'&&v.reported24h?.[id]===true?'نعم':'لا';
+          rows.push([BRANCH_NAMES[branch],`${d} ${MONTHS[m]}`,item?.text||id,dept,excused,v.notes?.[id]||'',v.comments?.[id]||'']);
+        }
+      });
+    }
+  });
+  const ws=XLSX.utils.aoa_to_sheet(rows);XLSX.utils.book_append_sheet(wb,ws,'أكشن بلان');
+  XLSX.writeFile(wb,'أكشن_بلان_2026.xlsx');showNotif('✅ تم التصدير!','success');
+}
+
+// Weekly Excel
+function exportWeeklyExcel() {
+  const wa = window._lastWeeklyAnalysis;
+  if (!wa) { showNotif('⚠️ شغّل التحليل أولاً','error'); return; }
+  const wb = XLSX.utils.book_new();
+  // Sheet 1: Summary
+  const summary = [['تحليل أداء الأسبوع'],['الفترة',`${wa.startStr} → ${wa.endStr}`],['متوسط الأداء العام',wa.overallAvg+'%'],['أفضل فرع',BRANCH_NAMES[wa.bestBranch]+' ('+wa.bestPct+'%)'],['أقل فرع',BRANCH_NAMES[wa.worstBranch]+' ('+wa.worstPct+'%)'],[]];
+  summary.push(['الفرع','المتوسط','عدد الزيارات','الاتجاه','المقارنة']);
+  BRANCHES.forEach(b => {
+    const bs = wa.branchSummary[b];
+    if (!bs || bs.count === 0) { summary.push([BRANCH_NAMES[b],'لا توجد','0','-','-']); return; }
+    const trendTxt = bs.trend==='up'?'تحسن':bs.trend==='down'?'تراجع':'مستقر';
+    summary.push([BRANCH_NAMES[b], bs.avg+'%', bs.count, trendTxt, `${bs.firstHalf}% → ${bs.lastHalf}%`]);
+  });
+  const ws1 = XLSX.utils.aoa_to_sheet(summary);
+  XLSX.utils.book_append_sheet(wb, ws1, 'الملخص');
+
+  // Sheet 2: Daily
+  const daily = [['التاريخ',...BRANCHES.map(b=>BRANCH_NAMES[b])]];
+  wa.days.forEach((day,i) => {
+    const row = [`${day.day} ${MONTHS[day.month]}`];
+    BRANCHES.forEach(b => {
+      const score = wa.dailyScores[b]?.[i];
+      row.push(score !== null && score !== undefined ? score+'%' : '-');
+    });
+    daily.push(row);
+  });
+  const ws2 = XLSX.utils.aoa_to_sheet(daily);
+  XLSX.utils.book_append_sheet(wb, ws2, 'الأداء اليومي');
+
+  // Sheet 3: Top fails
+  const fails = [['البند','عدد التكرارات']];
+  (wa.topFails||[]).forEach(tf => fails.push([tf.text, tf.count]));
+  const ws3 = XLSX.utils.aoa_to_sheet(fails);
+  XLSX.utils.book_append_sheet(wb, ws3, 'البنود الأكثر إخفاقاً');
+
+  XLSX.writeFile(wb, `تحليل_الأسبوع_${wa.startStr.replace(/ /g,'_')}.xlsx`);
+  showNotif('✅ تم التصدير!','success');
+}
+
+// Tasks Excel — defined in part5
+// (already defined as exportTasksExcel in part5_weekly_tasks)
+
+// ===================== GOOGLE SHEETS EXPORT =====================
+// Uses CSV → upload via tab-separated string to Google Sheets via clipboard
+// Best UX: open a new sheet, pre-paste the data into clipboard for the user to paste
+async function exportToGoogleSheets(scope) {
+  showNotif('⏳ جاري تجهيز البيانات...', 'info');
+  
+  let csvData = '';
+  let title = 'تقرير ب لبن قطر';
+  
+  if (scope === 'branch' && shareState?.branch) {
+    const branch = shareState.branch;
+    const branchName = shareState.branchName || BRANCH_NAMES[branch];
+    const month = (typeof getSelMonth === 'function') ? getSelMonth(branch) : currentMonth;
+    const day = (typeof getSelDay === 'function') ? getSelDay(branch) : currentDay;
+    const key = getKey(branch, month, day);
+    const visit = appData[key] || {};
+    const allItems = CHECKLIST.flatMap(s => s.items.map(i => ({...i, section: s.section})));
+    const failItems = allItems.filter(i => visit.results?.[i.id] === 'fail');
+    
+    title = `${branchName}_${day}-${month+1}-2026`;
+    csvData = `🥛 ب لبن قطر — تقرير يومي\n`;
+    csvData += `الفرع\t${branchName}\n`;
+    csvData += `التاريخ\t${day} ${MONTHS[month]} 2026\n`;
+    csvData += `المدير\t${visit.manager || ''}\n`;
+    csvData += `الشيفت\t${visit.shift || ''}\n\n`;
+    csvData += `# البنود غير المطابقة + الأكشن بلان\n`;
+    csvData += `#\tالقسم\tالبند\tالإدارة\tمعفى؟\tحالة الأكشن بلان\tالتعليق\n`;
+    failItems.forEach((item, idx) => {
+      const dept = visit.deptAssign?.[item.id] || 'الفرع';
+      const reported = visit.reported24h?.[item.id] === true;
+      const excused = dept !== 'الفرع' && reported ? 'نعم' : 'لا';
+      const aSt = visit.actionStatus?.[item.id] || { status: 'pending' };
+      const apStatus = aSt.status === 'done' ? '✅ مكتمل' : aSt.status === 'in-progress' ? '🔄 قيد التنفيذ' : '⏳ معلق';
+      csvData += `${idx+1}\t${item.section}\t${item.icon} ${item.text}\t${dept}\t${excused}\t${apStatus}\t${(visit.comments?.[item.id]||'').replace(/\t/g,' ')}\n`;
+    });
+  } else if (scope === 'all' || scope === 'analytics') {
+    title = `تقرير_شامل_${new Date().toISOString().split('T')[0]}`;
+    csvData = `🥛 ب لبن قطر — تقرير شامل\n`;
+    csvData += `التاريخ\t${currentDay} ${MONTHS[currentMonth]} 2026\n\n`;
+    csvData += `# نتائج اليوم\n`;
+    csvData += `الفرع\tالمدير\tالنتيجة\tمطابق\tمخصوم\tمعفى\n`;
+    BRANCHES.forEach(b => {
+      const v = getVisitData(b, currentMonth, currentDay);
+      const { pct, ok, excused, deducted, answered } = calcSmartScore(b, currentMonth, currentDay);
+      if (answered === 0) {
+        csvData += `${BRANCH_NAMES[b]}\t-\tلا توجد بيانات\t-\t-\t-\n`;
+      } else {
+        csvData += `${BRANCH_NAMES[b]}\t${v.manager||'-'}\t${pct}%\t${ok+excused}\t${deducted}\t${excused}\n`;
+      }
+    });
+  } else if (scope === 'managers') {
+    title = `تقييم_المديرين`;
+    csvData = `🥛 ب لبن قطر — تقييم المديرين\n\n`;
+    csvData += `المدير\tالفروع\tعدد الزيارات\tمتوسط التقييم\n`;
+    const stats = buildManagerStats();
+    Object.entries(stats).forEach(([name,s]) => {
+      const avg = Math.round(s.visits.reduce((t,v)=>t+v.pct,0)/s.visits.length);
+      csvData += `${name}\t${[...s.branches].map(b=>BRANCH_NAMES[b]).join(', ')}\t${s.visits.length}\t${avg}%\n`;
+    });
+  } else if (scope === 'action-plan') {
+    title = `أكشن_بلان_${new Date().toISOString().split('T')[0]}`;
+    csvData = `🥛 ب لبن قطر — خطة العمل\n`;
+    csvData += `التاريخ\t${currentDay} ${MONTHS[currentMonth]} 2026\n\n`;
+    csvData += `الفرع\tالبند\tالإدارة\tالحالة\tالتعليق\n`;
+    BRANCHES.forEach(b => {
+      const v = getVisitData(b, currentMonth, currentDay);
+      const fails = CHECKLIST.flatMap(s => s.items).filter(i => v.results[i.id] === 'fail');
+      fails.forEach(item => {
+        const dept = v.deptAssign[item.id] || 'الفرع';
+        const aSt = v.actionStatus?.[item.id] || { status: 'pending' };
+        const status = aSt.status === 'done' ? 'مكتمل' : aSt.status === 'in-progress' ? 'قيد التنفيذ' : 'معلق';
+        csvData += `${BRANCH_NAMES[b]}\t${item.icon} ${item.text}\t${dept}\t${status}\t${(v.notes?.[item.id]||'').replace(/\t/g,' ')}\n`;
+      });
+    });
+  } else {
+    csvData = `🥛 ب لبن قطر — تقرير\n`;
+  }
+  
+  // Copy to clipboard
+  try {
+    await navigator.clipboard.writeText(csvData);
+    showSheetsHelpModal(title, csvData);
+  } catch(e) {
+    // Fallback: show modal with textarea for manual copy
+    showSheetsHelpModal(title, csvData);
+  }
+}
+
+function showSheetsHelpModal(title, csvData) {
+  // Build a simple modal showing instructions + the data ready to paste
+  let modal = document.getElementById('sheetsHelpModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'sheetsHelpModal';
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal-box" style="max-width:600px;">
+        <h3>📋 مشاركة عبر Google Sheets</h3>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">
+          البيانات منسوخة لحافظة جهازك. اتبع الخطوات:
+        </p>
+        <div style="background:var(--bg-card2);padding:12px;border-radius:10px;margin-bottom:12px;font-size:13px;line-height:1.8;">
+          <strong>1.</strong> افتح <a href="https://sheets.new" target="_blank" style="color:var(--gold);font-weight:700;text-decoration:underline;">sheets.new</a> (Google Sheets)<br>
+          <strong>2.</strong> اضغط على الخلية A1<br>
+          <strong>3.</strong> اضغط <kbd>Ctrl+V</kbd> (أو <kbd>Cmd+V</kbd> على Mac) للصق<br>
+          <strong>4.</strong> سمّ الورقة باسم: <code id="sheetsTitle" style="background:var(--bg-card);padding:2px 6px;border-radius:4px;color:var(--gold);"></code><br>
+          <strong>5.</strong> شارك من قائمة <strong>مشاركة</strong> داخل Google Sheets
+        </div>
+        <details style="margin-bottom:12px;">
+          <summary style="cursor:pointer;color:var(--gold-light);font-weight:700;font-size:13px;">📋 أو انسخ يدوياً (لو الحافظة لا تعمل)</summary>
+          <textarea id="sheetsDataTextarea" rows="8" readonly style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:8px;color:var(--text-light);padding:8px;font-family:monospace;font-size:11px;direction:ltr;resize:vertical;margin-top:8px;"></textarea>
+        </details>
+        <div class="modal-actions">
+          <button class="btn btn-primary btn-sm" onclick="document.getElementById('sheetsHelpModal').classList.add('hidden')">إغلاق</button>
+          <button class="btn btn-blue btn-sm" onclick="document.getElementById('sheetsDataTextarea').select();document.execCommand('copy');showNotif('✅ تم النسخ مرة أخرى','success');">📋 إعادة النسخ</button>
+          <button class="btn btn-green" onclick="window.open('https://sheets.new','_blank')">🌐 افتح Google Sheets</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  }
+  document.getElementById('sheetsTitle').textContent = title;
+  document.getElementById('sheetsDataTextarea').value = csvData;
+  modal.classList.remove('hidden');
+  showNotif('✅ تم نسخ البيانات للحافظة — اتبع الخطوات', 'success');
+}
+
+// ===================== CRITICAL REPORT EXPORT =====================
+function exportCriticalReportExcel() {
+  if (typeof renderCriticalReport !== 'function') {
+    showNotif('⚠️ خطأ في توليد التقرير', 'error');
+    return;
+  }
+  const findings = renderCriticalReport();
+  const failed = findings.filter(f => f.result === 'fail');
+  
+  if (failed.length === 0) {
+    showNotif('✅ لا توجد نقاط حرجة فاشلة', 'info');
+    return;
+  }
+  
+  const wb = XLSX.utils.book_new();
+  
+  // Sheet 1: Summary
+  const summary = [
+    ['🥛 ب لبن قطر — تقرير النقاط الحرجة الشامل'],
+    [],
+    ['تاريخ التقرير', new Date().toLocaleString('ar-QA')],
+    ['إجمالي النقاط الحرجة الفاشلة', failed.length],
+    [],
+    ['#', 'الفرع', 'البند الحرج', 'القسم', 'التاريخ', 'المدير', 'حالة الأكشن بلان', 'النوع']
+  ];
+  
+  failed.forEach((f, idx) => {
+    const apStatus = f.apStatus === 'done' ? '✅ مكتمل' : f.apStatus === 'in-progress' ? '🔄 قيد التنفيذ' : '⏳ معلق';
+    summary.push([
+      idx + 1,
+      f.branchName,
+      `${f.item.icon} ${f.item.text}`,
+      f.item.section || '-',
+      f.dateStr,
+      f.manager,
+      apStatus,
+      f.isUserCritical ? 'حرج (وُسم يدوياً)' : 'حرج (افتراضي)'
+    ]);
+  });
+  
+  const ws = XLSX.utils.aoa_to_sheet(summary);
+  ws['!cols'] = [{wch:5},{wch:14},{wch:50},{wch:24},{wch:14},{wch:18},{wch:18},{wch:18}];
+  XLSX.utils.book_append_sheet(wb, ws, 'النقاط الحرجة');
+  
+  // Sheet 2: Per-branch breakdown
+  BRANCHES.forEach(b => {
+    const branchItems = failed.filter(f => f.branch === b);
+    if (branchItems.length === 0) return;
+    const data = [
+      [`النقاط الحرجة — فرع ${BRANCH_NAMES[b]}`],
+      [],
+      ['#', 'البند', 'التاريخ', 'المدير', 'الحالة']
+    ];
+    branchItems.forEach((f, idx) => {
+      const apStatus = f.apStatus === 'done' ? '✅ مكتمل' : f.apStatus === 'in-progress' ? '🔄 قيد التنفيذ' : '⏳ معلق';
+      data.push([idx+1, `${f.item.icon} ${f.item.text}`, f.dateStr, f.manager, apStatus]);
+    });
+    const wsB = XLSX.utils.aoa_to_sheet(data);
+    wsB['!cols'] = [{wch:5},{wch:50},{wch:14},{wch:18},{wch:18}];
+    XLSX.utils.book_append_sheet(wb, wsB, BRANCH_NAMES[b].substring(0, 28));
+  });
+  
+  const fname = `تقرير_النقاط_الحرجة_${new Date().toISOString().split('T')[0]}.xlsx`;
+  XLSX.writeFile(wb, fname);
+  showNotif(`✅ تم تصدير تقرير ${failed.length} نقطة حرجة`, 'success');
+}
+
+// ===================== FULL COMPREHENSIVE REPORT EXPORT =====================
+// Exports ALL sections (evaluation + analysis + recommendations + maintenance + other depts + summary)
+// into a single multi-sheet Excel file with colors and proper header
+
+function exportFullReportExcel(branch, month, day) {
+  if (!branch) {
+    showNotif('⚠️ يجب اختيار فرع', 'error');
+    return;
+  }
+  const wb = XLSX.utils.book_new();
+  const visit = getVisitData(branch, month ?? getSelMonth(branch), day ?? getSelDay(branch));
+  const { ok, fail, excused, deducted, pct, answered } = calcSmartScore(branch, month ?? getSelMonth(branch), day ?? getSelDay(branch));
+  const rating = scoreRating(pct);
+  
+  // ============ Sheet 1: COMPREHENSIVE EVALUATION (with colors) ============
+  const branchName = BRANCH_NAMES[branch];
+  const managers = (visit.managers && visit.managers.length) ? visit.managers.join('، ') : (visit.manager || '-');
+  const dateStr = `${day ?? getSelDay(branch)} ${MONTHS[month ?? getSelMonth(branch)]} 2026`;
+  const evalNumber = countEvalsForBranch(branch);
+  
+  // Header rows (will be merged for the title)
+  const header = [
+    ['🥛 ب لبن قطر — تقرير التقييم الشامل'],
+    [],
+    ['الفرع:', branchName, '', 'التاريخ:', dateStr],
+    ['المدير المسؤول:', managers, '', 'رقم التقييم:', evalNumber],
+    ['مدير التشغيل:', 'بِلَال الأَنْصَارِي', '', 'التقييم:', `${pct}% — ${rating.label}`],
+    [],
+    ['البند', 'القسم', 'الحالة', 'الإدارة', 'ملاحظات']
+  ];
+  
+  const data = [...header];
+  const rowColors = {}; // Track which rows need coloring
+  let currentRow = header.length; // Start of data rows
+  
+  CHECKLIST.forEach(section => {
+    section.items.forEach(item => {
+      const result = visit.results[item.id];
+      const dept = visit.deptAssign?.[item.id] || 'الفرع';
+      const comment = visit.comments?.[item.id] || '';
+      const statusText = result === 'ok' ? '✅ مطابق' : result === 'fail' ? '❌ غير مطابق' : '— لم يُقيَّم';
+      
+      data.push([
+        `${item.icon} ${item.text}`,
+        section.section,
+        statusText,
+        dept,
+        comment
+      ]);
+      
+      // Track row color
+      if (result === 'ok') {
+        rowColors[currentRow] = 'green';
+      } else if (result === 'fail') {
+        if (dept === 'الصيانة') rowColors[currentRow] = 'yellow';
+        else if (dept === 'الفرع') rowColors[currentRow] = 'red';
+        // else: no color (other depts)
+      }
+      currentRow++;
+    });
+  });
+  
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = [{wch:50},{wch:24},{wch:16},{wch:16},{wch:36}];
+  
+  // Merge title cell
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }  // Title across 5 cols
+  ];
+  
+  // Apply colors via cell styles (SheetJS supports limited styling — using XLSX.utils.format_cell)
+  // Best approach: use cell-level "s" attribute. Since CE version is limited, we add a "اللون" column descriptive
+  // Add a status column showing the color category for visibility
+  Object.keys(rowColors).forEach(rIdx => {
+    const r = parseInt(rIdx);
+    const colorName = rowColors[rIdx];
+    // Add fill via cell.s for cells in this row (works with SheetJS Pro)
+    for (let c = 0; c < 5; c++) {
+      const ref = XLSX.utils.encode_cell({ r, c });
+      if (!ws[ref]) ws[ref] = { v: '', t: 's' };
+      ws[ref].s = {
+        fill: {
+          fgColor: { rgb: colorName === 'green' ? 'D4EDDA' : colorName === 'red' ? 'F8D7DA' : colorName === 'yellow' ? 'FFF3CD' : 'FFFFFF' }
+        },
+        font: {
+          color: { rgb: colorName === 'green' ? '155724' : colorName === 'red' ? '721C24' : colorName === 'yellow' ? '856404' : '000000' },
+          bold: false
+        }
+      };
+    }
+  });
+  
+  // Style header row (title)
+  ['A1','A3','A4','A5','D3','D4','D5'].forEach(ref => {
+    if (ws[ref]) {
+      ws[ref].s = { font: { bold: true, sz: ref === 'A1' ? 18 : 12, color: { rgb: '6B1B2A' } } };
+    }
+  });
+  if (ws['A1']) ws['A1'].s = { font: { bold: true, sz: 20, color: { rgb: 'C9A84C' } }, alignment: { horizontal: 'center' } };
+  
+  XLSX.utils.book_append_sheet(wb, ws, '📋 التقييم');
+  
+  // ============ Sheet 2: SUMMARY ============
+  const summary = [
+    ['ملخص التقييم'],
+    [],
+    ['البيان', 'القيمة'],
+    ['الفرع', branchName],
+    ['التاريخ', dateStr],
+    ['المدير', managers],
+    ['مدير التشغيل', 'بِلَال الأَنْصَارِي'],
+    ['رقم التقييم', evalNumber],
+    [],
+    ['📊 إجمالي البنود', answered],
+    ['✅ مطابق', ok],
+    ['❌ غير مطابق', fail],
+    ['🟢 معفى تلقائياً', excused],
+    ['❌ يُخصم من الفرع', deducted],
+    ['📈 نسبة الأداء', `${pct}%`],
+    ['🏆 التقدير', rating.label]
+  ];
+  const wsS = XLSX.utils.aoa_to_sheet(summary);
+  wsS['!cols'] = [{wch:24},{wch:30}];
+  XLSX.utils.book_append_sheet(wb, wsS, '📊 الملخص');
+  
+  // ============ Sheet 3: MAINTENANCE ============
+  const maintItems = [];
+  CHECKLIST.forEach(s => s.items.forEach(item => {
+    if (visit.results[item.id] === 'fail' && visit.deptAssign?.[item.id] === 'الصيانة') {
+      maintItems.push({
+        item: `${item.icon} ${item.text}`,
+        section: s.section,
+        comment: visit.comments?.[item.id] || '',
+        reported: visit.reported24h?.[item.id] ? 'نعم' : 'لا'
+      });
+    }
+  }));
+  const maintData = [
+    ['🔧 تقرير الصيانة'],
+    [],
+    [`الفرع: ${branchName}    التاريخ: ${dateStr}    عدد البنود: ${maintItems.length}`],
+    [],
+    ['البند', 'القسم', 'أُبلغ قبل 24 ساعة؟', 'ملاحظات']
+  ];
+  maintItems.forEach(m => maintData.push([m.item, m.section, m.reported, m.comment]));
+  if (maintItems.length === 0) maintData.push(['لا توجد بنود مسجلة على الصيانة في هذه التقييم']);
+  const wsM = XLSX.utils.aoa_to_sheet(maintData);
+  wsM['!cols'] = [{wch:50},{wch:24},{wch:18},{wch:36}];
+  XLSX.utils.book_append_sheet(wb, wsM, '🔧 الصيانة');
+  
+  // ============ Sheet 4: OTHER DEPTS ============
+  const otherDepts = ['الجودة', 'المصنع', 'الإدارة العليا'];
+  const otherData = [
+    ['🏢 الإدارات الأخرى'],
+    [],
+    [`الفرع: ${branchName}    التاريخ: ${dateStr}`],
+    [],
+    ['البند', 'القسم', 'الإدارة', 'أُبلغ قبل 24 ساعة؟', 'ملاحظات']
+  ];
+  let otherCount = 0;
+  CHECKLIST.forEach(s => s.items.forEach(item => {
+    const dept = visit.deptAssign?.[item.id];
+    if (visit.results[item.id] === 'fail' && otherDepts.includes(dept)) {
+      otherData.push([
+        `${item.icon} ${item.text}`,
+        s.section,
+        dept,
+        visit.reported24h?.[item.id] ? 'نعم' : 'لا',
+        visit.comments?.[item.id] || ''
+      ]);
+      otherCount++;
+    }
+  }));
+  if (otherCount === 0) otherData.push(['لا توجد بنود مسجلة على الإدارات الأخرى']);
+  const wsO = XLSX.utils.aoa_to_sheet(otherData);
+  wsO['!cols'] = [{wch:50},{wch:24},{wch:18},{wch:18},{wch:36}];
+  XLSX.utils.book_append_sheet(wb, wsO, '🏢 الإدارات الأخرى');
+  
+  // ============ Sheet 5: ANALYSIS ============
+  const analysisData = [
+    ['📈 تحليل الأداء'],
+    [],
+    [`الفرع: ${branchName}    التاريخ: ${dateStr}`],
+    [],
+    ['التحليل', 'القيمة'],
+    [`متوسط الأداء العام: ${pct}%`, rating.label],
+    [`عدد البنود الإجمالي: ${answered}`, ''],
+    [`نسبة المطابقة: ${answered > 0 ? Math.round(ok/answered*100) : 0}%`, ''],
+    [`نسبة عدم المطابقة: ${answered > 0 ? Math.round(fail/answered*100) : 0}%`, ''],
+    [],
+    ['أكثر الأقسام نجاحاً:', ''],
+  ];
+  
+  // Top sections
+  const sectionScores = {};
+  CHECKLIST.forEach(s => {
+    let sOk = 0, sFail = 0;
+    s.items.forEach(item => {
+      if (visit.results[item.id] === 'ok') sOk++;
+      else if (visit.results[item.id] === 'fail') sFail++;
+    });
+    const sTotal = sOk + sFail;
+    if (sTotal > 0) {
+      sectionScores[s.section] = Math.round(sOk/sTotal*100);
+    }
+  });
+  const sortedSections = Object.entries(sectionScores).sort((a,b) => b[1]-a[1]);
+  sortedSections.slice(0, 3).forEach(([sec, score]) => {
+    analysisData.push([sec, `${score}%`]);
+  });
+  analysisData.push([]);
+  analysisData.push(['أكثر الأقسام تحتاج تحسيناً:', '']);
+  sortedSections.slice(-3).reverse().forEach(([sec, score]) => {
+    analysisData.push([sec, `${score}%`]);
+  });
+  const wsA = XLSX.utils.aoa_to_sheet(analysisData);
+  wsA['!cols'] = [{wch:50},{wch:18}];
+  XLSX.utils.book_append_sheet(wb, wsA, '📈 التحليل');
+  
+  // ============ Sheet 6: RECOMMENDATIONS ============
+  const recoData = [
+    ['💡 التوصيات والتحسينات'],
+    [],
+    [`الفرع: ${branchName}    التاريخ: ${dateStr}`],
+    [],
+    ['#', 'التوصية']
+  ];
+  
+  // Auto-generated recommendations based on data
+  const recos = [];
+  if (pct < 60) recos.push('🚨 الأداء ضعيف — يستلزم تدخلاً فورياً وخطة تصحيحية شاملة');
+  else if (pct < 70) recos.push('⚠️ الأداء متوسط — يحتاج برنامج تطوير أسبوعي');
+  else if (pct < 90) recos.push('👍 أداء جيد — استمر مع تحسين البنود الضعيفة');
+  else recos.push('🌟 أداء ممتاز — استمر وكافئ الفريق');
+  
+  if (fail > 0) {
+    const topFails = [];
+    CHECKLIST.forEach(s => s.items.forEach(item => {
+      if (visit.results[item.id] === 'fail') topFails.push(item.text);
+    }));
+    if (topFails.length > 0) {
+      recos.push(`📌 ركّز على: ${topFails.slice(0, 3).join('، ')}`);
+    }
+  }
+  
+  const criticalFailed = CHECKLIST.flatMap(s => s.items)
+    .filter(it => it.critical && visit.results[it.id] === 'fail');
+  if (criticalFailed.length > 0) {
+    recos.push(`🚨 بنود حرجة فاشلة (${criticalFailed.length}): معالجة فورية مطلوبة!`);
+  }
+  
+  if (deducted > 0) recos.push(`📋 ${deducted} بند لم يُبلَّغ عن إدارة أخرى مسؤولة — التزم بقاعدة 24 ساعة`);
+  
+  recos.forEach((r, idx) => recoData.push([idx+1, r]));
+  const wsR = XLSX.utils.aoa_to_sheet(recoData);
+  wsR['!cols'] = [{wch:5},{wch:80}];
+  XLSX.utils.book_append_sheet(wb, wsR, '💡 التوصيات');
+  
+  // ============ EXPORT ============
+  const fname = `تقرير_شامل_${branchName}_${dateStr.replace(/ /g, '_')}.xlsx`;
+  XLSX.writeFile(wb, fname);
+  showNotif(`✅ تم تصدير التقرير الشامل (6 أوراق)`, 'success');
+}
+
+// Counter for evaluation number
+function countEvalsForBranch(branch) {
+  let count = 0;
+  Object.keys(appData).forEach(key => {
+    if (key.startsWith(branch + '_')) {
+      const visit = appData[key];
+      if (visit?.results && Object.keys(visit.results).length > 0) count++;
+    }
+  });
+  return count;
+}
+
+window.exportFullReportExcel = exportFullReportExcel;
+window.countEvalsForBranch = countEvalsForBranch;
+
+// ===================== EXPORT BRANCH ZIP (Excel + Photos) =====================
+async function exportBranchZipWithPhotos(branch, month, day) {
+  if (typeof JSZip === 'undefined') {
+    showNotif('❌ مكتبة ZIP غير متاحة', 'error');
+    return;
+  }
+  const m = month ?? getSelMonth(branch);
+  const d = day ?? getSelDay(branch);
+  const visit = getVisitData(branch, m, d);
+  const branchName = BRANCH_NAMES[branch];
+  const dateStr = `${d}_${MONTHS[m]}_2026`;
+  
+  showNotif('⏳ جاري إعداد الملف...', 'info');
+  
+  const zip = new JSZip();
+  const photosFolder = zip.folder('صور_البنود');
+  
+  // First: build Excel with all data
+  const wb = XLSX.utils.book_new();
+  const { ok, fail, excused, deducted, pct, answered } = calcSmartScore(branch, m, d);
+  const rating = scoreRating(pct);
+  const managers = (visit.managers && visit.managers.length) ? visit.managers.join('، ') : (visit.manager || '-');
+  
+  // Header rows
+  const dataRows = [
+    ['🥛 ب لبن قطر — تقرير التقييم مع الصور'],
+    [],
+    ['الفرع:', branchName, '', 'التاريخ:', `${d} ${MONTHS[m]} 2026`],
+    ['المدير:', managers, '', 'رقم التقييم:', countEvalsForBranch(branch)],
+    ['مدير التشغيل:', 'بِلَال الأَنْصَارِي', '', 'التقييم:', `${pct}% — ${rating.label}`],
+    [],
+    ['البند', 'الحالة', 'الإدارة', 'عدد الصور', 'ملاحظات']
+  ];
+  
+  let photoIdx = 0;
+  for (const section of CHECKLIST) {
+    for (const item of section.items) {
+      const result = visit.results[item.id];
+      const dept = visit.deptAssign?.[item.id] || 'الفرع';
+      const comment = visit.comments?.[item.id] || '';
+      const statusText = result === 'ok' ? '✅ مطابق' : result === 'fail' ? '❌ غير مطابق' : '— لم يُقيَّم';
+      
+      const photos = getBeforePhotosArray(visit.actionStatus?.[item.id]);
+      const photoCount = photos.length;
+      
+      dataRows.push([
+        `${item.icon} ${item.text}`,
+        statusText,
+        dept,
+        photoCount > 0 ? `${photoCount} صورة` : '-',
+        comment
+      ]);
+      
+      // Save photos to ZIP folder
+      if (result === 'fail' && photos.length > 0) {
+        for (let i = 0; i < photos.length; i++) {
+          try {
+            const photoDataUrl = photos[i];
+            if (photoDataUrl.startsWith('data:image/')) {
+              const base64 = photoDataUrl.split(',')[1];
+              const ext = photoDataUrl.match(/data:image\/(\w+)/)?.[1] || 'jpg';
+              const safeText = item.text.substring(0, 30).replace(/[^a-zA-Z0-9\u0600-\u06FF]/g, '_');
+              const fname = `${item.id}_${safeText}_${i+1}.${ext}`;
+              photosFolder.file(fname, base64, { base64: true });
+              photoIdx++;
+            }
+          } catch(e) {
+            console.warn('Photo skip:', e);
+          }
+        }
+      }
+    }
+  }
+  
+  const ws = XLSX.utils.aoa_to_sheet(dataRows);
+  ws['!cols'] = [{wch:50},{wch:16},{wch:18},{wch:12},{wch:36}];
+  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }];
+  
+  // Color rows
+  let r = 7;
+  CHECKLIST.forEach(section => section.items.forEach(item => {
+    const result = visit.results[item.id];
+    const dept = visit.deptAssign?.[item.id] || 'الفرع';
+    let color = null;
+    if (result === 'ok') color = 'D4EDDA';
+    else if (result === 'fail') {
+      if (dept === 'الصيانة') color = 'FFF3CD';
+      else if (dept === 'الفرع') color = 'F8D7DA';
+    }
+    if (color) {
+      for (let c = 0; c < 5; c++) {
+        const ref = XLSX.utils.encode_cell({ r, c });
+        if (!ws[ref]) ws[ref] = { v: '', t: 's' };
+        ws[ref].s = {
+          fill: { fgColor: { rgb: color } },
+          font: { color: { rgb: color === 'D4EDDA' ? '155724' : color === 'F8D7DA' ? '721C24' : '856404' } }
+        };
+      }
+    }
+    r++;
+  }));
+  
+  XLSX.utils.book_append_sheet(wb, ws, 'التقييم');
+  
+  // Add Excel to ZIP
+  const excelBuffer = XLSX.write(wb, { type: 'array', bookType: 'xlsx', cellStyles: true });
+  zip.file(`تقرير_${branchName}_${dateStr}.xlsx`, excelBuffer);
+  
+  // Generate ZIP
+  try {
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `تقرير_شامل_${branchName}_${dateStr}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showNotif(`✅ تم التصدير: ${photoIdx} صورة + Excel ملوّن`, 'success');
+  } catch(err) {
+    console.error(err);
+    showNotif('❌ خطأ: ' + err.message, 'error');
+  }
+}
+
+window.exportBranchZipWithPhotos = exportBranchZipWithPhotos;
+
+// ===================== PDF EXPORT (NEW APPROACH: Capture actual pages) =====================
+// Strategy: capture the actual visible app pages (as user sees them) → convert to PDF
+
+async function _capturePageAsImage(pageId) {
+  // Switch to the page
+  const allPages = document.querySelectorAll('.page');
+  const targetPage = document.getElementById(pageId);
+  if (!targetPage) {
+    console.warn('Page not found:', pageId);
+    return null;
+  }
+  
+  // Save current active state
+  const prevActive = document.querySelector('.page.active');
+  
+  // Force LIGHT mode + add PDF capture class for darker text
+  const wasLightMode = document.body.classList.contains('light-mode');
+  document.body.classList.add('light-mode');
+  document.body.classList.add('pdf-capturing');
+  
+  // Show target page
+  allPages.forEach(p => p.classList.remove('active'));
+  targetPage.classList.add('active');
+  
+  // Trigger the page's render function if exists
+  if (typeof showPage === 'function') {
+    try {
+      showPage(pageId);
+    } catch(e) { console.warn(e); }
+  }
+  
+  // Wait for rendering
+  await new Promise(r => setTimeout(r, 700));
+  
+  // Capture the page using html2canvas
+  if (typeof html2canvas === 'undefined') {
+    console.error('html2canvas not loaded');
+    return null;
+  }
+  
+  try {
+    const canvas = await html2canvas(targetPage, {
+      scale: 1.4,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      backgroundColor: '#FFFFFF',  // Always white for PDF
+      windowWidth: Math.max(targetPage.scrollWidth, 794),
+      width: targetPage.scrollWidth,
+      height: targetPage.scrollHeight
+    });
+    return canvas;
+  } catch(err) {
+    console.error('Capture error:', err);
+    return null;
+  } finally {
+    // Restore previous active
+    if (prevActive && prevActive !== targetPage) {
+      targetPage.classList.remove('active');
+      prevActive.classList.add('active');
+    }
+    // Restore mode
+    document.body.classList.remove('pdf-capturing');
+    if (!wasLightMode) document.body.classList.remove('light-mode');
+  }
+}
+
+// Helper to show loading overlay
+function _showPdfLoading(message) {
+  let overlay = document.getElementById('_pdfLoadingOverlay');
+  if (overlay) overlay.remove();
+  overlay = document.createElement('div');
+  overlay.id = '_pdfLoadingOverlay';
+  overlay.style.cssText = `
+    position: fixed; inset: 0;
+    background: rgba(0, 0, 0, 0.88);
+    z-index: 999999;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; color: #C9A84C;
+    font-family: 'Tajawal', sans-serif;
+  `;
+  overlay.innerHTML = `
+    <div style="background:#4A0F1A;padding:30px 50px;border-radius:16px;border:3px solid #C9A84C;text-align:center;box-shadow:0 0 50px rgba(201,168,76,0.5);max-width:90%;">
+      <div style="font-size:48px;margin-bottom:14px;">📄</div>
+      <div style="font-size:22px;font-weight:800;color:#E8C96A;margin-bottom:8px;" id="_pdfLoadingTitle">${message}</div>
+      <div style="font-size:13px;color:#F0E6D3;margin-bottom:18px;" id="_pdfLoadingSub">قد يستغرق 15-45 ثانية حسب حجم البيانات</div>
+      <div style="width:280px;height:8px;background:rgba(255,255,255,0.1);border-radius:4px;overflow:hidden;margin:0 auto;">
+        <div id="_pdfProgressBar" style="height:100%;background:linear-gradient(90deg,#C9A84C,#E8C96A);width:5%;transition:width 0.4s;"></div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
+function _updatePdfProgress(percent, subMessage) {
+  const bar = document.getElementById('_pdfProgressBar');
+  if (bar) bar.style.width = percent + '%';
+  if (subMessage) {
+    const sub = document.getElementById('_pdfLoadingSub');
+    if (sub) sub.textContent = subMessage;
+  }
+}
+
+function _hidePdfLoading() {
+  const overlay = document.getElementById('_pdfLoadingOverlay');
+  if (overlay) overlay.remove();
+}
+
+// Convert a canvas to PDF page
+function _addCanvasToPdf(pdf, canvas, isFirstPage) {
+  if (!canvas) return false;
+  const imgData = canvas.toDataURL('image/jpeg', 0.85);
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  
+  const imgWidth = pageWidth - 10;  // 5mm margins
+  const imgHeight = (canvas.height * imgWidth) / canvas.width;
+  
+  if (!isFirstPage) pdf.addPage();
+  
+  // If image fits on one page
+  if (imgHeight <= pageHeight - 10) {
+    pdf.addImage(imgData, 'JPEG', 5, 5, imgWidth, imgHeight, undefined, 'FAST');
+    return true;
+  }
+  
+  // Image is taller than page — split across multiple pages
+  let position = 0;
+  let pageNum = 0;
+  while (position < canvas.height) {
+    if (pageNum > 0) pdf.addPage();
+    const heightOnThisPage = Math.min(canvas.height - position, (pageHeight - 10) * canvas.width / imgWidth);
+    
+    // Create a temporary canvas for this slice
+    const sliceCanvas = document.createElement('canvas');
+    sliceCanvas.width = canvas.width;
+    sliceCanvas.height = heightOnThisPage;
+    const ctx = sliceCanvas.getContext('2d');
+    ctx.fillStyle = '#1A0810';
+    ctx.fillRect(0, 0, canvas.width, heightOnThisPage);
+    ctx.drawImage(canvas, 0, position, canvas.width, heightOnThisPage, 0, 0, canvas.width, heightOnThisPage);
+    
+    const sliceData = sliceCanvas.toDataURL('image/jpeg', 0.85);
+    const sliceHeightMm = (heightOnThisPage * imgWidth) / canvas.width;
+    pdf.addImage(sliceData, 'JPEG', 5, 5, imgWidth, sliceHeightMm, undefined, 'FAST');
+    
+    position += heightOnThisPage;
+    pageNum++;
+  }
+  return true;
+}
+
+// Build cover page for the PDF
+function _buildCoverCanvas(branch, title) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1200;
+  canvas.height = 1700;
+  const ctx = canvas.getContext('2d');
+  
+  // Background gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, 1700);
+  grad.addColorStop(0, '#4A0F1A');
+  grad.addColorStop(1, '#1A0810');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 1200, 1700);
+  
+  // Gold border
+  ctx.strokeStyle = '#C9A84C';
+  ctx.lineWidth = 8;
+  ctx.strokeRect(40, 40, 1120, 1620);
+  ctx.lineWidth = 2;
+  ctx.strokeRect(60, 60, 1080, 1580);
+  
+  // Set Arabic-friendly defaults for all text
+  ctx.direction = 'rtl';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  
+  // Title
+  ctx.fillStyle = '#E8C96A';
+  ctx.font = 'bold 90px "Tajawal", Arial, sans-serif';
+  ctx.fillText('🥛', 600, 280);
+  ctx.font = 'bold 64px "Tajawal", Arial, sans-serif';
+  ctx.fillText('ب لبن قطر', 600, 380);
+  
+  ctx.font = 'bold 48px "Tajawal", Arial, sans-serif';
+  ctx.fillStyle = '#F0E6D3';
+  ctx.fillText(title, 600, 500);
+  
+  // Decorative line
+  ctx.strokeStyle = '#C9A84C';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(300, 560);
+  ctx.lineTo(900, 560);
+  ctx.stroke();
+  
+  // Branch info
+  if (branch && BRANCH_NAMES[branch]) {
+    ctx.fillStyle = '#E8C96A';
+    ctx.font = 'bold 56px "Tajawal", Arial, sans-serif';
+    ctx.fillText('🏪 ' + BRANCH_NAMES[branch], 600, 720);
+  }
+  
+  // Date
+  ctx.fillStyle = '#F0E6D3';
+  ctx.font = '42px "Tajawal", Arial, sans-serif';
+  const now = new Date();
+  ctx.fillText('📅 ' + now.toLocaleDateString('ar-QA'), 600, 820);
+  
+  // Operations manager
+  ctx.direction = 'rtl';
+  ctx.font = '38px "Tajawal", Arial, sans-serif';
+  ctx.fillStyle = '#C9A84C';
+  ctx.fillText('مدير التشغيل', 600, 1380);
+  ctx.font = 'bold 56px "Tajawal", Arial, sans-serif';
+  ctx.fillStyle = '#E8C96A';
+  ctx.fillText('بلال الأنصاري', 600, 1460);
+  
+  // Bottom decoration
+  ctx.font = '32px "Tajawal", Arial, sans-serif';
+  ctx.fillStyle = '#BCA98A';
+  ctx.fillText('تقرير تقييم الأداء', 600, 1570);
+  
+  return canvas;
+}
+
+// ============ PDF EXPORT FUNCTIONS ============
+
+async function pdfExportSection(pageId, sectionTitle, branch) {
+  if (typeof jspdf === 'undefined' && typeof window.jspdf === 'undefined') {
+    showNotif('❌ مكتبة PDF غير محمّلة', 'error');
+    return;
+  }
+  
+  _showPdfLoading('جاري إنشاء PDF...');
+  _updatePdfProgress(10, 'تجهيز الصفحة...');
+  
+  try {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    
+    // Cover page
+    _updatePdfProgress(25, 'إنشاء صفحة الغلاف...');
+    const cover = _buildCoverCanvas(branch, sectionTitle);
+    _addCanvasToPdf(pdf, cover, true);
+    
+    // Capture the actual page
+    _updatePdfProgress(50, `التقاط: ${sectionTitle}...`);
+    const canvas = await _capturePageAsImage(pageId);
+    
+    if (!canvas) {
+      throw new Error('فشل التقاط الصفحة. تأكد من فتح الصفحة المطلوبة.');
+    }
+    
+    _updatePdfProgress(80, 'تحويل لـ PDF...');
+    _addCanvasToPdf(pdf, canvas, false);
+    
+    _updatePdfProgress(100, 'حفظ الملف...');
+    const fname = `${sectionTitle.replace(/[^\u0600-\u06FFa-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+    pdf.save(fname);
+    
+    showNotif('✅ تم تنزيل الـ PDF', 'success');
+  } catch(err) {
+    console.error('PDF Error:', err);
+    showNotif('❌ ' + (err.message || err), 'error');
+  } finally {
+    _hidePdfLoading();
+  }
+}
+
+async function pdfExportComprehensive(branch) {
+  if (!window.jspdf) {
+    showNotif('❌ مكتبة PDF غير محمّلة', 'error');
+    return;
+  }
+  
+  // Show selected branch first
+  if (branch && typeof selectedBranch !== 'undefined') {
+    selectedBranch = branch;
+  }
+  
+  const sections = [
+    { id: 'branch-view', title: '📋 التقييم التفصيلي' },
+    { id: 'dashboard', title: '📡 لوحة المعلومات' },
+    { id: 'managers', title: '👔 تقييم المديرين' },
+    { id: 'analytics', title: '📊 التحليل والإحصائيات' },
+    { id: 'recommendations', title: '💡 التوصيات' },
+    { id: 'ops-manager', title: '🌐 نظرة عامة' },
+    { id: 'other-depts', title: '🏢 الإدارات الأخرى' },
+    { id: 'tasks', title: '📋 المهام' }
+  ];
+  
+  _showPdfLoading('إعداد التقرير الشامل...');
+  _updatePdfProgress(5, `سيتم التقاط ${sections.length} أقسام`);
+  
+  try {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    
+    // Cover page
+    _updatePdfProgress(8, 'إنشاء صفحة الغلاف...');
+    const cover = _buildCoverCanvas(branch, '📑 التقرير الشامل');
+    _addCanvasToPdf(pdf, cover, true);
+    
+    // Capture each section
+    let progressStep = 90 / sections.length;
+    let currentProgress = 10;
+    
+    for (let i = 0; i < sections.length; i++) {
+      const section = sections[i];
+      _updatePdfProgress(currentProgress, `${i+1}/${sections.length}: ${section.title}`);
+      
+      try {
+        const canvas = await _capturePageAsImage(section.id);
+        if (canvas) {
+          _addCanvasToPdf(pdf, canvas, false);
+        }
+      } catch(e) {
+        console.warn(`Failed to capture ${section.id}:`, e);
+      }
+      
+      currentProgress += progressStep;
+    }
+    
+    _updatePdfProgress(99, 'حفظ الملف...');
+    const fname = `تقرير_شامل_${branch ? BRANCH_NAMES[branch] : 'كامل'}_${new Date().toISOString().split('T')[0]}.pdf`;
+    pdf.save(fname);
+    
+    showNotif('✅ تم تنزيل التقرير الشامل', 'success');
+  } catch(err) {
+    console.error('PDF Error:', err);
+    showNotif('❌ ' + (err.message || err), 'error');
+  } finally {
+    _hidePdfLoading();
+    // Return to branch view
+    if (typeof showPage === 'function') {
+      try { showPage('branch-view'); } catch(e) {}
+    }
+  }
+}
+
+// Wrappers for each section
+function pdfExportEvaluation(branch) { 
+  if (branch && typeof selectedBranch !== 'undefined') selectedBranch = branch;
+  return pdfExportSection('branch-view', 'التقييم التفصيلي', branch); 
+}
+function pdfExportSummary(branch) { return pdfExportSection('dashboard', 'لوحة المعلومات', branch); }
+function pdfExportAnalysis(branch) { return pdfExportSection('analytics', 'التحليل', branch); }
+function pdfExportRecommendations(branch) { return pdfExportSection('recommendations', 'التوصيات', branch); }
+function pdfExportMaintenance(branch) { return pdfExportSection('other-depts', 'الإدارات الأخرى', branch); }
+function pdfExportOtherDepts(branch) { return pdfExportSection('other-depts', 'الإدارات الأخرى', branch); }
+function pdfExportOverview() { return pdfExportSection('ops-manager', 'نظرة عامة'); }
+function pdfExportManagers() { return pdfExportSection('managers', 'المديرون'); }
+
+window.pdfExportEvaluation = pdfExportEvaluation;
+window.pdfExportSummary = pdfExportSummary;
+window.pdfExportAnalysis = pdfExportAnalysis;
+window.pdfExportRecommendations = pdfExportRecommendations;
+window.pdfExportMaintenance = pdfExportMaintenance;
+window.pdfExportOtherDepts = pdfExportOtherDepts;
+window.pdfExportOverview = pdfExportOverview;
+window.pdfExportManagers = pdfExportManagers;
+window.pdfExportComprehensive = pdfExportComprehensive;
+
+// PDF picker modal
+function openPdfExportModal(branch) {
+  let modal = document.getElementById('pdfExportModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'pdfExportModal';
+    modal.className = 'modal-overlay';
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = `
+    <div class="modal-box" style="max-width:580px;">
+      <h3>📄 تصدير PDF</h3>
+      <p style="font-size:14px;color:#BCA98A;margin-bottom:14px;">
+        التقرير يلتقط الصفحات كما تظهر لك في السيستم تماماً.
+      </p>
+      
+      <div style="background:linear-gradient(135deg,#6B1B2A,#4A0F1A);border:2px solid #C9A84C;border-radius:14px;padding:14px;margin-bottom:14px;text-align:center;">
+        <button class="btn" style="background:linear-gradient(135deg,#C9A84C,#E8C96A);color:#4A0F1A;font-weight:900;padding:14px 28px;font-size:15px;width:100%;border:none;border-radius:10px;cursor:pointer;" onclick="document.getElementById('pdfExportModal').classList.add('hidden'); pdfExportComprehensive('${branch}');">
+          🏆 التقرير الشامل للإدارة العليا
+        </button>
+        <div style="font-size:12px;color:#F0E6D3;margin-top:6px;">
+          يحتوي: التقييم • Dashboard • المديرون • التحليل • التوصيات • نظرة عامة • الإدارات • المهام
+        </div>
+      </div>
+      
+      <h4 style="color:#E8C96A;margin:14px 0 10px;">📂 أو حمّل قسماً واحداً:</h4>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;">
+        <button class="btn btn-gold btn-sm" onclick="document.getElementById('pdfExportModal').classList.add('hidden'); pdfExportEvaluation('${branch}');">📋 التقييم</button>
+        <button class="btn btn-gold btn-sm" onclick="document.getElementById('pdfExportModal').classList.add('hidden'); pdfExportSummary('${branch}');">📡 Dashboard</button>
+        <button class="btn btn-gold btn-sm" onclick="document.getElementById('pdfExportModal').classList.add('hidden'); pdfExportManagers();">👔 المديرون</button>
+        <button class="btn btn-gold btn-sm" onclick="document.getElementById('pdfExportModal').classList.add('hidden'); pdfExportAnalysis('${branch}');">📊 التحليل</button>
+        <button class="btn btn-gold btn-sm" onclick="document.getElementById('pdfExportModal').classList.add('hidden'); pdfExportRecommendations('${branch}');">💡 التوصيات</button>
+        <button class="btn btn-gold btn-sm" onclick="document.getElementById('pdfExportModal').classList.add('hidden'); pdfExportOverview();">🌐 نظرة عامة</button>
+        <button class="btn btn-gold btn-sm" onclick="document.getElementById('pdfExportModal').classList.add('hidden'); pdfExportOtherDepts('${branch}');">🏢 الإدارات الأخرى</button>
+        <button class="btn btn-gold btn-sm" onclick="document.getElementById('pdfExportModal').classList.add('hidden'); pdfExportSection('tasks', 'المهام', '${branch}');">📋 المهام</button>
+      </div>
+      
+      <div class="modal-actions">
+        <button class="btn btn-primary" onclick="document.getElementById('pdfExportModal').classList.add('hidden')">إغلاق</button>
+      </div>
+    </div>
+  `;
+  modal.classList.remove('hidden');
+}
+
+window.pdfExportSection = pdfExportSection;
+window.openPdfExportModal = openPdfExportModal;
+
+</script>

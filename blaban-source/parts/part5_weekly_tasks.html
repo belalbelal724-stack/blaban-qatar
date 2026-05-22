@@ -1,0 +1,948 @@
+<script>
+// ===================== WEEKLY ANALYSIS =====================
+function getWeekRange(month, day) {
+  // Returns last 7 days from selected day (inclusive)
+  const days = [];
+  let m = month, d = day;
+  for (let i = 0; i < 7; i++) {
+    days.unshift({ m, d });
+    d--;
+    if (d < 1) {
+      m--;
+      if (m < 0) { m = 11; }
+      d = MONTH_DAYS[m];
+    }
+  }
+  return days;
+}
+
+function renderWeeklyAnalysis() {
+  const container = document.getElementById('weekly-content');
+  if (!container) return;
+  
+  const monthOpts = MONTHS.map((m,i) => `<option value="${i}" ${i===currentMonth?'selected':''}>${m} 2026</option>`).join('');
+  const daysCount = MONTH_DAYS[currentMonth];
+  const dayOpts = Array.from({length:daysCount},(_,i)=>`<option value="${i+1}" ${i+1===currentDay?'selected':''}>${i+1}</option>`).join('');
+
+  container.innerHTML = `
+  <div class="card">
+    <div class="card-title">📅 تحليل أداء الأسبوع</div>
+    <p style="color:var(--text-muted);margin-bottom:14px;">حلل أداء الأسبوع الكامل (آخر 7 أيام) لجميع الفروع بضغطة زر واحدة</p>
+    
+    <div class="form-row">
+      <div class="form-group">
+        <label>الشهر</label>
+        <select id="weekly_month" onchange="updateWeeklyDays()">${monthOpts}</select>
+      </div>
+      <div class="form-group">
+        <label>اليوم النهائي للأسبوع</label>
+        <select id="weekly_day">${dayOpts}</select>
+      </div>
+      <div class="form-group" style="display:flex;align-items:flex-end;">
+        <button class="btn btn-gold" style="width:100%;font-weight:800;" onclick="runWeeklyAnalysis()"><span class="gold-icon">⚡</span> حلّل أداء الأسبوع</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="weekly_results"></div>
+
+  <div class="page-footer">
+    
+    <div class="footer-actions">
+      <button class="btn btn-gold" onclick="openShareModal('weekly',null,'تحليل الأسبوع')">📤 مشاركة</button>
+    </div>
+  </div>`;
+}
+
+function updateWeeklyDays() {
+  const month = parseInt(document.getElementById('weekly_month').value);
+  const daysCount = MONTH_DAYS[month];
+  const daySel = document.getElementById('weekly_day');
+  const curDay = parseInt(daySel.value);
+  daySel.innerHTML = Array.from({length:daysCount},(_,i)=>`<option value="${i+1}" ${i+1===Math.min(curDay,daysCount)?'selected':''}>${i+1}</option>`).join('');
+}
+
+function runWeeklyAnalysis() {
+  const month = parseInt(document.getElementById('weekly_month').value);
+  const day = parseInt(document.getElementById('weekly_day').value);
+  const week = getWeekRange(month, day);
+  const resultsDiv = document.getElementById('weekly-result') || document.getElementById('weekly_results');
+  
+  // Compute per-branch per-day scores
+  const branchData = {};
+  const failCounts = {}; // overall fail count by item across all branches/days
+  let totalVisits = 0, totalScore = 0;
+  
+  BRANCHES.forEach(b => {
+    branchData[b] = {
+      days: week.map(({m,d}) => {
+        const { pct, answered, ok, excused, deducted } = calcSmartScore(b, m, d);
+        if (answered === 0) return null;
+        const visit = getVisitData(b, m, d);
+        // Count fails
+        Object.entries(visit.results||{}).forEach(([id,val])=>{
+          if (val === 'fail') failCounts[id] = (failCounts[id]||0)+1;
+        });
+        totalVisits++; totalScore += pct;
+        return { m, d, pct, ok, excused, deducted, manager: visit.manager, shift: visit.shift };
+      }),
+      avg: 0,
+      visits: 0,
+      bestDay: null,
+      worstDay: null,
+      trend: 'stable'
+    };
+    const valid = branchData[b].days.filter(x=>x!==null);
+    branchData[b].visits = valid.length;
+    if (valid.length > 0) {
+      branchData[b].avg = Math.round(valid.reduce((s,d)=>s+d.pct,0)/valid.length);
+      branchData[b].bestDay = valid.reduce((b,d)=>d.pct>b.pct?d:b);
+      branchData[b].worstDay = valid.reduce((b,d)=>d.pct<b.pct?d:b);
+      // Trend: compare first half to second half
+      if (valid.length >= 2) {
+        const half = Math.ceil(valid.length/2);
+        const first = valid.slice(0, half);
+        const last = valid.slice(-half);
+        const avgF = first.reduce((s,d)=>s+d.pct,0)/first.length;
+        const avgL = last.reduce((s,d)=>s+d.pct,0)/last.length;
+        const delta = avgL - avgF;
+        branchData[b].trend = delta > 3 ? 'up' : delta < -3 ? 'down' : 'stable';
+        branchData[b].trendDelta = Math.round(delta);
+      }
+    }
+  });
+  
+  const overallAvg = totalVisits > 0 ? Math.round(totalScore/totalVisits) : 0;
+  const topFails = Object.entries(failCounts).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  
+  // Best & worst branches
+  const sortedBranches = BRANCHES.filter(b=>branchData[b].visits>0).sort((a,b)=>branchData[b].avg-branchData[a].avg);
+  const bestBranch = sortedBranches[0];
+  const worstBranch = sortedBranches[sortedBranches.length-1];
+  
+  const startLabel = `${week[0].d} ${MONTHS[week[0].m]}`;
+  const endLabel = `${week[6].d} ${MONTHS[week[6].m]}`;
+  
+  let html = `
+  <div class="weekly-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+      <h3 style="color:var(--gold);font-size:var(--fs-lg);">📊 ملخص الأسبوع: ${startLabel} → ${endLabel}</h3>
+      <span class="tag tag-purple" style="font-size:14px;padding:6px 12px;">${totalVisits} زيارة</span>
+    </div>
+    
+    <div class="weekly-stat-grid">
+      <div class="stat-card"><div class="stat-icon">📈</div><div class="stat-value" style="color:${overallAvg>=90?'var(--green)':overallAvg>=70?'var(--orange)':'var(--red)'}">${overallAvg}%</div><div class="stat-label">متوسط الأسبوع</div></div>
+      <div class="stat-card"><div class="stat-icon">🏆</div><div class="stat-value" style="color:var(--green);font-size:18px;">${bestBranch?BRANCH_NAMES[bestBranch]:'—'}</div><div class="stat-label">أفضل فرع (${bestBranch?branchData[bestBranch].avg+'%':''})</div></div>
+      <div class="stat-card"><div class="stat-icon">⚠️</div><div class="stat-value" style="color:var(--red);font-size:18px;">${worstBranch?BRANCH_NAMES[worstBranch]:'—'}</div><div class="stat-label">يحتاج تحسين (${worstBranch?branchData[worstBranch].avg+'%':''})</div></div>
+      <div class="stat-card"><div class="stat-icon">🔁</div><div class="stat-value">${Object.keys(failCounts).length}</div><div class="stat-label">بنود فشلت هذا الأسبوع</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📋 جدول الأداء اليومي</div>
+    <div style="overflow-x:auto;">
+    <div class="weekly-day-row header">
+      <div>التاريخ</div>
+      ${BRANCHES.map(b=>`<div style="color:${BRANCH_COLORS[b]}">${BRANCH_NAMES[b]}</div>`).join('')}
+    </div>
+    ${week.map(({m,d}, idx) => {
+      return `<div class="weekly-day-row">
+        <div style="font-weight:700;color:var(--gold-light);">${d} ${MONTHS[m].substring(0,4)}</div>
+        ${BRANCHES.map(b => {
+          const dayData = branchData[b].days[idx];
+          if (!dayData) return `<div class="weekly-cell empty">—</div>`;
+          const cls = dayData.pct>=90?'high':dayData.pct>=70?'mid':'low';
+          return `<div class="weekly-cell ${cls}" title="مدير: ${dayData.manager||'—'} | ${dayData.shift||'—'}">${dayData.pct}%</div>`;
+        }).join('')}
+      </div>`;
+    }).join('')}
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">📊 أداء الفروع</div>
+      ${BRANCHES.map(b => {
+        const data = branchData[b];
+        if (data.visits === 0) return `<div style="margin-bottom:10px;padding:10px;background:var(--bg-card2);border-radius:8px;color:var(--text-muted);font-size:var(--fs-xs);">${BRANCH_NAMES[b]}: لا توجد زيارات</div>`;
+        const cls = data.avg>=90?'high':data.avg>=70?'mid':'low';
+        const trendIcon = data.trend==='up'?'📈':data.trend==='down'?'📉':'➡️';
+        const trendColor = data.trend==='up'?'var(--green)':data.trend==='down'?'var(--red)':'var(--text-muted)';
+        return `<div style="background:var(--bg-card2);border-radius:10px;padding:10px;margin-bottom:8px;border-right:3px solid ${BRANCH_COLORS[b]};">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+            <span style="font-weight:800;color:${BRANCH_COLORS[b]};font-size:var(--fs-sm);">${BRANCH_NAMES[b]}</span>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <span class="tag tag-${cls==='high'?'green':cls==='mid'?'orange':'red'}">${data.avg}%</span>
+              <span style="color:${trendColor};font-size:var(--fs-xs);font-weight:700;">${trendIcon} ${data.trendDelta>0?'+':''}${data.trendDelta||0}%</span>
+            </div>
+          </div>
+          <div class="progress-wrap"><div class="progress-bar"><div class="progress-fill ${cls}" style="width:${data.avg}%"></div></div></div>
+          <div style="font-size:var(--fs-xs);color:var(--text-muted);margin-top:4px;">
+            زيارات: ${data.visits}/7 | أعلى: <strong style="color:var(--green);">${data.bestDay?.pct||0}%</strong> | أدنى: <strong style="color:var(--red);">${data.worstDay?.pct||0}%</strong>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+
+    <div class="card">
+      <div class="card-title">🔴 أكثر البنود تكراراً (فشلاً)</div>
+      ${topFails.length === 0 ? '<div class="alert alert-success">✅ لا توجد بنود فاشلة هذا الأسبوع</div>' :
+        topFails.map(([id, cnt]) => {
+          const item = CHECKLIST.flatMap(s=>s.items).find(i=>i.id===id);
+          if (!item) return '';
+          return `<div style="background:var(--bg-card2);border-radius:8px;padding:10px;margin-bottom:6px;border-right:3px solid var(--red);">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+              <span style="font-size:var(--fs-sm);">${item.icon} ${item.text}</span>
+              <span class="tag tag-red">${cnt} مرة</span>
+            </div>
+          </div>`;
+        }).join('')
+      }
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📈 رسم بياني للأسبوع</div>
+    <div class="chart-wrap-tall"><canvas id="chart_weekly"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">💡 توصيات الأسبوع</div>
+    <div class="reco-box">
+      <h4>🎯 إجراءات مقترحة بناءً على تحليل الأسبوع:</h4>
+      <ul>
+        ${overallAvg < 70 ? '<li>🚨 الأداء العام ضعيف — اجتماع طارئ مع جميع المديرين خلال 24 ساعة</li>' : ''}
+        ${overallAvg >= 70 && overallAvg < 90 ? '<li>⚠️ الأداء متوسط — خطة تطوير أسبوعية مشتركة</li>' : ''}
+        ${overallAvg >= 90 ? '<li>🌟 أداء ممتاز — استمر في النهج الحالي وكافئ الفروع المتميزة</li>' : ''}
+        ${worstBranch ? `<li>🎯 التركيز على فرع ${BRANCH_NAMES[worstBranch]} — زيارات يومية مكثفة لمدة أسبوع</li>` : ''}
+        ${bestBranch && bestBranch !== worstBranch ? `<li>🏆 مشاركة تجربة فرع ${BRANCH_NAMES[bestBranch]} مع باقي الفروع</li>` : ''}
+        ${topFails.length > 0 ? `<li>🔁 معالجة جذرية للبنود المتكررة (أبرزها: ${topFails[0] ? CHECKLIST.flatMap(s=>s.items).find(i=>i.id===topFails[0][0])?.text.substring(0,40)+'...' : ''})</li>` : ''}
+        <li>📋 إنشاء مهام محددة من قسم "المهام" لمعالجة البنود الحرجة</li>
+        ${BRANCHES.some(b=>branchData[b].trend==='down') ? `<li>📉 فروع في تراجع: ${BRANCHES.filter(b=>branchData[b].trend==='down').map(b=>BRANCH_NAMES[b]).join('، ')} — تدخل فوري</li>` : ''}
+        ${BRANCHES.some(b=>branchData[b].trend==='up') ? `<li>📈 فروع في تحسن: ${BRANCHES.filter(b=>branchData[b].trend==='up').map(b=>BRANCH_NAMES[b]).join('، ')} — تشجيع واستمرار</li>` : ''}
+      </ul>
+    </div>
+    
+    <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
+      <button class="btn btn-gold btn-sm" onclick="exportWeeklyExcel()">📊 Excel</button>
+      
+      <button class="btn btn-purple" onclick="openShareModal('weekly',null,'تحليل الأسبوع')">📤 مشاركة</button>
+    </div>
+  </div>`;
+  
+  resultsDiv.innerHTML = html;
+  
+  // Save weekly analysis state for sharing
+  window._lastWeeklyAnalysis = { month, day, week, branchData, overallAvg, topFails, totalVisits, bestBranch, worstBranch, startLabel, endLabel };
+  
+  // Draw chart
+  setTimeout(() => drawWeeklyChart(week, branchData), 100);
+  
+  showNotif('✅ تم تحليل أداء الأسبوع!', 'success');
+}
+
+function drawWeeklyChart(week, branchData) {
+  const ctx = document.getElementById('chart_weekly')?.getContext('2d');
+  if (!ctx) return;
+  if (activeCharts['weekly']) activeCharts['weekly'].destroy();
+  const labels = week.map(({m,d}) => `${d} ${MONTHS[m].substring(0,4)}`);
+  activeCharts['weekly'] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: BRANCHES.map(b => ({
+        label: BRANCH_NAMES[b],
+        data: branchData[b].days.map(d => d ? d.pct : null),
+        borderColor: BRANCH_COLORS[b],
+        backgroundColor: BRANCH_COLORS[b]+'30',
+        borderWidth: 3,
+        tension: 0.4,
+        fill: false,
+        pointRadius: 6,
+        pointBackgroundColor: BRANCH_COLORS[b],
+        spanGaps: true
+      }))
+    },
+    options: chartDefaults('y_pct')
+  });
+}
+
+// ===================== TASKS PAGE =====================
+// Helper: get list of branches a task targets
+function getTaskBranches(task) {
+  return task.branch === 'all' ? BRANCHES.slice() : [task.branch];
+}
+
+// Helper: check if a task is fully completed (across all targeted branches)
+function isTaskFullyCompleted(task) {
+  const branches = getTaskBranches(task);
+  if (!task.branchStatus) return task.status === 'completed';
+  return branches.every(b => task.branchStatus[b]?.status === 'completed');
+}
+
+// Helper: get status for a specific branch within a task
+function getBranchStatus(task, branch) {
+  if (!task.branchStatus) task.branchStatus = {};
+  if (!task.branchStatus[branch]) task.branchStatus[branch] = { status: 'pending', completedAt: null };
+  return task.branchStatus[branch];
+}
+
+// Helper: how many branches completed this task
+function getTaskCompletionStats(task) {
+  const branches = getTaskBranches(task);
+  let done = 0;
+  branches.forEach(b => {
+    const bs = task.branchStatus?.[b];
+    if (bs?.status === 'completed') done++;
+  });
+  return { done, total: branches.length };
+}
+
+function updateTasksBadge() {
+  const pending = tasksData.filter(t => !isTaskFullyCompleted(t)).length;
+  const badge = document.getElementById('tasksBadge');
+  if (!badge) return;
+  if (pending > 0) {
+    badge.textContent = pending;
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
+}
+
+function renderTasksPage() {
+  const container = document.getElementById('tasks-content');
+  if (!container) return;
+  
+  const isOps = currentRole === 'ops';
+  const myBranch = localStorage.getItem('blaban_my_branch') || 'all';
+  
+  // Filter tasks based on role
+  let visibleTasks = [...tasksData];
+  if (!isOps) {
+    visibleTasks = visibleTasks.filter(t => t.branch === 'all' || t.branch === myBranch);
+  }
+  
+  // Sort: incomplete first by priority, then completed
+  const priorityOrder = { 'عاجلة':0, 'عالية':1, 'متوسطة':2, 'عادية':3 };
+  visibleTasks.sort((a,b) => {
+    const aDone = isTaskFullyCompleted(a);
+    const bDone = isTaskFullyCompleted(b);
+    if (aDone && !bDone) return 1;
+    if (bDone && !aDone) return -1;
+    return (priorityOrder[a.priority]||4) - (priorityOrder[b.priority]||4);
+  });
+  
+  const stats = {
+    total: tasksData.length,
+    pending: tasksData.filter(t => !isTaskFullyCompleted(t) && (t.comments||[]).length === 0).length,
+    inProgress: tasksData.filter(t => !isTaskFullyCompleted(t) && ((t.comments||[]).length > 0 || getTaskCompletionStats(t).done > 0)).length,
+    completed: tasksData.filter(t => isTaskFullyCompleted(t)).length,
+    overdue: tasksData.filter(t=>{
+      if (isTaskFullyCompleted(t)) return false;
+      if (!t.deadline) return false;
+      return new Date(t.deadline) < new Date(new Date().toDateString());
+    }).length
+  };
+  
+  let html = `
+  <div class="card">
+    <div class="card-title">📋 قائمة المهام ${isOps?'— لوحة مدير التشغيل':'— لوحة مدير الفرع'}</div>
+    <p style="color:var(--text-muted);font-size:var(--fs-xs);margin-bottom:14px;">
+      ${isOps?'أنشئ مهام للمديرين، وتابع تنفيذها وتعليقاتهم في الوقت الفعلي':'مهامك المعلقة، اضغط "تم" بعد إنجازها وأضف تعليقك على كل خطوة'}
+    </p>
+    
+    <div class="grid-4">
+      <div class="stat-card"><div class="stat-icon">📌</div><div class="stat-value" style="color:var(--blue);">${stats.total}</div><div class="stat-label">إجمالي المهام</div></div>
+      <div class="stat-card"><div class="stat-icon">⏳</div><div class="stat-value" style="color:var(--orange);">${stats.pending+stats.inProgress}</div><div class="stat-label">قيد التنفيذ</div></div>
+      <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-value" style="color:var(--green);">${stats.completed}</div><div class="stat-label">منجزة</div></div>
+      <div class="stat-card"><div class="stat-icon">⚠️</div><div class="stat-value" style="color:var(--red);">${stats.overdue}</div><div class="stat-label">متأخرة</div></div>
+    </div>
+    
+    ${isOps ? `
+    <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-green" onclick="openAddTaskModal()">➕ إضافة مهمة جديدة</button>
+      <button class="btn btn-primary btn-sm" onclick="exportTasksExcel()">📊 تصدير Excel</button>
+    </div>
+    ` : `
+    <div style="margin-top:14px;">
+      <div class="form-group" style="max-width:280px;">
+        <label>🏪 اختر فرعك (لتصفية المهام)</label>
+        <select onchange="setMyBranch(this.value);renderTasksPage();" id="myBranchSelect">
+          <option value="all">🌐 جميع الفروع</option>
+          <option value="nasr" ${myBranch==='nasr'?'selected':''}>النصر</option>
+          <option value="farosiya" ${myBranch==='farosiya'?'selected':''}>الفروسية</option>
+          <option value="gharafa" ${myBranch==='gharafa'?'selected':''}>الغرافة</option>
+          <option value="wakra" ${myBranch==='wakra'?'selected':''}>الوكرة</option>
+        </select>
+      </div>
+    </div>
+    `}
+  </div>
+
+  <div class="card">
+    <div class="card-title">📝 ${isOps?'جميع المهام المُنشأة':'مهامي'}</div>`;
+  
+  if (visibleTasks.length === 0) {
+    html += `<div class="alert alert-info">${isOps?'لا توجد مهام بعد. اضغط "إضافة مهمة جديدة" لإنشاء أول مهمة.':'لا توجد مهام مخصصة لك حالياً. عُد لاحقاً.'}</div>`;
+  } else {
+    visibleTasks.forEach(task => {
+      html += renderTaskItem(task, isOps);
+    });
+  }
+  
+  html += `</div>
+  
+  <div class="page-footer">
+    
+    <div class="footer-actions">
+      ${isOps ? `<button class="btn btn-gold btn-sm" onclick="exportTasksExcel()">📊 Excel</button>` : ''}
+    </div>
+  </div>`;
+  
+  container.innerHTML = html;
+}
+
+function renderTaskItem(task, isOps) {
+  const fullyCompleted = isTaskFullyCompleted(task);
+  const branches = getTaskBranches(task);
+  const isMultiBranch = task.branch === 'all';
+  const myBranch = localStorage.getItem('blaban_my_branch') || null;
+  const isOverdue = task.deadline && !fullyCompleted && new Date(task.deadline) < new Date(new Date().toDateString());
+  const compStats = getTaskCompletionStats(task);
+
+  // Ensure branchStatus exists for legacy tasks created before per-branch tracking
+  if (!task.branchStatus) {
+    task.branchStatus = {};
+    branches.forEach(b => {
+      task.branchStatus[b] = {
+        status: task.status === 'completed' ? 'completed' : 'pending',
+        completedAt: task.status === 'completed' ? task.completedAt : null
+      };
+    });
+  } else {
+    branches.forEach(b => {
+      if (!task.branchStatus[b]) task.branchStatus[b] = { status:'pending', completedAt:null };
+    });
+  }
+
+  const cls = fullyCompleted ? 'completed' : isOverdue ? 'overdue' : (compStats.done > 0 || (task.comments||[]).length > 0) ? 'in-progress' : '';
+  const branchLabel = isMultiBranch ? `🌐 جميع الفروع (${compStats.done}/${compStats.total} نُفّذت)` : '🏪 ' + (BRANCH_NAMES[task.branch] || task.branch);
+  const priorityColors = { 'عاجلة':'tag-red', 'عالية':'tag-orange', 'متوسطة':'tag-blue', 'عادية':'tag-green' };
+  const priorityIcons = { 'عاجلة':'🔴', 'عالية':'🟠', 'متوسطة':'🟡', 'عادية':'🟢' };
+
+  const progress = isMultiBranch
+    ? Math.round((compStats.done / compStats.total) * 100)
+    : (fullyCompleted ? 100 : (task.comments||[]).length > 0 ? 50 : 0);
+
+  const createdDate = new Date(task.createdAt).toLocaleDateString('ar-QA');
+
+  // Per-branch tracker (always shown, even for single-branch tasks)
+  let branchTrackerHtml = `
+    <div class="branch-tracker">
+      <div style="font-size:var(--fs-xs);color:var(--gold);font-weight:700;margin-bottom:8px;">📍 حالة التنفيذ${isMultiBranch?' لكل فرع':''}:</div>
+      <div class="branch-tracker-grid">
+        ${branches.map(b => {
+          const bs = task.branchStatus[b];
+          const isDone = bs?.status === 'completed';
+          const completedDate = bs?.completedAt ? new Date(bs.completedAt).toLocaleDateString('ar-QA') : '';
+          const completedBy = bs?.completedBy || '';
+          const hasPhoto = !!bs?.completionPhoto;
+          return `<div class="branch-tracker-item ${isDone?'done':''}">
+            <div class="branch-tracker-name">${isDone?'✅':'⏳'} ${BRANCH_NAMES[b]}</div>
+            <div class="branch-tracker-status">${isDone?`نُفّذت${completedDate?' • '+completedDate:''}`:'لم تُنفّذ بعد'}</div>
+            ${completedBy ? `<div style="font-size:9px;color:var(--text-muted);margin-top:2px;">👤 ${completedBy}</div>` : ''}
+            ${hasPhoto ? `<button class="btn btn-blue btn-sm" style="font-size:var(--fs-xs);padding:5px 10px;margin-top:4px;width:100%;" onclick="viewTaskCompletionPhoto('${b}','${task.id}')">📷 عرض صورة التنفيذ</button>` : ''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+
+  // Comments list (with branch tag if available)
+  let commentsHtml = '';
+  if ((task.comments||[]).length > 0) {
+    commentsHtml = `
+    <div class="task-comments-list">
+      <div style="font-size:var(--fs-xs);color:var(--gold);font-weight:700;margin-bottom:6px;">💬 سجل التعليقات (${task.comments.length})</div>
+      ${task.comments.map(c => {
+        const branchTag = c.branch && c.branch !== 'all' && c.branch !== '__ops__' ? ` <span class="tag tag-blue" style="font-size:9px;padding:1px 6px;">🏪 ${BRANCH_NAMES[c.branch]||c.branch}</span>` : '';
+        return `
+        <div class="task-comment" style="border-right-color:${c.role==='ops'?'var(--gold)':c.type==='completion'?'var(--green)':'var(--blue)'}">
+          <div class="task-comment-header">
+            <span>${c.role==='ops'?'🌐':'👔'} ${c.author||'مدير'}${branchTag} ${c.type==='completion'?'<span style="color:var(--green);">— أنهى المهمة</span>':c.type==='progress'?'<span style="color:var(--orange);">— تحديث تقدم</span>':''}</span>
+            <span style="color:var(--text-muted);font-size:var(--fs-xs);font-weight:600;">${new Date(c.timestamp).toLocaleString('ar-QA',{hour:'2-digit',minute:'2-digit',day:'numeric',month:'numeric'})}</span>
+          </div>
+          <div class="task-comment-text">${c.text}</div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  // Action area
+  let actionHtml = '';
+  if (!fullyCompleted) {
+    if (isOps) {
+      actionHtml = `
+      <div class="add-comment-area">
+        <textarea id="comment_${task.id}" placeholder="أضف تعليق أو توجيه..."></textarea>
+      </div>
+      <div class="task-actions">
+        <button class="btn btn-gold btn-sm" onclick="addTaskComment('${task.id}','direction','__ops__')">💬 إضافة توجيه</button>
+        ${isMultiBranch
+          ? `<button class="btn btn-green btn-sm" onclick="completeTaskAllBranches('${task.id}')">✅ تأكيد إنجاز كل الفروع</button>`
+          : `<button class="btn btn-green btn-sm" onclick="completeTask('${task.id}','${task.branch}')">✅ تأكيد الإنجاز</button>`}
+        <button class="btn btn-red btn-sm" onclick="deleteTask('${task.id}')">🗑️ حذف</button>
+      </div>`;
+    } else {
+      // Manager
+      let targetBranches = [];
+      if (myBranch && myBranch !== 'all') targetBranches = branches.includes(myBranch) ? [myBranch] : [];
+      else targetBranches = branches.slice();
+      const pendingBranches = targetBranches.filter(b => task.branchStatus[b]?.status !== 'completed');
+
+      if (pendingBranches.length === 0 && targetBranches.length > 0) {
+        actionHtml = `<div class="alert alert-success">✅ ${targetBranches.length===1?`فرع ${BRANCH_NAMES[targetBranches[0]]} أنجز هذه المهمة بالفعل`:'كل فروعك أنجزت المهمة'}</div>`;
+      } else if (pendingBranches.length === 1) {
+        const b = pendingBranches[0];
+        actionHtml = `
+        <div class="add-comment-area">
+          <textarea id="comment_${task.id}" placeholder="اكتب ما أنجزته أو لاحظت في هذه المهمة..."></textarea>
+        </div>
+        <div style="margin-top:10px;padding:10px;background:rgba(39,174,96,0.06);border:1px dashed var(--green);border-radius:10px;">
+          <div style="font-size:var(--fs-sm);color:var(--gold-light);font-weight:700;margin-bottom:8px;">📷 صورة تنفيذ المهمة (اختياري ولكن مُستحسن)</div>
+          <input type="file" id="taskPhotoInput_${task.id}" accept="image/*" capture="environment" style="display:none" onchange="uploadTaskCompletionPhoto('${task.id}',this)">
+          <button class="btn btn-blue btn-sm" onclick="document.getElementById('taskPhotoInput_${task.id}').click()" style="font-size:var(--fs-xs);">📸 إضافة صورة التنفيذ</button>
+          <div id="taskPhotoPreview_${task.id}" style="margin-top:8px;"></div>
+        </div>
+        <div class="task-actions" style="margin-top:10px;">
+          <span style="font-size:var(--fs-xs);color:var(--text-muted);align-self:center;">سيُسجَّل باسم: <strong style="color:var(--gold);">🏪 ${BRANCH_NAMES[b]}</strong></span>
+          <button class="btn btn-blue btn-sm" onclick="addTaskComment('${task.id}','progress','${b}')">💬 إضافة تحديث</button>
+          <button class="btn btn-green btn-sm" onclick="completeTask('${task.id}','${b}')">✅ تم الإنجاز</button>
+        </div>`;
+      } else if (pendingBranches.length > 1) {
+        // Picker — must select branch BEFORE marking done (to know who executed)
+        actionHtml = `
+        <div class="add-comment-area">
+          <textarea id="comment_${task.id}" placeholder="اكتب ما أنجزته أو لاحظت في هذه المهمة..."></textarea>
+        </div>
+        <div style="margin-top:10px;padding:10px;background:rgba(39,174,96,0.06);border:1px dashed var(--green);border-radius:10px;">
+          <div style="font-size:var(--fs-sm);color:var(--gold-light);font-weight:700;margin-bottom:8px;">📷 صورة تنفيذ المهمة (اختياري ولكن مُستحسن)</div>
+          <input type="file" id="taskPhotoInput_${task.id}" accept="image/*" capture="environment" style="display:none" onchange="uploadTaskCompletionPhoto('${task.id}',this)">
+          <button class="btn btn-blue btn-sm" onclick="document.getElementById('taskPhotoInput_${task.id}').click()" style="font-size:var(--fs-xs);">📸 إضافة صورة التنفيذ</button>
+          <div id="taskPhotoPreview_${task.id}" style="margin-top:8px;"></div>
+        </div>
+        <div class="task-actions" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:10px;">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:rgba(201,168,76,0.08);padding:8px;border-radius:8px;border:1px solid var(--gold);">
+            <span style="font-size:var(--fs-sm);color:var(--gold-light);font-weight:700;">📍 اختر فرعك أولاً:</span>
+            <select id="branchPick_${task.id}" style="background:var(--bg-card2);color:var(--text-light);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-family:Tajawal,sans-serif;font-size:var(--fs-sm);flex:1;min-width:140px;">
+              ${pendingBranches.map(b => `<option value="${b}">${BRANCH_NAMES[b]}</option>`).join('')}
+            </select>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-blue btn-sm" onclick="addTaskCommentFromPicker('${task.id}','progress')">💬 إضافة تحديث</button>
+            <button class="btn btn-green btn-sm" onclick="completeTaskFromPicker('${task.id}')">✅ تم الإنجاز</button>
+          </div>
+        </div>`;
+      }
+    }
+  } else if (isOps) {
+    actionHtml = `<div class="task-actions"><button class="btn btn-red btn-sm" onclick="deleteTask('${task.id}')">🗑️ حذف</button></div>`;
+  }
+
+  return `
+  <div class="task-item ${cls}" id="task_${task.id}">
+    <div class="task-header">
+      <div class="task-title ${fullyCompleted?'completed':''}">${fullyCompleted?'✅ ':''}${task.title}</div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;">
+        <span class="tag ${priorityColors[task.priority]||'tag-blue'}">${priorityIcons[task.priority]||''} ${task.priority}</span>
+        ${isOverdue?'<span class="tag tag-red">⚠️ متأخرة</span>':''}
+        ${fullyCompleted?'<span class="tag tag-green">✓ مكتملة بالكامل</span>':compStats.done>0?`<span class="tag tag-orange">⏳ ${compStats.done}/${compStats.total}</span>`:'<span class="tag tag-blue">📌 معلقة</span>'}
+      </div>
+    </div>
+    
+    <div class="task-meta">
+      <span>${branchLabel}</span>
+      ${task.deadline?`<span>📅 الموعد: ${new Date(task.deadline).toLocaleDateString('ar-QA')}</span>`:''}
+      <span>📝 أُنشئت: ${createdDate}</span>
+    </div>
+    
+    ${task.desc?`<div class="task-desc">${task.desc}</div>`:''}
+    
+    <div class="task-progress-bar"><div class="task-progress-fill" style="width:${progress}%"></div></div>
+    
+    ${branchTrackerHtml}
+    ${commentsHtml}
+    ${actionHtml}
+  </div>`;
+}
+
+function setMyBranch(branch) {
+  localStorage.setItem('blaban_my_branch', branch);
+}
+
+function openAddTaskModal() {
+  if (currentRole !== 'ops') {
+    showNotif('⚠️ هذه الميزة متاحة لمدير التشغيل فقط', 'error');
+    return;
+  }
+  document.getElementById('taskTitleInput').value = '';
+  document.getElementById('taskDescInput').value = '';
+  document.getElementById('taskBranchInput').value = 'all';
+  document.getElementById('taskPriorityInput').value = 'متوسطة';
+  // Set default deadline = 3 days from now
+  const d = new Date(); d.setDate(d.getDate()+3);
+  document.getElementById('taskDeadlineInput').value = d.toISOString().split('T')[0];
+  document.getElementById('addTaskModal').classList.remove('hidden');
+}
+
+function closeAddTaskModal() {
+  document.getElementById('addTaskModal').classList.add('hidden');
+}
+
+function submitNewTask() {
+  const title = document.getElementById('taskTitleInput').value.trim();
+  const desc = document.getElementById('taskDescInput').value.trim();
+  const branch = document.getElementById('taskBranchInput').value;
+  const priority = document.getElementById('taskPriorityInput').value;
+  const deadline = document.getElementById('taskDeadlineInput').value;
+  
+  if (!title) {
+    showNotif('⚠️ يجب إدخال عنوان المهمة', 'error');
+    return;
+  }
+  
+  // Initialize per-branch status for all targeted branches
+  const targetBranches = branch === 'all' ? BRANCHES.slice() : [branch];
+  const branchStatus = {};
+  targetBranches.forEach(b => { branchStatus[b] = { status:'pending', completedAt:null }; });
+  
+  const newTask = {
+    id: 'task_' + Date.now() + '_' + Math.random().toString(36).substr(2,5),
+    title, desc, branch, priority, deadline,
+    createdAt: new Date().toISOString(),
+    createdBy: 'مدير التشغيل',
+    status: 'pending', // legacy field, kept for compatibility
+    completedAt: null,
+    comments: [],
+    branchStatus  // per-branch tracking
+  };
+  
+  tasksData.unshift(newTask);
+  saveTasks();
+  closeAddTaskModal();
+  renderTasksPage();
+  updateTasksBadge();
+  const targetMsg = branch === 'all' ? 'لجميع الفروع' : `لفرع ${BRANCH_NAMES[branch]}`;
+  // History
+  if (typeof addHistoryEntry === 'function') {
+    addHistoryEntry({
+      type:'task', action:'create',
+      target:`مهمة: ${title}`,
+      details:`${targetMsg} • ${priority}${deadline?` • موعد: ${deadline}`:''}`
+    });
+  }
+  showNotif(`✅ تم إنشاء المهمة ${targetMsg}!`, 'success');
+}
+
+function addTaskComment(taskId, type, branch) {
+  const textarea = document.getElementById(`comment_${taskId}`);
+  if (!textarea) return;
+  const text = textarea.value.trim();
+  if (!text) {
+    showNotif('⚠️ اكتب تعليقاً أولاً', 'error');
+    return;
+  }
+  const task = tasksData.find(t=>t.id===taskId);
+  if (!task) return;
+  
+  if (!task.comments) task.comments = [];
+  // Determine author label including branch name when manager
+  let author = currentRole === 'ops' ? 'مدير التشغيل' : 'مدير الفرع';
+  if (currentRole === 'manager' && branch && branch !== '__ops__' && BRANCH_NAMES[branch]) {
+    author = `مدير ${BRANCH_NAMES[branch]}`;
+  }
+  task.comments.push({
+    author,
+    role: currentRole,
+    branch: branch || null,
+    text,
+    timestamp: new Date().toISOString(),
+    type: type || 'comment'
+  });
+  
+  // Move task's per-branch status to in-progress (if pending) for this branch
+  if (branch && branch !== '__ops__' && task.branchStatus?.[branch]?.status === 'pending') {
+    task.branchStatus[branch].status = 'in-progress';
+  }
+  // Legacy status field
+  if (task.status === 'pending') task.status = 'in-progress';
+  
+  saveTasks();
+  textarea.value = '';
+  renderTasksPage();
+  // History
+  if (typeof addHistoryEntry === 'function') {
+    const branchName = branch && branch !== '__ops__' ? BRANCH_NAMES[branch] || branch : '';
+    addHistoryEntry({
+      type:'comment', action:'create',
+      target:`تعليق على: ${task.title}`,
+      details: `${branchName?'🏪 '+branchName+' • ':''}${type === 'completion' ? 'إنجاز' : type === 'progress' ? 'تحديث' : type === 'direction' ? 'توجيه' : 'تعليق'}: ${text.substring(0,50)}`
+    });
+  }
+  showNotif('✅ تم حفظ التعليق!', 'success');
+}
+
+// Wrapper for picker-driven branch selection
+function addTaskCommentFromPicker(taskId, type) {
+  const sel = document.getElementById(`branchPick_${taskId}`);
+  if (!sel) return;
+  addTaskComment(taskId, type, sel.value);
+}
+
+function completeTask(taskId, branch) {
+  const task = tasksData.find(t=>t.id===taskId);
+  if (!task) return;
+
+  if (!branch) {
+    showNotif('⚠️ يجب تحديد الفرع', 'error');
+    return;
+  }
+
+  // Optional completion comment
+  const textarea = document.getElementById(`comment_${taskId}`);
+  const completionNote = textarea?.value.trim();
+  if (completionNote) {
+    if (!task.comments) task.comments = [];
+    let author = currentRole === 'ops' ? 'مدير التشغيل' : `مدير ${BRANCH_NAMES[branch]||'الفرع'}`;
+    task.comments.push({
+      author,
+      role: currentRole,
+      branch,
+      text: completionNote,
+      timestamp: new Date().toISOString(),
+      type: 'completion'
+    });
+    if (textarea) textarea.value = '';
+  }
+  
+  // Pull completion photo (if any) — set via uploadTaskCompletionPhoto
+  const pendingPhoto = window._pendingTaskPhoto?.[taskId];
+  
+  // Mark this branch as completed
+  if (!task.branchStatus) task.branchStatus = {};
+  task.branchStatus[branch] = { 
+    status:'completed', 
+    completedAt: new Date().toISOString(),
+    completedBy: (typeof fbUserName !== 'undefined' && fbUserName) || `مدير ${BRANCH_NAMES[branch]||'الفرع'}`,
+    completionPhoto: pendingPhoto || null
+  };
+  
+  // Clear pending photo
+  if (pendingPhoto && window._pendingTaskPhoto) delete window._pendingTaskPhoto[taskId];
+  
+  // Update overall status based on whether all branches done
+  if (isTaskFullyCompleted(task)) {
+    task.status = 'completed';
+    task.completedAt = new Date().toISOString();
+  } else {
+    task.status = 'in-progress';
+  }
+  
+  saveTasks();
+  renderTasksPage();
+  updateTasksBadge();
+  const allDone = isTaskFullyCompleted(task);
+  // History
+  if (typeof addHistoryEntry === 'function') {
+    addHistoryEntry({
+      type:'task', action:'update',
+      target:`إنجاز: ${task.title}`,
+      details: `🏪 ${BRANCH_NAMES[branch]||branch} نفّذ المهمة${pendingPhoto?' • مع صورة':''}${allDone?' • كل الفروع أنجزت':''}`
+    });
+  }
+  showNotif(allDone ? '🎉 جميع الفروع أنجزت المهمة!' : `✅ تم تسجيل إنجاز فرع ${BRANCH_NAMES[branch]||branch}!`, 'success');
+}
+
+// Upload a completion photo — stored temporarily until user clicks "Mark Done"
+async function uploadTaskCompletionPhoto(taskId, input) {
+  if (!input?.files?.[0]) return;
+  const file = input.files[0];
+  if (!file.type.startsWith('image/')) {
+    showNotif('⚠️ اختر ملف صورة', 'error');
+    return;
+  }
+  showNotif('⏳ جاري معالجة الصورة...', 'info');
+  try {
+    const dataUrl = await resizeImage(file, 800, 0.72);
+    if (!window._pendingTaskPhoto) window._pendingTaskPhoto = {};
+    window._pendingTaskPhoto[taskId] = dataUrl;
+    // Show preview
+    const previewBox = document.getElementById(`taskPhotoPreview_${taskId}`);
+    if (previewBox) {
+      previewBox.innerHTML = `
+        <div style="position:relative;display:inline-block;">
+          <img src="${dataUrl}" style="max-width:120px;max-height:120px;border-radius:8px;border:2px solid var(--green);">
+          <button onclick="clearPendingTaskPhoto('${taskId}')" style="position:absolute;top:2px;left:2px;background:rgba(192,57,43,0.9);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:12px;font-weight:800;cursor:pointer;">✕</button>
+        </div>
+        <div style="font-size:var(--fs-xs);color:var(--green);margin-top:4px;font-weight:700;">📸 الصورة جاهزة — اضغط "تم الإنجاز" لحفظها</div>
+      `;
+    }
+    showNotif('✅ الصورة جاهزة — أكمل بضغط "تم الإنجاز"', 'success');
+  } catch(err) {
+    showNotif('❌ خطأ في معالجة الصورة: ' + err.message, 'error');
+  }
+  input.value = '';
+}
+
+function clearPendingTaskPhoto(taskId) {
+  if (window._pendingTaskPhoto) delete window._pendingTaskPhoto[taskId];
+  const previewBox = document.getElementById(`taskPhotoPreview_${taskId}`);
+  if (previewBox) previewBox.innerHTML = '';
+}
+
+function viewTaskCompletionPhoto(branch, taskId) {
+  const task = tasksData.find(t => t.id === taskId);
+  if (!task) return;
+  const photo = task.branchStatus?.[branch]?.completionPhoto;
+  if (!photo) return;
+  
+  let lightbox = document.getElementById('photoLightbox');
+  if (!lightbox) {
+    lightbox = document.createElement('div');
+    lightbox.id = 'photoLightbox';
+    lightbox.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.95);z-index:10000;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-direction:column;padding:20px;';
+    lightbox.onclick = () => lightbox.remove();
+    document.body.appendChild(lightbox);
+  }
+  const completedBy = task.branchStatus[branch].completedBy || '-';
+  const completedAt = task.branchStatus[branch].completedAt ? new Date(task.branchStatus[branch].completedAt).toLocaleString('ar-QA') : '';
+  lightbox.innerHTML = `
+    <div style="color:#C9A84C;margin-bottom:10px;text-align:center;font-weight:700;">
+      ✅ صورة تنفيذ المهمة — ${BRANCH_NAMES[branch]}
+    </div>
+    <img src="${photo}" style="max-width:95%;max-height:80vh;border-radius:12px;border:3px solid #27AE60;box-shadow:0 12px 40px rgba(0,0,0,0.6);">
+    <div style="color:#BCA98A;margin-top:10px;text-align:center;font-size:var(--fs-sm);font-weight:700;">
+      نفّذها: ${completedBy}${completedAt?' • '+completedAt:''}
+    </div>
+    <div style="color:#999;margin-top:8px;font-size:var(--fs-xs);">اضغط في أي مكان للإغلاق</div>
+  `;
+  lightbox.style.display = 'flex';
+}
+
+// Wrapper for picker
+function completeTaskFromPicker(taskId) {
+  const sel = document.getElementById(`branchPick_${taskId}`);
+  if (!sel) return;
+  completeTask(taskId, sel.value);
+}
+
+// Ops: mark all branches completed at once
+function completeTaskAllBranches(taskId) {
+  const task = tasksData.find(t=>t.id===taskId);
+  if (!task) return;
+  if (!confirm('هل تريد تأكيد أن كل الفروع نفّذت هذه المهمة؟')) return;
+  
+  const textarea = document.getElementById(`comment_${taskId}`);
+  const completionNote = textarea?.value.trim();
+  
+  const branches = getTaskBranches(task);
+  if (!task.branchStatus) task.branchStatus = {};
+  branches.forEach(b => {
+    if (task.branchStatus[b]?.status !== 'completed') {
+      task.branchStatus[b] = { status:'completed', completedAt: new Date().toISOString() };
+    }
+  });
+  
+  if (completionNote) {
+    if (!task.comments) task.comments = [];
+    task.comments.push({
+      author: 'مدير التشغيل',
+      role: 'ops',
+      branch: '__ops__',
+      text: completionNote,
+      timestamp: new Date().toISOString(),
+      type: 'completion'
+    });
+    if (textarea) textarea.value = '';
+  }
+  
+  task.status = 'completed';
+  task.completedAt = new Date().toISOString();
+  
+  saveTasks();
+  renderTasksPage();
+  updateTasksBadge();
+  showNotif('🎉 تم تأكيد إنجاز جميع الفروع!', 'success');
+}
+
+function deleteTask(taskId) {
+  if (!confirm('هل أنت متأكد من حذف هذه المهمة؟ لا يمكن التراجع.')) return;
+  const task = tasksData.find(t=>t.id===taskId);
+  tasksData = tasksData.filter(t=>t.id!==taskId);
+  saveTasks();
+  renderTasksPage();
+  updateTasksBadge();
+  if (typeof addHistoryEntry === 'function' && task) {
+    addHistoryEntry({
+      type:'task', action:'delete',
+      target:`مهمة: ${task.title}`,
+      details:`حُذفت من قِبل مدير التشغيل`
+    });
+  }
+  showNotif('🗑️ تم الحذف', 'info');
+}
+
+function exportTasksExcel() {
+  if (tasksData.length === 0) {
+    showNotif('⚠️ لا توجد مهام للتصدير', 'error');
+    return;
+  }
+  const wb = XLSX.utils.book_new();
+  
+  // Single simplified sheet: المهمة | تم؟ | الفرع | المنفّذ
+  const rows = [
+    ['🥛 ب لبن قطر — تقرير المهام'],
+    ['التاريخ: ' + new Date().toLocaleString('ar-QA') + '    إجمالي المهام: ' + tasksData.length],
+    [],
+    ['المهمة', 'تم تنفيذها؟', 'الفرع', 'المنفّذ', 'تاريخ التنفيذ']
+  ];
+  
+  tasksData.forEach(t => {
+    const branches = getTaskBranches(t);
+    branches.forEach(b => {
+      const bs = t.branchStatus?.[b];
+      const done = bs?.status === 'completed';
+      const completedBy = bs?.completedBy || '-';
+      const date = bs?.completedAt ? new Date(bs.completedAt).toLocaleDateString('ar-QA') : '-';
+      rows.push([
+        t.title,
+        done ? '✅ تم' : '❌ لم يتم',
+        BRANCH_NAMES[b] || b,
+        completedBy,
+        date
+      ]);
+    });
+  });
+  
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{wch:40},{wch:14},{wch:18},{wch:20},{wch:18}];
+  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }];
+  
+  // Color rows based on status
+  for (let r = 4; r < rows.length; r++) {
+    const isDone = rows[r][1] === '✅ تم';
+    for (let c = 0; c < 5; c++) {
+      const ref = XLSX.utils.encode_cell({ r, c });
+      if (!ws[ref]) ws[ref] = { v: rows[r][c] || '', t: 's' };
+      ws[ref].s = {
+        fill: { fgColor: { rgb: isDone ? 'D4EDDA' : 'F8D7DA' } },
+        font: { color: { rgb: isDone ? '155724' : '721C24' } }
+      };
+    }
+  }
+  
+  XLSX.utils.book_append_sheet(wb, ws, 'المهام');
+  XLSX.writeFile(wb, `مهام_ب_لبن_${new Date().toISOString().split('T')[0]}.xlsx`);
+  showNotif('✅ تم تصدير المهام', 'success');
+}
+</script>

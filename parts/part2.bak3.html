@@ -1,0 +1,357 @@
+<!-- Loading -->
+<div class="loading-overlay hidden" id="loadingOverlay">
+  <div class="loading-spinner"></div>
+</div>
+
+<!-- Notification -->
+<div class="notif" id="notif"></div>
+
+<!-- Push Notification Toast -->
+<div class="push-toast" id="pushToast">
+  <button class="push-toast-close" onclick="hidePushToast()">×</button>
+  <div class="push-toast-title" id="pushToastTitle"></div>
+  <div class="push-toast-body" id="pushToastBody"></div>
+</div>
+
+<!-- Sync Indicator -->
+<div class="sync-indicator offline" id="syncIndicator" onclick="openSyncModal()" title="إعدادات المزامنة">
+  <span class="sync-dot"></span>
+  <span id="syncIndicatorText">غير متصل</span>
+</div>
+
+<!-- Sync / Firebase Setup Modal -->
+<div class="modal-overlay hidden" id="syncModal">
+  <div class="modal-box" style="max-width:520px;">
+    <h3>☁️ إعدادات المزامنة السحابية</h3>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">
+      مزامنة البيانات بين كل أجهزة المديرين فورياً عبر Firebase Realtime Database
+    </p>
+
+    <div id="syncStatusPanel" style="background:var(--bg-card2);border-radius:10px;padding:12px;margin-bottom:12px;">
+      <div class="fb-status-row">
+        <span class="fb-status-label">حالة الاتصال</span>
+        <span class="fb-status-badge offline" id="fbStatusBadge">غير متصل</span>
+      </div>
+      <div class="fb-status-row">
+        <span class="fb-status-label">آخر مزامنة</span>
+        <span class="fb-status-value" id="fbLastSync">—</span>
+      </div>
+      <div class="fb-status-row">
+        <span class="fb-status-label">معرّف المستخدم</span>
+        <span class="fb-status-value" id="fbUserId">—</span>
+      </div>
+      <div class="fb-status-row">
+        <span class="fb-status-label">المشروع (Project ID)</span>
+        <span class="fb-status-value" id="fbProjectId">—</span>
+      </div>
+    </div>
+
+    <div class="modal-input-group">
+      <label>🔑 إعدادات Firebase (JSON)</label>
+      <textarea id="fbConfigInput" rows="6" placeholder='{"apiKey":"...","authDomain":"...","databaseURL":"https://....firebaseio.com","projectId":"..."}' style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:monospace;font-size:11px;outline:none;direction:ltr;text-align:left;resize:vertical;"></textarea>
+      <div style="font-size:10px;color:var(--text-muted);margin-top:6px;">
+        احصل على هذا من <strong>Firebase Console → Project settings → Your apps → SDK setup</strong>. اتركها فارغة لإيقاف المزامنة.
+      </div>
+    </div>
+
+    <div class="modal-input-group">
+      <label>🏢 معرّف فريقك (Workspace ID)</label>
+      <input type="text" id="fbWorkspaceInput" placeholder="blaban-qatar" value="blaban-qatar" 
+        style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:Tajawal,sans-serif;font-size:13px;outline:none;direction:ltr;text-align:left;">
+      <div style="font-size:10px;color:var(--text-muted);margin-top:6px;">
+        كل المستخدمين بنفس Workspace ID يتشاركون البيانات. ضع نفس القيمة على كل أجهزة الفريق.
+      </div>
+    </div>
+
+    <div class="modal-input-group">
+      <label>👤 اسم المستخدم (يظهر في سجل التغييرات)</label>
+      <input type="text" id="fbUserNameInput" placeholder="مثال: أحمد - مدير النصر" 
+        style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:Tajawal,sans-serif;font-size:13px;outline:none;">
+    </div>
+
+    <div class="alert alert-info" style="font-size:11px;">
+      💡 <strong>كيف تعمل:</strong> عند الحفظ، البيانات تُكتب محلياً + ترفع للسحابة. على الأجهزة الأخرى، التغييرات تظهر تلقائياً خلال ثانيتين.
+    </div>
+
+    <div class="modal-actions" style="flex-wrap:wrap;">
+      <button class="btn btn-primary btn-sm" onclick="closeSyncModal()">إلغاء</button>
+      <button class="btn btn-red btn-sm" onclick="disconnectFirebase()" id="fbDisconnectBtn" style="display:none;">🔌 قطع الاتصال</button>
+      <button class="btn btn-blue btn-sm" onclick="downloadBackup()">💾 نسخة احتياطية الآن</button>
+      <button class="btn btn-green" onclick="connectFirebase()">🔗 اتصال / حفظ</button>
+    </div>
+  </div>
+</div>
+
+<!-- Restore Backup Modal -->
+<div class="modal-overlay hidden" id="restoreModal">
+  <div class="modal-box">
+    <h3>📥 استعادة نسخة احتياطية</h3>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
+      ⚠️ هذه العملية ستستبدل كل البيانات الحالية. تأكد من أن لديك نسخة احتياطية أولاً.
+    </p>
+    <div class="modal-input-group">
+      <label>اختر ملف JSON للنسخة الاحتياطية</label>
+      <input type="file" id="restoreFileInput" accept=".json,application/json" 
+        style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:Tajawal,sans-serif;font-size:13px;outline:none;">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary btn-sm" onclick="closeRestoreModal()">إلغاء</button>
+      <button class="btn btn-orange" onclick="executeRestore()">📥 استعادة</button>
+    </div>
+  </div>
+</div>
+
+<!-- History Modal -->
+<div class="modal-overlay hidden" id="historyModal">
+  <div class="modal-box" style="max-width:640px;">
+    <h3>📜 سجل تاريخ التغييرات</h3>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">آخر 100 عملية على البيانات</p>
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+      <select id="historyFilterType" onchange="renderHistoryList()" style="background:var(--bg-card2);border:1px solid var(--border);border-radius:8px;color:var(--text-light);padding:6px 10px;font-size:12px;font-family:Tajawal,sans-serif;">
+        <option value="all">كل العمليات</option>
+        <option value="evaluation">التقييمات</option>
+        <option value="task">المهام</option>
+        <option value="comment">التعليقات</option>
+      </select>
+      <button class="btn btn-red btn-sm" onclick="clearHistory()">🗑️ مسح السجل</button>
+    </div>
+    <div class="history-list" id="historyList"></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary btn-sm" onclick="closeHistoryModal()">إغلاق</button>
+      <button class="btn btn-gold btn-sm" onclick="exportHistoryExcel()">📊 تصدير Excel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Share Hub Modal (Choose channel: WA / TG / Email) -->
+<div class="modal-overlay hidden" id="shareModal">
+  <div class="modal-box">
+    <h3>📤 مشاركة التقرير</h3>
+    <div id="shareModalInfo" style="font-size:12px;color:var(--text-muted);margin-bottom:8px;"></div>
+    <p>اختر القناة وصيغة التقرير:</p>
+    
+    <div class="modal-input-group">
+      <label>📋 صيغة التقرير</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-primary btn-sm" id="fmtTextBtn" onclick="setShareFormat('text')">📝 نص (واتساب/تليجرام)</button>
+        <button class="btn btn-primary btn-sm" id="fmtPptxBtn" onclick="setShareFormat('pptx')">📑 ملف PowerPoint</button>
+        <button class="btn btn-primary btn-sm" id="fmtExcelBtn" onclick="setShareFormat('excel')">📊 ملف Excel</button>
+      </div>
+      <div style="font-size:10px;color:var(--text-muted);margin-top:6px;" id="fmtHint"></div>
+    </div>
+
+    <div class="modal-input-group">
+      <label>📡 قناة الإرسال</label>
+      <div class="share-options-grid">
+        <div class="share-opt" onclick="executeShare('whatsapp')" style="border-color:#25D366;">
+          <div class="share-opt-icon">💬</div>
+          <div class="share-opt-label" style="color:#25D366;">واتساب</div>
+          <div class="share-opt-desc">إرسال مباشر</div>
+        </div>
+        <div class="share-opt" onclick="executeShare('telegram')" style="border-color:#229ED9;">
+          <div class="share-opt-icon">✈️</div>
+          <div class="share-opt-label" style="color:#229ED9;">تليجرام</div>
+          <div class="share-opt-desc">عبر التطبيق</div>
+        </div>
+        <div class="share-opt" onclick="executeShare('email')" style="border-color:#EA4335;">
+          <div class="share-opt-icon">📧</div>
+          <div class="share-opt-label" style="color:#EA4335;">إيميل</div>
+          <div class="share-opt-desc">Gmail / Outlook</div>
+        </div>
+        <div class="share-opt" onclick="executeShare('download')" style="border-color:var(--gold);">
+          <div class="share-opt-icon">⬇️</div>
+          <div class="share-opt-label" style="color:var(--gold);">تحميل</div>
+          <div class="share-opt-desc">حفظ على الجهاز</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-primary btn-sm" onclick="closeShareModal()">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<!-- Phone/Email Input Modal -->
+<div class="modal-overlay hidden" id="contactModal">
+  <div class="modal-box">
+    <h3 id="contactModalTitle">📱 إرسال</h3>
+    <div id="contactModalInfo" style="font-size:12px;color:var(--text-muted);margin-bottom:12px;"></div>
+    
+    <div class="modal-input-group" id="phoneInputGroup">
+      <label id="phoneInputLabel">رقم الواتساب (مع رمز الدولة)</label>
+      <div class="phone-input-wrap">
+        <span class="phone-prefix">+</span>
+        <input type="tel" class="phone-input" id="contactPhoneInput" placeholder="97412345678" inputmode="numeric" maxlength="15" oninput="onContactPhoneInput(this)">
+      </div>
+      <div class="phone-quick-btns" id="contactQuickPhones">
+        <span style="font-size:11px;color:var(--text-muted);align-self:center;">أرقام سريعة:</span>
+      </div>
+      <div class="error-msg" id="contactPhoneError">⚠️ يرجى إدخال رقم صحيح (10-15 رقماً)</div>
+    </div>
+
+    <div class="modal-input-group hidden" id="emailInputGroup">
+      <label>📧 البريد الإلكتروني للمستلم</label>
+      <input type="email" id="contactEmailInput" placeholder="example@email.com" 
+        style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:Tajawal,sans-serif;font-size:15px;outline:none;direction:ltr;text-align:left;">
+      <div class="phone-quick-btns" id="contactQuickEmails">
+        <span style="font-size:11px;color:var(--text-muted);align-self:center;">إيميلات سريعة:</span>
+      </div>
+      <div class="error-msg" id="contactEmailError">⚠️ يرجى إدخال إيميل صحيح</div>
+    </div>
+
+    <div class="modal-input-group">
+      <label>👁️ معاينة الرسالة</label>
+      <div class="preview-box" id="contactPreview">جاري التحضير...</div>
+    </div>
+
+    <div id="fileAttachNote" class="alert alert-info hidden" style="font-size:11px;">
+      📎 سيتم تحميل ملف التقرير تلقائياً. أرفقه يدوياً بعد فتح التطبيق.
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-primary btn-sm" onclick="closeContactModal()">إلغاء</button>
+      <button class="btn btn-gold" id="contactSendBtn" onclick="executeContactSend()">📲 إرسال</button>
+    </div>
+    <div style="font-size:10px;color:var(--text-muted);margin-top:10px;text-align:center;" id="contactFooterNote">
+      ملاحظة: سيفتح التطبيق المختار مع الرسالة جاهزة
+    </div>
+  </div>
+</div>
+
+<!-- Add Task Modal (Operations Manager only) -->
+<div class="modal-overlay hidden" id="addTaskModal">
+  <div class="modal-box">
+    <h3>➕ إضافة مهمة جديدة</h3>
+    <p>أنشئ مهمة وستظهر فوراً للمدير المعني للعمل عليها</p>
+
+    <div class="modal-input-group">
+      <label>📌 عنوان المهمة *</label>
+      <input type="text" id="taskTitleInput" placeholder="مثال: تنظيف عميق لغرفة التبريد"
+        style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:Tajawal,sans-serif;font-size:15px;outline:none;">
+    </div>
+
+    <div class="modal-input-group">
+      <label>📝 وصف المهمة وتفاصيل التنفيذ</label>
+      <textarea id="taskDescInput" rows="3" placeholder="اكتب تفاصيل المهمة والمخرجات المطلوبة..."
+        style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:Tajawal,sans-serif;font-size:14px;outline:none;resize:vertical;"></textarea>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div class="modal-input-group">
+        <label>🏪 الفرع المعني *</label>
+        <select id="taskBranchInput"
+          style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:Tajawal,sans-serif;font-size:14px;outline:none;">
+          <option value="all">🌐 جميع الفروع</option>
+          <option value="nasr">النصر</option>
+          <option value="farosiya">الفروسية</option>
+          <option value="gharafa">الغرافة</option>
+          <option value="wakra">الوكرة</option>
+        </select>
+      </div>
+
+      <div class="modal-input-group">
+        <label>⚡ الأولوية</label>
+        <select id="taskPriorityInput"
+          style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:Tajawal,sans-serif;font-size:14px;outline:none;">
+          <option value="عادية">🟢 عادية</option>
+          <option value="متوسطة" selected>🟡 متوسطة</option>
+          <option value="عالية">🟠 عالية</option>
+          <option value="عاجلة">🔴 عاجلة</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="modal-input-group">
+      <label>📅 الموعد النهائي</label>
+      <input type="date" id="taskDeadlineInput"
+        style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:Tajawal,sans-serif;font-size:14px;outline:none;">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-primary btn-sm" onclick="closeAddTaskModal()">إلغاء</button>
+      <button class="btn btn-green" onclick="submitNewTask()">✅ إنشاء المهمة</button>
+    </div>
+  </div>
+</div>
+
+<!-- Device Switcher Bar -->
+<div class="device-bar">
+  <span style="font-size:11px;color:var(--text-muted);margin-left:10px;">🖥️ عرض:</span>
+  <button class="device-btn active" id="devDesktop" onclick="setDeviceView('desktop')">
+    <span class="dev-icon">💻</span> لابتوب
+  </button>
+  <button class="device-btn" id="devTablet" onclick="setDeviceView('tablet')">
+    <span class="dev-icon">📟</span> تابلت
+  </button>
+  <button class="device-btn" id="devMobile" onclick="setDeviceView('mobile')">
+    <span class="dev-icon">📱</span> موبايل
+  </button>
+</div>
+
+<!-- Role Switcher Bar -->
+<div class="role-bar">
+  <span style="font-size:12px;color:var(--text-muted);margin-left:8px;">👤 الدور:</span>
+  <button class="role-btn active" id="roleOps" onclick="setRole('ops')">🌐 مدير التشغيل</button>
+  <button class="role-btn" id="roleManager" onclick="setRole('manager')">👔 مدير فرع</button>
+</div>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-top">
+    <div class="header-title">
+      <h1>🥛 تقييم أداء فروع ومديري ب لبن قطر</h1>
+      <div class="calligraphy-signature">بِلَال الأَنْصَارِي</div>
+    </div>
+    <div class="header-controls">
+      <button class="ctrl-btn active" id="modeToggle" onclick="toggleMode()">🌙 داكن</button>
+      <button class="ctrl-btn" onclick="openHistoryModal()" title="سجل التغييرات">📜 السجل</button>
+      <button class="ctrl-btn" onclick="openSyncModal()" title="إعدادات المزامنة">☁️ مزامنة</button>
+      <button class="ctrl-btn" onclick="saveAllData()">💾 حفظ</button>
+    </div>
+  </div>
+</div>
+
+<!-- Branch Selector Bar (single dropdown) -->
+<div class="branch-selector-bar" id="branchSelectorBar">
+  <span class="branch-selector-label">🏪 الفرع:</span>
+  <select id="branchSelector" onchange="onBranchSelectChange(this.value)">
+    <option value="nasr">النصر</option>
+    <option value="farosiya">الفروسية</option>
+    <option value="gharafa">الغرافة</option>
+    <option value="wakra">الوكرة</option>
+  </select>
+  <span class="branch-selector-hint">اختر الفرع لعرض التقييم وخطة العمل</span>
+</div>
+
+<!-- Nav Tabs -->
+<div class="nav-tabs" id="navTabs">
+  <div class="nav-tab" onclick="showPage('dashboard')" data-page="dashboard" data-role="ops"><span class="tab-icon">📡</span> Dashboard</div>
+  <div class="nav-tab active" onclick="showPage('branch-view')" data-page="branch-view" data-role="ops"><span class="tab-icon">🏪</span> الفرع المختار</div>
+  <div class="nav-tab tab-tasks" onclick="showPage('tasks')" data-page="tasks" data-role="both">
+    <span class="tab-icon">📋</span> المهام
+    <span class="badge hidden" id="tasksBadge">0</span>
+  </div>
+  <div class="nav-tab" onclick="showPage('managers')" data-page="managers" data-role="ops"><span class="tab-icon">👔</span> المديرون</div>
+  <div class="nav-tab" onclick="showPage('analytics')" data-page="analytics" data-role="ops"><span class="tab-icon">📊</span> تحليلات</div>
+  <div class="nav-tab" onclick="showPage('recommendations')" data-page="recommendations" data-role="ops"><span class="tab-icon">💡</span> توصيات</div>
+  <div class="nav-tab" onclick="showPage('ops-manager')" data-page="ops-manager" data-role="ops"><span class="tab-icon">🌐</span> نظرة عامة</div>
+  <div class="nav-tab" onclick="showPage('other-depts')" data-page="other-depts" data-role="ops"><span class="tab-icon">🔧</span> إدارات أخرى</div>
+</div>
+
+<div class="main" id="mainContent">
+  <div id="dashboard" class="page"><div id="dashboard-content"></div></div>
+  <div id="branch-view" class="page active">
+    <div id="branch-nasr" class="branch-page" style="display:block;"></div>
+    <div id="branch-farosiya" class="branch-page" style="display:none;"></div>
+    <div id="branch-gharafa" class="branch-page" style="display:none;"></div>
+    <div id="branch-wakra" class="branch-page" style="display:none;"></div>
+  </div>
+  <div id="tasks" class="page"><div id="tasks-content"></div></div>
+  <div id="managers" class="page"><div id="managers-content"></div></div>
+  <div id="analytics" class="page"><div id="analytics-content"></div></div>
+  <div id="recommendations" class="page"><div id="reco-content"></div></div>
+  <div id="ops-manager" class="page"><div id="ops-content"></div></div>
+  <div id="other-depts" class="page"><div id="depts-content"></div></div>
+</div>
+

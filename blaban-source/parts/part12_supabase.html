@@ -1,0 +1,635 @@
+<!-- =================================================================
+     SUPABASE CRM INTEGRATION
+     Adds cloud sync, realtime updates, and multi-user support
+     ================================================================= -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+// ============================================================
+// SUPABASE CLIENT INITIALIZATION
+// ============================================================
+const SUPABASE_URL = localStorage.getItem('blaban_supabase_url') || 'https://azgytmawtuhpgaeuipyv.supabase.co';
+const SUPABASE_KEY = localStorage.getItem('blaban_supabase_key') || 'sb_publishable_MNbZn3gZM9DjZeO-w6kM_Q_S91MZmnS';
+
+let supabaseClient = null;
+let currentUser = null;
+let realtimeChannels = [];
+let syncEnabled = false;
+
+function initSupabase() {
+  if (!window.supabase) {
+    console.warn('[Supabase] Library not loaded');
+    return false;
+  }
+  try {
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true },
+      realtime: { params: { eventsPerSecond: 5 } }
+    });
+    window.supabaseClient = supabaseClient;
+    console.log('[Supabase] Initialized');
+    return true;
+  } catch (err) {
+    console.error('[Supabase] Init failed:', err);
+    return false;
+  }
+}
+
+// ============================================================
+// AUTH
+// ============================================================
+async function supaSignUp(email, password, fullName) {
+  if (!supabaseClient) return { error: 'Supabase not initialized' };
+  const { data, error } = await supabaseClient.auth.signUp({
+    email,
+    password,
+    options: { data: { full_name: fullName } }
+  });
+  if (!error) currentUser = data.user;
+  return { data, error };
+}
+
+async function supaSignIn(email, password) {
+  if (!supabaseClient) return { error: 'Supabase not initialized' };
+  const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+  if (!error) {
+    currentUser = data.user;
+    syncEnabled = true;
+    await initialCloudSync();
+    setupRealtimeSubscriptions();
+  }
+  return { data, error };
+}
+
+async function supaSignOut() {
+  if (!supabaseClient) return;
+  cleanupRealtimeSubscriptions();
+  await supabaseClient.auth.signOut();
+  currentUser = null;
+  syncEnabled = false;
+}
+
+async function checkAuth() {
+  if (!supabaseClient) return null;
+  const { data: { user } } = await supabaseClient.auth.getUser();
+  if (user) {
+    currentUser = user;
+    syncEnabled = true;
+  }
+  return user;
+}
+
+// ============================================================
+// CLOUD STORAGE — Evaluations
+// ============================================================
+async function syncEvaluationToCloud(branch, date, visitData) {
+  if (!syncEnabled || !currentUser) return { synced: false };
+  try {
+    const { error } = await supabaseClient
+      .from('blaban_evaluations')
+      .upsert({
+        branch_id: branch,
+        eval_date: date,
+        managers: visitData.managers || [visitData.manager].filter(Boolean),
+        results: visitData.results || {},
+        notes: visitData.notes || {},
+        photos: visitData.photos || {},
+        action_status: visitData.actionStatus || {},
+        user_critical: visitData.userCritical || {},
+        score_percent: visitData.scorePercent || 0,
+        created_by: currentUser.id,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'branch_id,eval_date' });
+    if (error) {
+      console.warn('[Cloud Sync] Eval failed:', error.message);
+      return { synced: false, error };
+    }
+    return { synced: true };
+  } catch (err) {
+    return { synced: false, error: err };
+  }
+}
+
+async function pullEvaluationsFromCloud(branch) {
+  if (!syncEnabled) return [];
+  try {
+    let query = supabaseClient.from('blaban_evaluations').select('*');
+    if (branch) query = query.eq('branch_id', branch);
+    const { data, error } = await query;
+    if (error) {
+      console.warn('[Cloud Pull] Eval failed:', error.message);
+      return [];
+    }
+    return data || [];
+  } catch (err) {
+    console.warn('[Cloud Pull] Exception:', err);
+    return [];
+  }
+}
+
+// ============================================================
+// CLOUD STORAGE — Tasks
+// ============================================================
+async function syncTaskToCloud(task) {
+  if (!syncEnabled || !currentUser) return { synced: false };
+  try {
+    const payload = {
+      id: task.id,
+      title: task.title || task.task,
+      branch_id: task.branch || null,
+      assignee: task.assignee || null,
+      due_date: task.dueDate || null,
+      done: !!task.done,
+      done_by: task.doneBy || null,
+      done_at: task.doneAt || null,
+      photo_url: task.photo || null,
+      created_by: currentUser.id,
+      updated_at: new Date().toISOString()
+    };
+    const { error } = await supabaseClient
+      .from('blaban_tasks')
+      .upsert(payload, { onConflict: 'id' });
+    if (error) console.warn('[Cloud Sync] Task failed:', error.message);
+    return { synced: !error, error };
+  } catch (err) {
+    return { synced: false, error: err };
+  }
+}
+
+async function pullTasksFromCloud() {
+  if (!syncEnabled) return [];
+  try {
+    const { data, error } = await supabaseClient
+      .from('blaban_tasks')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) return [];
+    return data || [];
+  } catch (err) {
+    return [];
+  }
+}
+
+// ============================================================
+// CLOUD STORAGE — Manager Profiles
+// ============================================================
+async function syncManagerProfileToCloud(name, profile) {
+  if (!syncEnabled || !currentUser) return { synced: false };
+  try {
+    const { error } = await supabaseClient
+      .from('blaban_managers')
+      .upsert({
+        name: name,
+        phone: profile.phone || null,
+        email: profile.email || null,
+        joined_date: profile.joined || null,
+        age: profile.age || null,
+        notes: profile.notes || null,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'name' });
+    return { synced: !error, error };
+  } catch (err) {
+    return { synced: false, error: err };
+  }
+}
+
+async function pullManagersFromCloud() {
+  if (!syncEnabled) return {};
+  try {
+    const { data, error } = await supabaseClient.from('blaban_managers').select('*');
+    if (error) return {};
+    const result = {};
+    (data || []).forEach(m => {
+      result[m.name] = {
+        phone: m.phone, email: m.email, joined: m.joined_date,
+        age: m.age, notes: m.notes
+      };
+    });
+    return result;
+  } catch (err) {
+    return {};
+  }
+}
+
+// ============================================================
+// CLOUD STORAGE — Custom Items
+// ============================================================
+async function syncCustomItemsToCloud() {
+  if (!syncEnabled || !currentUser) return;
+  try {
+    const customItems = JSON.parse(localStorage.getItem('blaban_custom_items') || '[]');
+    const itemEdits = JSON.parse(localStorage.getItem('blaban_item_edits') || '{}');
+    const itemDeletions = JSON.parse(localStorage.getItem('blaban_item_deletions') || '[]');
+    
+    await supabaseClient.from('blaban_settings').upsert({
+      key: 'checklist_customizations',
+      value: { customItems, itemEdits, itemDeletions },
+      updated_by: currentUser.id,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'key' });
+  } catch (err) {
+    console.warn('[Cloud Sync] Custom items failed:', err);
+  }
+}
+
+async function pullCustomItemsFromCloud() {
+  if (!syncEnabled) return false;
+  try {
+    const { data, error } = await supabaseClient
+      .from('blaban_settings')
+      .select('value')
+      .eq('key', 'checklist_customizations')
+      .single();
+    if (error || !data) return false;
+    const v = data.value || {};
+    if (v.customItems) localStorage.setItem('blaban_custom_items', JSON.stringify(v.customItems));
+    if (v.itemEdits) localStorage.setItem('blaban_item_edits', JSON.stringify(v.itemEdits));
+    if (v.itemDeletions) localStorage.setItem('blaban_item_deletions', JSON.stringify(v.itemDeletions));
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+// ============================================================
+// INITIAL SYNC (after login)
+// ============================================================
+async function initialCloudSync() {
+  if (!syncEnabled) return;
+  console.log('[Cloud] Starting initial sync...');
+  
+  try {
+    // Pull custom items first
+    await pullCustomItemsFromCloud();
+    
+    // Pull managers
+    const cloudManagers = await pullManagersFromCloud();
+    if (Object.keys(cloudManagers).length > 0) {
+      const local = JSON.parse(localStorage.getItem('blaban_manager_profiles') || '{}');
+      const merged = { ...local, ...cloudManagers };
+      localStorage.setItem('blaban_manager_profiles', JSON.stringify(merged));
+    }
+    
+    // Pull evaluations (for all branches)
+    const cloudEvals = await pullEvaluationsFromCloud();
+    if (cloudEvals.length > 0) {
+      let localData;
+      try { localData = JSON.parse(localStorage.getItem('blaban_data_v3') || '{}'); }
+      catch(e) { localData = {}; }
+      
+      cloudEvals.forEach(ev => {
+        if (!localData[ev.branch_id]) localData[ev.branch_id] = {};
+        const dateKey = ev.eval_date;
+        if (!localData[ev.branch_id][dateKey] || 
+            new Date(ev.updated_at) > new Date(localData[ev.branch_id][dateKey].updatedAt || 0)) {
+          localData[ev.branch_id][dateKey] = {
+            managers: ev.managers || [],
+            manager: (ev.managers || [])[0] || '',
+            results: ev.results || {},
+            notes: ev.notes || {},
+            photos: ev.photos || {},
+            actionStatus: ev.action_status || {},
+            userCritical: ev.user_critical || {},
+            scorePercent: ev.score_percent || 0,
+            updatedAt: ev.updated_at
+          };
+        }
+      });
+      localStorage.setItem('blaban_data_v3', JSON.stringify(localData));
+    }
+    
+    // Pull tasks
+    const cloudTasks = await pullTasksFromCloud();
+    if (cloudTasks.length > 0) {
+      const mapped = cloudTasks.map(t => ({
+        id: t.id,
+        title: t.title,
+        task: t.title,
+        branch: t.branch_id,
+        assignee: t.assignee,
+        dueDate: t.due_date,
+        done: t.done,
+        doneBy: t.done_by,
+        doneAt: t.done_at,
+        photo: t.photo_url,
+        createdAt: t.created_at
+      }));
+      localStorage.setItem('blaban_tasks_v1', JSON.stringify(mapped));
+    }
+    
+    // Refresh UI
+    if (typeof showPage === 'function' && typeof currentPage !== 'undefined') {
+      try { showPage(currentPage); } catch(e) {}
+    }
+    
+    console.log('[Cloud] Initial sync complete');
+    if (typeof showNotif === 'function') showNotif('☁️ تم تحميل البيانات من السحابة', 'success');
+  } catch (err) {
+    console.error('[Cloud] Sync error:', err);
+  }
+}
+
+// ============================================================
+// REALTIME SUBSCRIPTIONS
+// ============================================================
+function setupRealtimeSubscriptions() {
+  if (!syncEnabled || !supabaseClient) return;
+  cleanupRealtimeSubscriptions();
+  
+  // Evaluations channel
+  const evalChannel = supabaseClient
+    .channel('blaban-evals')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'blaban_evaluations' }, (payload) => {
+      console.log('[Realtime] Eval update:', payload.eventType);
+      if (payload.new && payload.new.created_by !== currentUser?.id) {
+        // Apply update from another user
+        try {
+          let localData = JSON.parse(localStorage.getItem('blaban_data_v3') || '{}');
+          const ev = payload.new;
+          if (!localData[ev.branch_id]) localData[ev.branch_id] = {};
+          localData[ev.branch_id][ev.eval_date] = {
+            managers: ev.managers || [],
+            manager: (ev.managers || [])[0] || '',
+            results: ev.results || {},
+            notes: ev.notes || {},
+            photos: ev.photos || {},
+            actionStatus: ev.action_status || {},
+            userCritical: ev.user_critical || {},
+            scorePercent: ev.score_percent || 0,
+            updatedAt: ev.updated_at
+          };
+          localStorage.setItem('blaban_data_v3', JSON.stringify(localData));
+          if (typeof showNotif === 'function') showNotif('🔄 تحديث مباشر: ' + (ev.branch_id || '') + ' (' + ev.eval_date + ')', 'info');
+          
+          // Refresh current page
+          if (typeof currentPage !== 'undefined' && typeof showPage === 'function') {
+            try { showPage(currentPage); } catch(e) {}
+          }
+        } catch(e) { console.warn(e); }
+      }
+    })
+    .subscribe();
+  realtimeChannels.push(evalChannel);
+  
+  // Tasks channel
+  const tasksChannel = supabaseClient
+    .channel('blaban-tasks')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'blaban_tasks' }, (payload) => {
+      console.log('[Realtime] Task update:', payload.eventType);
+      // Refresh tasks
+      pullTasksFromCloud().then(tasks => {
+        const mapped = tasks.map(t => ({
+          id: t.id, title: t.title, task: t.title, branch: t.branch_id,
+          assignee: t.assignee, dueDate: t.due_date, done: t.done,
+          doneBy: t.done_by, doneAt: t.done_at, photo: t.photo_url, createdAt: t.created_at
+        }));
+        localStorage.setItem('blaban_tasks_v1', JSON.stringify(mapped));
+        if (typeof renderTasksPage === 'function') {
+          try { renderTasksPage(); } catch(e) {}
+        }
+      });
+    })
+    .subscribe();
+  realtimeChannels.push(tasksChannel);
+  
+  // Managers channel
+  const managersChannel = supabaseClient
+    .channel('blaban-managers')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'blaban_managers' }, () => {
+      pullManagersFromCloud().then(managers => {
+        const local = JSON.parse(localStorage.getItem('blaban_manager_profiles') || '{}');
+        const merged = { ...local, ...managers };
+        localStorage.setItem('blaban_manager_profiles', JSON.stringify(merged));
+      });
+    })
+    .subscribe();
+  realtimeChannels.push(managersChannel);
+  
+  console.log('[Realtime] Subscribed to 3 channels');
+}
+
+function cleanupRealtimeSubscriptions() {
+  realtimeChannels.forEach(ch => {
+    try { supabaseClient.removeChannel(ch); } catch(e) {}
+  });
+  realtimeChannels = [];
+}
+
+// ============================================================
+// AUTO-SYNC ON DATA CHANGES (hook into existing save functions)
+// ============================================================
+function autoSyncEvaluation(branch, date) {
+  if (!syncEnabled) return;
+  try {
+    const data = JSON.parse(localStorage.getItem('blaban_data_v3') || '{}');
+    if (data[branch] && data[branch][date]) {
+      syncEvaluationToCloud(branch, date, data[branch][date]);
+    }
+  } catch(e) {}
+}
+
+function autoSyncTask(task) {
+  if (!syncEnabled) return;
+  syncTaskToCloud(task);
+}
+
+function autoSyncManager(name) {
+  if (!syncEnabled) return;
+  try {
+    const profiles = JSON.parse(localStorage.getItem('blaban_manager_profiles') || '{}');
+    if (profiles[name]) syncManagerProfileToCloud(name, profiles[name]);
+  } catch(e) {}
+}
+
+window.autoSyncEvaluation = autoSyncEvaluation;
+window.autoSyncTask = autoSyncTask;
+window.autoSyncManager = autoSyncManager;
+window.syncEnabled = () => syncEnabled;
+window.supaSignIn = supaSignIn;
+window.supaSignUp = supaSignUp;
+window.supaSignOut = supaSignOut;
+window.checkAuth = checkAuth;
+window.initialCloudSync = initialCloudSync;
+
+// ============================================================
+// AUTH UI MODAL
+// ============================================================
+function openCloudAuthModal() {
+  let modal = document.getElementById('cloudAuthModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'cloudAuthModal';
+    modal.className = 'modal-overlay';
+    document.body.appendChild(modal);
+  }
+  
+  const isLoggedIn = currentUser !== null;
+  
+  modal.innerHTML = `
+    <div class="modal-box" style="max-width:480px;">
+      <h3>☁️ المزامنة السحابية</h3>
+      ${isLoggedIn ? `
+        <div style="background:rgba(46,204,113,0.15);border:1px solid #27AE60;border-radius:10px;padding:14px;margin-bottom:14px;">
+          <div style="font-weight:800;color:#2ECC71;margin-bottom:4px;">✅ متصل بالسحابة</div>
+          <div style="font-size:13px;color:#F0E6D3;">${currentUser.email}</div>
+        </div>
+        <p style="font-size:13px;color:#BCA98A;margin-bottom:10px;">
+          • التقييمات تتزامن تلقائياً<br>
+          • تحديثات فورية من باقي المستخدمين<br>
+          • المدراء والمهام محفوظة على السحابة
+        </p>
+        <button class="btn btn-primary" style="width:100%;" onclick="cloudLogout()">🚪 تسجيل الخروج</button>
+      ` : `
+        <p style="font-size:13px;color:#BCA98A;margin-bottom:14px;">
+          سجّل دخولك لتزامن بياناتك عبر كل الأجهزة في الوقت الفعلي
+        </p>
+        <div id="cloudAuthTabs" style="display:flex;gap:4px;margin-bottom:14px;background:rgba(0,0,0,0.3);padding:4px;border-radius:8px;">
+          <button id="tabSignIn" onclick="switchAuthTab('signin')" style="flex:1;padding:10px;border:none;background:linear-gradient(135deg,#C9A84C,#E8C96A);color:#4A0F1A;font-weight:800;border-radius:6px;cursor:pointer;">دخول</button>
+          <button id="tabSignUp" onclick="switchAuthTab('signup')" style="flex:1;padding:10px;border:none;background:transparent;color:#BCA98A;font-weight:800;border-radius:6px;cursor:pointer;">إنشاء حساب</button>
+        </div>
+        <div id="authForm">
+          <input id="authFullName" placeholder="الاسم الكامل" style="display:none;width:100%;padding:10px;margin-bottom:8px;border-radius:6px;border:1px solid #C9A84C;background:rgba(0,0,0,0.3);color:#F0E6D3;font-family:inherit;">
+          <input id="authEmail" type="email" placeholder="البريد الإلكتروني" style="width:100%;padding:10px;margin-bottom:8px;border-radius:6px;border:1px solid #C9A84C;background:rgba(0,0,0,0.3);color:#F0E6D3;font-family:inherit;">
+          <input id="authPassword" type="password" placeholder="كلمة المرور (6 أحرف على الأقل)" style="width:100%;padding:10px;margin-bottom:14px;border-radius:6px;border:1px solid #C9A84C;background:rgba(0,0,0,0.3);color:#F0E6D3;font-family:inherit;">
+          <button id="authSubmit" onclick="submitAuth('signin')" class="btn btn-gold" style="width:100%;font-weight:800;">🔓 تسجيل الدخول</button>
+        </div>
+        <div id="authMsg" style="margin-top:10px;font-size:13px;text-align:center;"></div>
+        
+        <details style="margin-top:14px;font-size:12px;color:#BCA98A;">
+          <summary style="cursor:pointer;color:#C9A84C;">⚙️ إعدادات Supabase المتقدمة</summary>
+          <div style="margin-top:8px;">
+            <input id="supaUrl" placeholder="Supabase URL" value="${SUPABASE_URL}" style="width:100%;padding:8px;margin-bottom:6px;font-size:11px;border-radius:4px;border:1px solid #6B1B2A;background:rgba(0,0,0,0.3);color:#F0E6D3;font-family:monospace;">
+            <input id="supaKey" placeholder="Anon Key" value="${SUPABASE_KEY.substring(0,20)}..." style="width:100%;padding:8px;margin-bottom:6px;font-size:11px;border-radius:4px;border:1px solid #6B1B2A;background:rgba(0,0,0,0.3);color:#F0E6D3;font-family:monospace;">
+            <button onclick="saveSupaConfig()" class="btn btn-sm" style="font-size:11px;">💾 حفظ وإعادة التحميل</button>
+          </div>
+        </details>
+      `}
+      <div class="modal-actions" style="margin-top:14px;">
+        <button class="btn btn-primary" onclick="document.getElementById('cloudAuthModal').classList.add('hidden')">إغلاق</button>
+      </div>
+    </div>
+  `;
+  modal.classList.remove('hidden');
+}
+
+function switchAuthTab(tab) {
+  const signIn = document.getElementById('tabSignIn');
+  const signUp = document.getElementById('tabSignUp');
+  const fullName = document.getElementById('authFullName');
+  const submit = document.getElementById('authSubmit');
+  
+  if (tab === 'signin') {
+    signIn.style.background = 'linear-gradient(135deg,#C9A84C,#E8C96A)';
+    signIn.style.color = '#4A0F1A';
+    signUp.style.background = 'transparent';
+    signUp.style.color = '#BCA98A';
+    fullName.style.display = 'none';
+    submit.textContent = '🔓 تسجيل الدخول';
+    submit.onclick = () => submitAuth('signin');
+  } else {
+    signUp.style.background = 'linear-gradient(135deg,#C9A84C,#E8C96A)';
+    signUp.style.color = '#4A0F1A';
+    signIn.style.background = 'transparent';
+    signIn.style.color = '#BCA98A';
+    fullName.style.display = 'block';
+    submit.textContent = '✨ إنشاء الحساب';
+    submit.onclick = () => submitAuth('signup');
+  }
+}
+
+async function submitAuth(mode) {
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  const fullName = (document.getElementById('authFullName').value || '').trim();
+  const msg = document.getElementById('authMsg');
+  
+  if (!email || !password) {
+    msg.innerHTML = '<span style="color:#E74C3C;">⚠️ أدخل البريد وكلمة المرور</span>';
+    return;
+  }
+  if (password.length < 6) {
+    msg.innerHTML = '<span style="color:#E74C3C;">⚠️ كلمة المرور أقل من 6 أحرف</span>';
+    return;
+  }
+  
+  msg.innerHTML = '<span style="color:#C9A84C;">⏳ جاري المعالجة...</span>';
+  
+  const result = mode === 'signup' 
+    ? await supaSignUp(email, password, fullName)
+    : await supaSignIn(email, password);
+  
+  if (result.error) {
+    msg.innerHTML = '<span style="color:#E74C3C;">❌ ' + result.error.message + '</span>';
+    return;
+  }
+  
+  if (mode === 'signup') {
+    msg.innerHTML = '<span style="color:#2ECC71;">✅ تم إنشاء الحساب! يمكنك الآن تسجيل الدخول</span>';
+    setTimeout(() => switchAuthTab('signin'), 1500);
+  } else {
+    msg.innerHTML = '<span style="color:#2ECC71;">✅ تم تسجيل الدخول! جاري المزامنة...</span>';
+    setTimeout(() => {
+      document.getElementById('cloudAuthModal').classList.add('hidden');
+      updateCloudStatusIndicator();
+    }, 1200);
+  }
+}
+
+async function cloudLogout() {
+  if (!confirm('تسجيل الخروج من السحابة؟ بياناتك المحلية ستبقى محفوظة.')) return;
+  await supaSignOut();
+  document.getElementById('cloudAuthModal').classList.add('hidden');
+  updateCloudStatusIndicator();
+  if (typeof showNotif === 'function') showNotif('🚪 تم تسجيل الخروج', 'info');
+}
+
+function saveSupaConfig() {
+  const url = document.getElementById('supaUrl').value.trim();
+  const key = document.getElementById('supaKey').value.trim();
+  if (url && !key.endsWith('...')) {
+    localStorage.setItem('blaban_supabase_url', url);
+    localStorage.setItem('blaban_supabase_key', key);
+    alert('تم الحفظ. سيتم إعادة التحميل.');
+    location.reload();
+  } else {
+    alert('أدخل URL ومفتاح صالحين');
+  }
+}
+
+function updateCloudStatusIndicator() {
+  const btn = document.getElementById('cloudSyncBtn');
+  if (!btn) return;
+  if (currentUser) {
+    btn.innerHTML = '☁️ متصل';
+    btn.style.background = 'linear-gradient(135deg, #27AE60, #2ECC71)';
+    btn.style.color = '#fff';
+    btn.title = 'متصل بالسحابة: ' + currentUser.email;
+  } else {
+    btn.innerHTML = '☁️ مزامنة';
+    btn.style.background = '';
+    btn.style.color = '';
+    btn.title = 'تسجيل الدخول للمزامنة';
+  }
+}
+
+window.openCloudAuthModal = openCloudAuthModal;
+window.switchAuthTab = switchAuthTab;
+window.submitAuth = submitAuth;
+window.cloudLogout = cloudLogout;
+window.saveSupaConfig = saveSupaConfig;
+window.updateCloudStatusIndicator = updateCloudStatusIndicator;
+
+// ============================================================
+// INITIALIZE ON LOAD
+// ============================================================
+window.addEventListener('DOMContentLoaded', async () => {
+  if (initSupabase()) {
+    const user = await checkAuth();
+    if (user) {
+      console.log('[Auth] Restored session:', user.email);
+      setupRealtimeSubscriptions();
+      await initialCloudSync();
+    }
+    setTimeout(updateCloudStatusIndicator, 500);
+  }
+});
+</script>

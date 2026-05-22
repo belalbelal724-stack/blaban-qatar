@@ -1,0 +1,213 @@
+<script>
+// ===================== INIT =====================
+function saveAllData() {
+  saveData();
+  saveTasks();
+  showNotif('✅ تم حفظ البيانات بنجاح!', 'success');
+}
+
+initData();
+
+// Restore preferences
+const savedMode = localStorage.getItem('blaban_mode');
+if (savedMode === 'light') {
+  isDark = false;
+  document.body.classList.add('light-mode');
+  const mt = document.getElementById('modeToggle');
+  if (mt) mt.textContent = '☀️ فاتح';
+}
+
+const savedDevice = localStorage.getItem('blaban_device') || 'desktop';
+setDeviceView(savedDevice);
+
+// Default role is 'ops' for everyone (the role doesn't gate anything anymore — PIN does)
+let savedRole = localStorage.getItem('blaban_role') || 'ops';
+
+// Render all branches FIRST (so DOM is ready when setRole tries to render selectedBranch)
+BRANCHES.forEach(b => renderBranch(b));
+
+// Sync branch selector to saved branch
+const branchSelectorEl = document.getElementById('branchSelector');
+if (branchSelectorEl) {
+  branchSelectorEl.value = selectedBranch;
+  document.querySelectorAll('.branch-page').forEach(p => p.style.display = 'none');
+  const targetEl = document.getElementById(`branch-${selectedBranch}`);
+  if (targetEl) targetEl.style.display = 'block';
+}
+
+// NOW set the role
+setRole(savedRole);
+
+// Refresh edit-mode button state
+if (typeof refreshEditModeButton === 'function') refreshEditModeButton();
+
+// Always force the branch-view page to be active on initial load
+setTimeout(() => {
+  showPage('branch-view');
+}, 50);
+
+// Migrate old tasks to add branchStatus
+let tasksNeedSave = false;
+tasksData.forEach(t => {
+  if (!t.branchStatus) {
+    t.branchStatus = {};
+    const branches = t.branch === 'all' ? BRANCHES.slice() : [t.branch];
+    branches.forEach(b => {
+      t.branchStatus[b] = {
+        status: t.status === 'completed' ? 'completed' : 'pending',
+        completedAt: t.status === 'completed' ? t.completedAt : null
+      };
+    });
+    tasksNeedSave = true;
+  }
+});
+if (tasksNeedSave) saveTasks();
+
+// Update tasks badge
+updateTasksBadge();
+
+// Auto-save every 30s
+setInterval(() => {
+  saveData();
+  saveTasks();
+}, 30000);
+
+// Modal overlay click-to-close handlers
+function attachOverlayClose(modalId, closeFn) {
+  const m = document.getElementById(modalId);
+  if (!m) return;
+  m.addEventListener('click', function(e) {
+    if (e.target === this) closeFn();
+  });
+}
+attachOverlayClose('shareModal', closeShareModal);
+attachOverlayClose('contactModal', closeContactModal);
+attachOverlayClose('addTaskModal', closeAddTaskModal);
+attachOverlayClose('syncModal', closeSyncModal);
+attachOverlayClose('historyModal', closeHistoryModal);
+attachOverlayClose('restoreModal', closeRestoreModal);
+attachOverlayClose('authModal', closeAuthModal);
+attachOverlayClose('authSettingsModal', closeAuthSettingsModal);
+// Note: managerBranchModal does NOT auto-close on overlay click — user must pick a branch
+
+// Enter key in contact phone input
+const cpi = document.getElementById('contactPhoneInput');
+if (cpi) {
+  cpi.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') executeContactSend();
+  });
+}
+const cei = document.getElementById('contactEmailInput');
+if (cei) {
+  cei.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') executeContactSend();
+  });
+}
+// Enter key in auth modal inputs
+['authPwd', 'authNewPwd', 'authNewPwdConfirm'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) {
+    el.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') submitAuth();
+    });
+  }
+});
+
+// ===================== Advanced features init =====================
+
+// Request notification permission (silently after 3s if not yet decided)
+setTimeout(() => {
+  if ('Notification' in window && Notification.permission === 'default') {
+    // Don't auto-prompt; show in-app suggestion instead
+  } else if ('Notification' in window && Notification.permission === 'granted') {
+    notificationPermission = 'granted';
+  }
+}, 3000);
+
+// Auto-reconnect Firebase if previously configured
+if (fbConfig && fbWorkspace) {
+  // Wait a tick for firebase scripts to load
+  setTimeout(async () => {
+    if (typeof firebase === 'undefined') {
+      console.warn('Firebase SDK not loaded — sync disabled.');
+      updateSyncIndicator('offline', '⚫ غير متصل');
+      return;
+    }
+    try {
+      fbApp = firebase.initializeApp(fbConfig);
+      fbAuth = firebase.auth();
+      fbDb = firebase.database();
+      const cred = await fbAuth.signInAnonymously();
+      fbCurrentUser = cred.user;
+      setupFirebaseListeners();
+      updateSyncIndicator('online', '☁️ متصل');
+      fbLastSyncTime = Date.now();
+      pushNotify('☁️ متصل بالسحابة', `جاري المزامنة مع ${fbConfig.projectId}`);
+    } catch(err) {
+      console.error('Auto-reconnect failed:', err);
+      updateSyncIndicator('error', '⚠️ خطأ');
+    }
+  }, 600);
+} else {
+  updateSyncIndicator('offline', '⚫ غير متصل');
+}
+
+// Auto-backup check (every hour while open)
+setInterval(checkAutoBackup, 60 * 60 * 1000);
+setTimeout(checkAutoBackup, 5000); // initial check
+
+// Welcome push for first-time users
+if (!localStorage.getItem('blaban_welcomed')) {
+  setTimeout(() => {
+    pushNotify('👋 أهلاً بك في ب لبن قطر', 'يمكنك الآن تفعيل المزامنة السحابية من زر ☁️ مزامنة');
+    localStorage.setItem('blaban_welcomed', '1');
+  }, 1500);
+}
+
+// ============ PWA Install Banner Logic ============
+function dismissInstallBanner() {
+  const banner = document.getElementById('pwaInstallBanner');
+  if (banner) banner.style.display = 'none';
+  localStorage.setItem('blaban_install_dismissed', String(Date.now()));
+}
+
+function showInstallBannerIfEligible() {
+  // Already installed?
+  if (isPWAInstalled()) return;
+  // Recently dismissed (within 3 days)?
+  const dismissed = parseInt(localStorage.getItem('blaban_install_dismissed') || '0');
+  if (dismissed && (Date.now() - dismissed) < 3 * 24 * 60 * 60 * 1000) return;
+  
+  const banner = document.getElementById('pwaInstallBanner');
+  if (!banner) return;
+  
+  // Show banner if installable (deferredInstallPrompt available) or on iOS Safari
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  
+  if (deferredInstallPrompt) {
+    banner.style.display = 'block';
+  } else if (isIOS && isSafari) {
+    // iOS Safari can install via "Add to Home Screen" but doesn't fire beforeinstallprompt
+    setTimeout(() => { banner.style.display = 'block'; }, 3000);
+  }
+}
+
+// Check eligibility after a short delay (to give beforeinstallprompt time to fire)
+setTimeout(showInstallBannerIfEligible, 4000);
+
+// Also re-check when beforeinstallprompt fires
+window.addEventListener('beforeinstallprompt', () => {
+  setTimeout(showInstallBannerIfEligible, 500);
+});
+
+// Adjust UI when running as installed PWA
+if (isPWAInstalled()) {
+  document.body.classList.add('pwa-mode');
+  // Hide install button if already installed
+  const btn = document.getElementById('pwaInstallBtn');
+  if (btn) btn.style.display = 'none';
+}
+</script>
+</body>
+</html>
