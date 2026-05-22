@@ -483,16 +483,16 @@ function openCloudAuthModal() {
           سجّل دخولك لتزامن بياناتك عبر كل الأجهزة في الوقت الفعلي
         </p>
         <div id="cloudAuthTabs" style="display:flex;gap:4px;margin-bottom:14px;background:rgba(0,0,0,0.3);padding:4px;border-radius:8px;">
-          <button id="tabSignIn" onclick="switchAuthTab('signin')" style="flex:1;padding:10px;border:none;background:linear-gradient(135deg,#C9A84C,#E8C96A);color:#4A0F1A;font-weight:800;border-radius:6px;cursor:pointer;">دخول</button>
-          <button id="tabSignUp" onclick="switchAuthTab('signup')" style="flex:1;padding:10px;border:none;background:transparent;color:#BCA98A;font-weight:800;border-radius:6px;cursor:pointer;">إنشاء حساب</button>
+          <button id="cloudTabSignIn" onclick="switchCloudAuthTab('signin')" style="flex:1;padding:10px;border:none;background:linear-gradient(135deg,#C9A84C,#E8C96A);color:#4A0F1A;font-weight:800;border-radius:6px;cursor:pointer;">دخول</button>
+          <button id="cloudTabSignUp" onclick="switchCloudAuthTab('signup')" style="flex:1;padding:10px;border:none;background:transparent;color:#BCA98A;font-weight:800;border-radius:6px;cursor:pointer;">إنشاء حساب</button>
         </div>
-        <div id="authForm">
-          <input id="authFullName" placeholder="الاسم الكامل" style="display:none;width:100%;padding:10px;margin-bottom:8px;border-radius:6px;border:1px solid #C9A84C;background:rgba(0,0,0,0.3);color:#F0E6D3;font-family:inherit;">
-          <input id="authEmail" type="email" placeholder="البريد الإلكتروني" style="width:100%;padding:10px;margin-bottom:8px;border-radius:6px;border:1px solid #C9A84C;background:rgba(0,0,0,0.3);color:#F0E6D3;font-family:inherit;">
-          <input id="authPassword" type="password" placeholder="كلمة المرور (6 أحرف على الأقل)" style="width:100%;padding:10px;margin-bottom:14px;border-radius:6px;border:1px solid #C9A84C;background:rgba(0,0,0,0.3);color:#F0E6D3;font-family:inherit;">
-          <button id="authSubmit" onclick="submitAuth('signin')" class="btn btn-gold" style="width:100%;font-weight:800;">🔓 تسجيل الدخول</button>
+        <div id="cloudAuthForm">
+          <input id="cloudAuthFullName" placeholder="الاسم الكامل" style="display:none;width:100%;padding:10px;margin-bottom:8px;border-radius:6px;border:1px solid #C9A84C;background:rgba(0,0,0,0.3);color:#F0E6D3;font-family:inherit;">
+          <input id="cloudAuthEmail" type="email" placeholder="البريد الإلكتروني" style="width:100%;padding:10px;margin-bottom:8px;border-radius:6px;border:1px solid #C9A84C;background:rgba(0,0,0,0.3);color:#F0E6D3;font-family:inherit;">
+          <input id="cloudAuthPassword" type="password" placeholder="كلمة المرور (6 أحرف على الأقل)" style="width:100%;padding:10px;margin-bottom:14px;border-radius:6px;border:1px solid #C9A84C;background:rgba(0,0,0,0.3);color:#F0E6D3;font-family:inherit;">
+          <button id="cloudAuthSubmit" onclick="submitCloudAuth('signin')" class="btn btn-gold" style="width:100%;font-weight:800;">🔓 تسجيل الدخول</button>
         </div>
-        <div id="authMsg" style="margin-top:10px;font-size:13px;text-align:center;"></div>
+        <div id="cloudAuthMsg" style="margin-top:10px;font-size:13px;text-align:center;"></div>
         
         <details style="margin-top:14px;font-size:12px;color:#BCA98A;">
           <summary style="cursor:pointer;color:#C9A84C;">⚙️ إعدادات Supabase المتقدمة</summary>
@@ -511,11 +511,11 @@ function openCloudAuthModal() {
   modal.classList.remove('hidden');
 }
 
-function switchAuthTab(tab) {
-  const signIn = document.getElementById('tabSignIn');
-  const signUp = document.getElementById('tabSignUp');
-  const fullName = document.getElementById('authFullName');
-  const submit = document.getElementById('authSubmit');
+function switchCloudAuthTab(tab) {
+  const signIn = document.getElementById('cloudTabSignIn');
+  const signUp = document.getElementById('cloudTabSignUp');
+  const fullName = document.getElementById('cloudAuthFullName');
+  const submit = document.getElementById('cloudAuthSubmit');
   
   if (tab === 'signin') {
     signIn.style.background = 'linear-gradient(135deg,#C9A84C,#E8C96A)';
@@ -524,7 +524,7 @@ function switchAuthTab(tab) {
     signUp.style.color = '#BCA98A';
     fullName.style.display = 'none';
     submit.textContent = '🔓 تسجيل الدخول';
-    submit.onclick = () => submitAuth('signin');
+    submit.onclick = () => submitCloudAuth('signin');
   } else {
     signUp.style.background = 'linear-gradient(135deg,#C9A84C,#E8C96A)';
     signUp.style.color = '#4A0F1A';
@@ -532,15 +532,15 @@ function switchAuthTab(tab) {
     signIn.style.color = '#BCA98A';
     fullName.style.display = 'block';
     submit.textContent = '✨ إنشاء الحساب';
-    submit.onclick = () => submitAuth('signup');
+    submit.onclick = () => submitCloudAuth('signup');
   }
 }
 
-async function submitAuth(mode) {
-  const email = document.getElementById('authEmail').value.trim();
-  const password = document.getElementById('authPassword').value;
-  const fullName = (document.getElementById('authFullName').value || '').trim();
-  const msg = document.getElementById('authMsg');
+async function submitCloudAuth(mode) {
+  const email = document.getElementById('cloudAuthEmail').value.trim();
+  const password = document.getElementById('cloudAuthPassword').value;
+  const fullName = (document.getElementById('cloudAuthFullName').value || '').trim();
+  const msg = document.getElementById('cloudAuthMsg');
   
   if (!email || !password) {
     msg.innerHTML = '<span style="color:#E74C3C;">⚠️ أدخل البريد وكلمة المرور</span>';
@@ -564,7 +564,7 @@ async function submitAuth(mode) {
   
   if (mode === 'signup') {
     msg.innerHTML = '<span style="color:#2ECC71;">✅ تم إنشاء الحساب! يمكنك الآن تسجيل الدخول</span>';
-    setTimeout(() => switchAuthTab('signin'), 1500);
+    setTimeout(() => switchCloudAuthTab('signin'), 1500);
   } else {
     msg.innerHTML = '<span style="color:#2ECC71;">✅ تم تسجيل الدخول! جاري المزامنة...</span>';
     setTimeout(() => {
@@ -612,8 +612,8 @@ function updateCloudStatusIndicator() {
 }
 
 window.openCloudAuthModal = openCloudAuthModal;
-window.switchAuthTab = switchAuthTab;
-window.submitAuth = submitAuth;
+window.switchCloudAuthTab = switchCloudAuthTab;
+window.submitCloudAuth = submitCloudAuth;
 window.cloudLogout = cloudLogout;
 window.saveSupaConfig = saveSupaConfig;
 window.updateCloudStatusIndicator = updateCloudStatusIndicator;

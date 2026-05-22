@@ -88,41 +88,55 @@ function openAuthModal(mode, callback) {
   const subtitle = document.getElementById('authModalSubtitle');
   const setupSection = document.getElementById('authSetupSection');
   const loginSection = document.getElementById('authLoginSection');
+  const emailSection = document.getElementById('authEmailSection');
+  const emailField = document.getElementById('authEmailField');
   const biometricBtn = document.getElementById('authBiometricBtn');
   
+  // Pre-fill email field if exists
+  const savedEmail = localStorage.getItem('blaban_auth_ops_email') || '';
+  if (emailField) emailField.value = savedEmail;
+  
   if (mode === 'setup') {
-    title.textContent = '🔐 إعداد كلمة مرور مدير التشغيل';
-    subtitle.textContent = 'لحماية وضع مدير التشغيل من التعديل غير المصرح به. اختر كلمة مرور قوية.';
+    title.textContent = '🔐 إعداد حساب مدير التشغيل';
+    subtitle.innerHTML = 'هذا الحساب فقط يمكنه تعديل بنود التقييم والفروع.<br>اختر بريداً وكلمة مرور قوية.';
     setupSection.style.display = '';
     loginSection.style.display = 'none';
+    emailSection.style.display = '';  // Show email for setup
+    if (emailField) emailField.readOnly = false;
     biometricBtn.style.display = 'none';
   } else if (mode === 'reset') {
     title.textContent = '🔄 إعادة تعيين كلمة المرور';
     subtitle.textContent = '⚠️ سيتم مسح كلمة المرور الحالية وإعداد كلمة جديدة. ستحتاج للتحقق مرة قبل التغيير.';
     setupSection.style.display = '';
     loginSection.style.display = '';
+    emailSection.style.display = '';
+    if (emailField) emailField.readOnly = false;
     biometricBtn.style.display = localStorage.getItem('blaban_auth_webauthn_id') ? '' : 'none';
     document.getElementById('authNewPwd').placeholder = 'كلمة المرور الجديدة';
   } else if (mode === 'change') {
     title.textContent = '🔄 تغيير كلمة المرور';
-    subtitle.textContent = 'أدخل كلمة المرور الحالية ثم الجديدة';
+    subtitle.textContent = 'أدخل بريدك وكلمة المرور الحالية ثم الجديدة';
     setupSection.style.display = '';
     loginSection.style.display = '';
+    emailSection.style.display = '';
+    if (emailField) emailField.readOnly = false;
     biometricBtn.style.display = 'none';
     document.getElementById('authNewPwd').placeholder = 'كلمة المرور الجديدة';
   } else {
     // login
     title.textContent = '🔓 تسجيل دخول مدير التشغيل';
-    subtitle.textContent = 'أدخل كلمة المرور للوصول لوضع مدير التشغيل';
+    subtitle.innerHTML = 'هذه الوظيفة محمية ومتاحة لمدير التشغيل فقط.<br>أدخل بريدك وكلمة المرور للمتابعة.';
     setupSection.style.display = 'none';
     loginSection.style.display = '';
+    emailSection.style.display = '';
+    if (emailField) emailField.readOnly = false;
     biometricBtn.style.display = localStorage.getItem('blaban_auth_webauthn_id') ? '' : 'none';
   }
   
   // Reset error
   const err = document.getElementById('authError');
   if (err) err.style.display = 'none';
-  // Clear inputs
+  // Clear password inputs (but keep email)
   document.getElementById('authPwd').value = '';
   document.getElementById('authNewPwd').value = '';
   document.getElementById('authNewPwdConfirm').value = '';
@@ -135,8 +149,16 @@ function openAuthModal(mode, callback) {
   
   modal.classList.remove('hidden');
   setTimeout(() => {
-    if (mode === 'setup') document.getElementById('authNewPwd').focus();
-    else document.getElementById('authPwd').focus();
+    // Focus appropriate field
+    if (mode === 'setup' || !savedEmail) {
+      if (emailField) emailField.focus();
+    } else {
+      if (mode === 'change' || mode === 'reset') {
+        document.getElementById('authPwd').focus();
+      } else {
+        document.getElementById('authPwd').focus();
+      }
+    }
   }, 100);
 }
 
@@ -155,42 +177,75 @@ function showAuthError(msg) {
 
 async function submitAuth() {
   const modal = document.getElementById('authModal');
-  const mode = modal.dataset.mode;
-  const pwd = document.getElementById('authPwd').value;
-  const newPwd = document.getElementById('authNewPwd').value;
-  const newPwdConfirm = document.getElementById('authNewPwdConfirm').value;
+  if (!modal) {
+    console.error('authModal not found');
+    return;
+  }
+  const mode = modal.dataset.mode || 'login';
+  
+  // Safely get input values (elements may or may not be visible)
+  const emailEl = document.getElementById('authEmailField');
+  const pwdEl = document.getElementById('authPwd');
+  const newPwdEl = document.getElementById('authNewPwd');
+  const newPwdConfirmEl = document.getElementById('authNewPwdConfirm');
+  
+  const email = emailEl ? (emailEl.value || '').trim().toLowerCase() : '';
+  const pwd = pwdEl ? pwdEl.value : '';
+  const newPwd = newPwdEl ? newPwdEl.value : '';
+  const newPwdConfirm = newPwdConfirmEl ? newPwdConfirmEl.value : '';
+  
+  // Helper: validate email format
+  const isValidEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
   
   if (mode === 'setup') {
-    if (!newPwd || newPwd.length < 4) {
-      showAuthError('كلمة المرور يجب أن تكون 4 أحرف على الأقل');
+    // Validate email
+    if (!email) {
+      showAuthError('أدخل البريد الإلكتروني');
+      if (emailEl) emailEl.focus();
+      return;
+    }
+    if (!isValidEmail(email)) {
+      showAuthError('صيغة البريد الإلكتروني غير صحيحة');
+      if (emailEl) emailEl.focus();
+      return;
+    }
+    // Validate password
+    if (!newPwd || newPwd.length < 6) {
+      showAuthError('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+      if (newPwdEl) newPwdEl.focus();
       return;
     }
     if (newPwd !== newPwdConfirm) {
       showAuthError('كلمتا المرور غير متطابقتين');
+      if (newPwdConfirmEl) newPwdConfirmEl.focus();
       return;
     }
+    
+    // Save email + password hash
     const salt = generateSalt();
     const hash = await sha256Hash(newPwd + salt);
     localStorage.setItem('blaban_auth_pwd_hash', hash);
     localStorage.setItem('blaban_auth_pwd_salt', salt);
+    localStorage.setItem('blaban_auth_ops_email', email);
     localStorage.setItem('blaban_auth_initialized', '1');
     
     // Optional biometric registration
-    const wantBio = document.getElementById('authBioCheckbox')?.checked;
+    const bioChk = document.getElementById('authBioCheckbox');
+    const wantBio = bioChk ? bioChk.checked : false;
     if (wantBio && isWebAuthnSupported()) {
       try {
         await registerBiometric();
-        showNotif('✅ تم إعداد كلمة المرور والبصمة بنجاح!', 'success');
+        showNotif('✅ تم إعداد الحساب والبصمة بنجاح!', 'success');
       } catch(e) {
         console.warn('Biometric registration failed:', e);
-        showNotif('✅ كلمة المرور أُعدت — لكن تسجيل البصمة فشل، يمكنك المحاولة لاحقاً', 'info');
+        showNotif('✅ تم إعداد الحساب — لكن تسجيل البصمة فشل', 'info');
       }
     } else {
-      showNotif('✅ تم إعداد كلمة المرور بنجاح!', 'success');
+      showNotif('✅ تم إعداد حساب مدير التشغيل بنجاح!', 'success');
     }
     
     if (typeof addHistoryEntry === 'function') {
-      addHistoryEntry({ type:'auth', action:'create', target:'كلمة مرور مدير التشغيل', details:'تم الإعداد لأول مرة' });
+      addHistoryEntry({ type:'auth', action:'create', target:'حساب مدير التشغيل', details:'تم الإعداد لأول مرة: '+email });
     }
     
     startOpsSession();
@@ -198,7 +253,7 @@ async function submitAuth() {
     if (window._authCallback) {
       const cb = window._authCallback;
       window._authCallback = null;
-      cb();
+      try { cb(); } catch(e) { console.error('Callback error:', e); }
     }
     return;
   }
@@ -206,46 +261,72 @@ async function submitAuth() {
   if (mode === 'login') {
     const storedHash = localStorage.getItem('blaban_auth_pwd_hash');
     const salt = localStorage.getItem('blaban_auth_pwd_salt');
+    const storedEmail = (localStorage.getItem('blaban_auth_ops_email') || '').toLowerCase();
+    
     if (!storedHash || !salt) {
-      showAuthError('لم يتم إعداد كلمة المرور بعد');
+      showAuthError('لم يتم إعداد حساب مدير التشغيل بعد. يرجى الإعداد أولاً.');
       return;
     }
+    if (!email) {
+      showAuthError('أدخل البريد الإلكتروني');
+      if (emailEl) emailEl.focus();
+      return;
+    }
+    if (!pwd) {
+      showAuthError('أدخل كلمة المرور');
+      if (pwdEl) pwdEl.focus();
+      return;
+    }
+    
+    // Check email (if was set, must match)
+    if (storedEmail && email !== storedEmail) {
+      showAuthError('البريد الإلكتروني أو كلمة المرور غير صحيحة');
+      await new Promise(r => setTimeout(r, 400));
+      return;
+    }
+    
     const hash = await sha256Hash(pwd + salt);
     if (hash !== storedHash) {
-      showAuthError('كلمة المرور غير صحيحة');
-      // Add tiny delay to slow down brute force
-      await new Promise(r => setTimeout(r, 300));
+      showAuthError('البريد الإلكتروني أو كلمة المرور غير صحيحة');
+      await new Promise(r => setTimeout(r, 400));
       return;
     }
+    
     startOpsSession();
     closeAuthModal();
     if (typeof addHistoryEntry === 'function') {
-      addHistoryEntry({ type:'auth', action:'update', target:'دخول مدير التشغيل', details:'تم التحقق بكلمة المرور' });
+      addHistoryEntry({ type:'auth', action:'update', target:'دخول مدير التشغيل', details:'تم التحقق: '+email });
     }
     if (window._authCallback) {
       const cb = window._authCallback;
       window._authCallback = null;
-      cb();
+      try { cb(); } catch(e) { console.error('Callback error:', e); }
     }
     showNotif('✅ تم التحقق بنجاح', 'success');
     return;
   }
   
   if (mode === 'change' || mode === 'reset') {
-    // First verify old password (or for reset: just require it)
+    // Verify current password
     const storedHash = localStorage.getItem('blaban_auth_pwd_hash');
     const salt = localStorage.getItem('blaban_auth_pwd_salt');
+    const storedEmail = (localStorage.getItem('blaban_auth_ops_email') || '').toLowerCase();
+    
     if (storedHash && salt) {
+      if (storedEmail && email !== storedEmail) {
+        showAuthError('البريد الإلكتروني غير صحيح');
+        return;
+      }
       const hash = await sha256Hash(pwd + salt);
       if (hash !== storedHash) {
         showAuthError('كلمة المرور الحالية غير صحيحة');
-        await new Promise(r => setTimeout(r, 300));
+        await new Promise(r => setTimeout(r, 400));
         return;
       }
     }
     // Set new password
-    if (!newPwd || newPwd.length < 4) {
-      showAuthError('كلمة المرور الجديدة يجب أن تكون 4 أحرف على الأقل');
+    if (!newPwd || newPwd.length < 6) {
+      showAuthError('كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل');
       return;
     }
     if (newPwd !== newPwdConfirm) {
@@ -256,6 +337,10 @@ async function submitAuth() {
     const newHash = await sha256Hash(newPwd + newSalt);
     localStorage.setItem('blaban_auth_pwd_hash', newHash);
     localStorage.setItem('blaban_auth_pwd_salt', newSalt);
+    // Update email if provided
+    if (email && isValidEmail(email)) {
+      localStorage.setItem('blaban_auth_ops_email', email);
+    }
     if (typeof addHistoryEntry === 'function') {
       addHistoryEntry({ type:'auth', action:'update', target:'كلمة مرور مدير التشغيل', details: mode==='reset'?'تمت إعادة التعيين':'تم التغيير' });
     }

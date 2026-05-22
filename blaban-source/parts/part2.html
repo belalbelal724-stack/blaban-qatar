@@ -177,11 +177,20 @@
     
     <div id="authError" class="alert alert-danger" style="display:none;font-size:14px;"></div>
     
+    <!-- Email field (shown in both login and setup) -->
+    <div id="authEmailSection" class="modal-input-group">
+      <label>📧 البريد الإلكتروني لمدير التشغيل</label>
+      <input type="email" id="authEmailField" placeholder="manager@example.com" autocomplete="email" dir="ltr"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();submitAuth();}"
+        style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:Tajawal,sans-serif;font-size:14px;outline:none;text-align:left;">
+    </div>
+    
     <!-- Login section (current password) -->
     <div id="authLoginSection">
       <div class="modal-input-group">
-        <label>كلمة المرور</label>
+        <label>🔑 كلمة المرور</label>
         <input type="password" id="authPwd" placeholder="كلمة المرور" autocomplete="current-password"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();submitAuth();}"
           style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:Tajawal,sans-serif;font-size:14px;outline:none;">
       </div>
     </div>
@@ -189,13 +198,15 @@
     <!-- Setup section (new password) -->
     <div id="authSetupSection" style="display:none;">
       <div class="modal-input-group">
-        <label>كلمة المرور الجديدة</label>
-        <input type="password" id="authNewPwd" placeholder="كلمة المرور الجديدة (4 أحرف على الأقل)" autocomplete="new-password"
+        <label>🔑 كلمة المرور الجديدة</label>
+        <input type="password" id="authNewPwd" placeholder="كلمة المرور الجديدة (6 أحرف على الأقل)" autocomplete="new-password"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('authNewPwdConfirm').focus();}"
           style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:Tajawal,sans-serif;font-size:14px;outline:none;">
       </div>
       <div class="modal-input-group">
-        <label>تأكيد كلمة المرور</label>
+        <label>✓ تأكيد كلمة المرور</label>
         <input type="password" id="authNewPwdConfirm" placeholder="أعد كتابة كلمة المرور" autocomplete="new-password"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();submitAuth();}"
           style="width:100%;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;color:var(--text-light);padding:10px 12px;font-family:Tajawal,sans-serif;font-size:14px;outline:none;">
       </div>
       <div id="authBiometricSetup" style="margin-top:8px;">
@@ -216,7 +227,7 @@
     <div class="modal-actions" style="margin-top:14px;flex-wrap:wrap;">
       <button class="btn btn-primary btn-sm" onclick="closeAuthModal()">إلغاء</button>
       <button class="btn btn-blue btn-sm" onclick="emergencyResetPassword()" id="authForgotBtn">نسيت كلمة المرور؟</button>
-      <button class="btn btn-green" onclick="submitAuth()">✓ تأكيد</button>
+      <button class="btn btn-green" onclick="submitAuth()" style="font-weight:800;padding:10px 24px;font-size:15px;">✓ تأكيد</button>
     </div>
   </div>
 </div>

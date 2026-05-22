@@ -1,7 +1,7 @@
 {
-  "name": "ب لبن قطر — تقييم الأداء",
+  "name": "إدارة تشغيل ب لبن قطر",
   "short_name": "ب لبن قطر",
-  "description": "نظام تقييم أداء فروع ومديري ب لبن قطر — مدير التشغيل بِلَال الأَنْصَارِي",
+  "description": "إدارة تشغيل ب لبن قطر — بلال الأنصاري",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
@@ -10,7 +10,10 @@
   "theme_color": "#6B1B2A",
   "lang": "ar",
   "dir": "rtl",
-  "categories": ["business", "productivity"],
+  "categories": [
+    "business",
+    "productivity"
+  ],
   "icons": [
     {
       "src": "icon-192.png",
@@ -36,19 +39,34 @@
       "name": "تقييم الفرع",
       "short_name": "التقييم",
       "url": "./index.html#branch-view",
-      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     },
     {
       "name": "المهام",
       "short_name": "المهام",
       "url": "./index.html#tasks",
-      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     },
     {
       "name": "Dashboard",
       "short_name": "Dashboard",
       "url": "./index.html#dashboard",
-      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ]
 }
