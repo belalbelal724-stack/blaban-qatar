@@ -3300,6 +3300,7 @@ body.pdf-capturing .page-signature { color: #6B1B2A !important; }
       <button class="ctrl-btn" onclick="openBranchesManager()" title="إدارة الفروع">🏪 الفروع</button>
       <button class="ctrl-btn" onclick="openSyncModal()" title="Firebase">🔥 Firebase</button>
       <button class="ctrl-btn" id="cloudSyncBtn" onclick="openCloudAuthModal()" title="مزامنة السحابة (Supabase)">☁️ السحابة</button>
+      <button class="ctrl-btn" onclick="forceUpdateApp()" title="تحديث قسري — يمسح cache ويعيد التحميل" style="background:linear-gradient(135deg,#3498DB,#2980B9);color:#fff;font-weight:800;">🔄 تحديث</button>
       <button class="ctrl-btn" onclick="saveAllData()">💾 حفظ</button>
     </div>
   </div>
@@ -10835,15 +10836,92 @@ try {
 } catch(e) { authSession = null; }
 
 // ============ Utilities ============
+// SHA-256 hash with fallback for non-secure contexts (file://, http://)
 async function sha256Hash(text) {
-  const enc = new TextEncoder();
-  const buf = await crypto.subtle.digest('SHA-256', enc.encode(text));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+  // Try Web Crypto first (works on HTTPS and localhost)
+  try {
+    if (typeof crypto !== 'undefined' && crypto.subtle && typeof crypto.subtle.digest === 'function') {
+      const enc = new TextEncoder();
+      const buf = await crypto.subtle.digest('SHA-256', enc.encode(text));
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+    }
+  } catch(e) {
+    console.warn('[Auth] crypto.subtle failed, using fallback:', e.message);
+  }
+  // Fallback: pure JS SHA-256 (slower but works everywhere including file://)
+  return sha256Fallback(text);
+}
+
+// Pure JavaScript SHA-256 implementation (works in any context)
+function sha256Fallback(ascii) {
+  function rightRotate(value, amount) {
+    return (value >>> amount) | (value << (32 - amount));
+  }
+  const maxWord = Math.pow(2, 32);
+  const result = [];
+  const words = [];
+  const asciiBitLength = ascii.length * 8;
+  // Initialize hash values
+  let hash = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+  const k = [0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];
+  // Convert to UTF-8 bytes
+  const utf8 = unescape(encodeURIComponent(ascii));
+  ascii = utf8;
+  // Pre-processing
+  ascii += '\x80';
+  while (ascii.length % 64 - 56) ascii += '\x00';
+  for (let i = 0; i < ascii.length; i++) {
+    const j = ascii.charCodeAt(i);
+    if (j >> 8) return ''; // Should not happen
+    words[i >> 2] |= j << ((3 - i) % 4) * 8;
+  }
+  words[words.length] = ((utf8.length * 8) / Math.pow(2, 32)) | 0;
+  words[words.length] = (utf8.length * 8);
+  // Process blocks
+  for (let j = 0; j < words.length;) {
+    const w = words.slice(j, j += 16);
+    const oldHash = hash.slice(0);
+    for (let i = 0; i < 64; i++) {
+      const w15 = w[i - 15], w2 = w[i - 2];
+      const a = hash[0], e = hash[4];
+      const temp1 = hash[7] +
+        (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25)) +
+        ((e & hash[5]) ^ ((~e) & hash[6])) +
+        k[i] +
+        (w[i] = (i < 16) ? w[i] : (
+          w[i - 16] +
+          (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3)) +
+          w[i - 7] +
+          (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10))
+        ) | 0);
+      const temp2 = (rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22)) +
+        ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+      hash = [(temp1 + temp2) | 0].concat(hash);
+      hash[4] = (hash[4] + temp1) | 0;
+    }
+    for (let i = 0; i < 8; i++) hash[i] = (hash[i] + oldHash[i]) | 0;
+  }
+  for (let i = 0; i < 8; i++) {
+    for (let j = 3; j + 1; j--) {
+      const b = (hash[i] >> (j * 8)) & 255;
+      result.push(((b < 16) ? '0' : '') + b.toString(16));
+    }
+  }
+  return result.join('');
 }
 
 function generateSalt() {
   const arr = new Uint8Array(16);
-  crypto.getRandomValues(arr);
+  try {
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      crypto.getRandomValues(arr);
+    } else {
+      // Fallback: use Math.random (less secure but functional)
+      for (let i = 0; i < arr.length; i++) arr[i] = Math.floor(Math.random() * 256);
+    }
+  } catch(e) {
+    for (let i = 0; i < arr.length; i++) arr[i] = Math.floor(Math.random() * 256);
+  }
   return Array.from(arr).map(b => b.toString(16).padStart(2,'0')).join('');
 }
 
@@ -10865,8 +10943,19 @@ function isOpsSessionValid() {
 function startOpsSession() {
   authSession = { until: Date.now() + AUTH_SESSION_DURATION };
   localStorage.setItem('blaban_auth_session', JSON.stringify(authSession));
+  // Switch role to ops (so user has full access)
+  if (typeof _originalSetRole === 'function') {
+    try { _originalSetRole('ops'); } catch(e) { console.warn('Set role failed:', e); }
+  } else if (typeof setRole === 'function') {
+    try { setRole('ops'); } catch(e) {}
+  }
   // Schedule auto-lock
   scheduleAutoLock();
+  // Refresh edit mode button
+  if (typeof refreshEditModeButton === 'function') {
+    try { refreshEditModeButton(); } catch(e) {}
+  }
+  console.log('[Auth] Ops session started, valid until:', new Date(authSession.until).toLocaleString('ar'));
 }
 
 function endOpsSession() {
@@ -10993,12 +11082,23 @@ function showAuthError(msg) {
 }
 
 async function submitAuth() {
+  console.log('[Auth] submitAuth called');
+  try {
+    await _submitAuthCore();
+  } catch (err) {
+    console.error('[Auth] Error in submitAuth:', err);
+    showAuthError('خطأ تقني: ' + (err.message || err));
+  }
+}
+
+async function _submitAuthCore() {
   const modal = document.getElementById('authModal');
   if (!modal) {
     console.error('authModal not found');
     return;
   }
   const mode = modal.dataset.mode || 'login';
+  console.log('[Auth] Mode:', mode);
   
   // Safely get input values (elements may or may not be visible)
   const emailEl = document.getElementById('authEmailField');
@@ -11492,6 +11592,10 @@ function blockEditWithPrompt(callback) {
 window.canEditNow = canEditNow;
 window.requireOpsPin = requireOpsPin;
 window.isOpsSessionValid = isOpsSessionValid;
+window.openAuthModal = openAuthModal;
+window.closeAuthModal = closeAuthModal;
+window.submitAuth = submitAuth;
+window.showAuthError = showAuthError;
 
 // Edit Mode + Security combined menu
 function toggleEditMode() {
@@ -12405,6 +12509,61 @@ if (isPWAInstalled()) {
   // Hide install button if already installed
   const btn = document.getElementById('pwaInstallBtn');
   if (btn) btn.style.display = 'none';
+}
+
+// ============ FORCE UPDATE — Clear all caches and reload ============
+async function forceUpdateApp() {
+  const ok = confirm('سيتم مسح الـ cache وإعادة تحميل التطبيق بآخر إصدار. متابعة؟');
+  if (!ok) return;
+  
+  try {
+    if (typeof showNotif === 'function') showNotif('⏳ جاري التحديث...', 'info');
+    
+    // 1. Unregister all service workers
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const reg of regs) {
+        await reg.unregister();
+        console.log('[Update] Unregistered SW:', reg.scope);
+      }
+    }
+    
+    // 2. Clear all caches
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => {
+        console.log('[Update] Clearing cache:', k);
+        return caches.delete(k);
+      }));
+    }
+    
+    // 3. Hard reload with cache bypass
+    setTimeout(() => {
+      window.location.href = window.location.pathname + '?v=' + Date.now();
+    }, 500);
+  } catch(err) {
+    console.error('[Update] Failed:', err);
+    alert('فشل التحديث: ' + err.message + '\n\nجرب يدوياً: Ctrl+Shift+R');
+  }
+}
+window.forceUpdateApp = forceUpdateApp;
+
+// ============ AUTO-DETECT NEW VERSION (when SW updates) ============
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    console.log('[SW] Controller changed — new version active');
+    if (typeof showNotif === 'function') {
+      showNotif('🆕 إصدار جديد متاح — اضغط 🔄 تحديث لتفعيله', 'info', 8000);
+    }
+  });
+  
+  // Check for updates every 60 seconds
+  setInterval(async () => {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) reg.update();
+    } catch(e) {}
+  }, 60000);
 }
 </script>
 </body>

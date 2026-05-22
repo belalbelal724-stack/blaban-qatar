@@ -208,6 +208,61 @@ if (isPWAInstalled()) {
   const btn = document.getElementById('pwaInstallBtn');
   if (btn) btn.style.display = 'none';
 }
+
+// ============ FORCE UPDATE — Clear all caches and reload ============
+async function forceUpdateApp() {
+  const ok = confirm('سيتم مسح الـ cache وإعادة تحميل التطبيق بآخر إصدار. متابعة؟');
+  if (!ok) return;
+  
+  try {
+    if (typeof showNotif === 'function') showNotif('⏳ جاري التحديث...', 'info');
+    
+    // 1. Unregister all service workers
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const reg of regs) {
+        await reg.unregister();
+        console.log('[Update] Unregistered SW:', reg.scope);
+      }
+    }
+    
+    // 2. Clear all caches
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => {
+        console.log('[Update] Clearing cache:', k);
+        return caches.delete(k);
+      }));
+    }
+    
+    // 3. Hard reload with cache bypass
+    setTimeout(() => {
+      window.location.href = window.location.pathname + '?v=' + Date.now();
+    }, 500);
+  } catch(err) {
+    console.error('[Update] Failed:', err);
+    alert('فشل التحديث: ' + err.message + '\n\nجرب يدوياً: Ctrl+Shift+R');
+  }
+}
+window.forceUpdateApp = forceUpdateApp;
+
+// ============ AUTO-DETECT NEW VERSION (when SW updates) ============
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    console.log('[SW] Controller changed — new version active');
+    if (typeof showNotif === 'function') {
+      showNotif('🆕 إصدار جديد متاح — اضغط 🔄 تحديث لتفعيله', 'info', 8000);
+    }
+  });
+  
+  // Check for updates every 60 seconds
+  setInterval(async () => {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) reg.update();
+    } catch(e) {}
+  }, 60000);
+}
 </script>
 </body>
 </html>
