@@ -209,6 +209,396 @@ if (isPWAInstalled()) {
   if (btn) btn.style.display = 'none';
 }
 
+// ============ BUBBLE MENU ============
+function positionBubbleMenu() {
+  const menu = document.getElementById('bubbleMenu');
+  const trigger = document.getElementById('bubbleMenuBtn');
+  if (!menu || !trigger) return;
+  const rect = trigger.getBoundingClientRect();
+  // Position menu below the trigger
+  const top = rect.bottom + 12;
+  // Position from right edge of viewport (aligned with trigger right edge)
+  const rightOffset = window.innerWidth - rect.right;
+  menu.style.top = top + 'px';
+  menu.style.insetInlineEnd = rightOffset + 'px';
+  // Position device submenu beside main menu (to the left of it)
+  const sub = document.getElementById('deviceSubMenu');
+  if (sub) {
+    sub.style.top = top + 'px';
+    // Place submenu beside the device bubble (5th in list)
+    // Calculate device bubble row position: trigger.bottom + 12 + (4 * (bubbleHeight + gap))
+    const bubbleSize = window.innerWidth <= 768 ? 56 : 64;
+    const gap = 10;
+    const deviceRowTop = top + (4 * (bubbleSize + gap));
+    sub.style.top = deviceRowTop + 'px';
+    sub.style.insetInlineEnd = (rightOffset + bubbleSize + 20) + 'px';
+  }
+}
+
+function toggleBubbleMenu(e) {
+  if (e) { e.preventDefault(); e.stopPropagation(); }
+  const menu = document.getElementById('bubbleMenu');
+  const trigger = document.getElementById('bubbleMenuBtn');
+  if (!menu || !trigger) return;
+  const willOpen = !menu.classList.contains('is-open');
+  if (willOpen) {
+    positionBubbleMenu(); // Position before showing
+    menu.classList.add('is-open');
+    menu.setAttribute('aria-hidden', 'false');
+    trigger.classList.add('is-open');
+  } else {
+    menu.classList.remove('is-open');
+    menu.setAttribute('aria-hidden', 'true');
+    trigger.classList.remove('is-open');
+    // Also close device submenu if open
+    const sub = document.getElementById('deviceSubMenu');
+    if (sub) {
+      sub.classList.remove('is-open');
+      sub.setAttribute('aria-hidden', 'true');
+    }
+  }
+}
+function closeBubbleMenu() {
+  const menu = document.getElementById('bubbleMenu');
+  const trigger = document.getElementById('bubbleMenuBtn');
+  const sub = document.getElementById('deviceSubMenu');
+  if (menu) { menu.classList.remove('is-open'); menu.setAttribute('aria-hidden','true'); }
+  if (trigger) trigger.classList.remove('is-open');
+  if (sub) { sub.classList.remove('is-open'); sub.setAttribute('aria-hidden','true'); }
+}
+window.toggleBubbleMenu = toggleBubbleMenu;
+window.closeBubbleMenu = closeBubbleMenu;
+window.positionBubbleMenu = positionBubbleMenu;
+
+// Reposition menu on scroll / resize when open (so it stays visible)
+window.addEventListener('scroll', () => {
+  const menu = document.getElementById('bubbleMenu');
+  if (menu && menu.classList.contains('is-open')) positionBubbleMenu();
+}, { passive: true });
+window.addEventListener('resize', () => {
+  const menu = document.getElementById('bubbleMenu');
+  if (menu && menu.classList.contains('is-open')) positionBubbleMenu();
+});
+
+// Click outside / Escape to close bubble menu
+document.addEventListener('click', (e) => {
+  const menu = document.getElementById('bubbleMenu');
+  const trigger = document.getElementById('bubbleMenuBtn');
+  if (!menu || !trigger) return;
+  if (!menu.classList.contains('is-open')) return;
+  if (!trigger.contains(e.target) && !menu.contains(e.target)) closeBubbleMenu();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeBubbleMenu();
+});
+
+// ============ ROTATION LOCK (prevent image flip on phone rotation) ============
+function toggleRotationLock() {
+  const isLocked = localStorage.getItem('blaban_rotation_lock') === '1';
+  const newState = !isLocked;
+  localStorage.setItem('blaban_rotation_lock', newState ? '1' : '0');
+  applyRotationLock(newState);
+  if (typeof showNotif === 'function') {
+    showNotif(newState ? '🔒 تم تثبيت الاتجاه (لا يدور مع تدوير الجهاز)' : '🔓 تم تحرير الاتجاه', 'success');
+  }
+}
+function applyRotationLock(locked) {
+  const btn = document.getElementById('rotationLockBtn');
+  if (btn) {
+    const icon = btn.querySelector('.bubble-icon');
+    const label = btn.querySelector('.bubble-label');
+    if (locked) {
+      btn.classList.add('is-locked');
+      if (icon) icon.textContent = '🔒';
+      if (label) label.textContent = 'مقفل';
+    } else {
+      btn.classList.remove('is-locked');
+      if (icon) icon.textContent = '🔓';
+      if (label) label.textContent = 'قفل التدوير';
+    }
+  }
+  // Apply via CSS class on body
+  if (locked) {
+    document.body.classList.add('rotation-locked');
+    // Try Screen Orientation API (works on mobile when in fullscreen/PWA)
+    if (screen.orientation && screen.orientation.lock) {
+      screen.orientation.lock('portrait').catch(() => {
+        // API requires fullscreen, fall back to CSS-only
+      });
+    }
+  } else {
+    document.body.classList.remove('rotation-locked');
+    if (screen.orientation && screen.orientation.unlock) {
+      try { screen.orientation.unlock(); } catch(e) {}
+    }
+  }
+}
+window.toggleRotationLock = toggleRotationLock;
+
+// Restore rotation lock preference on load
+(function() {
+  const locked = localStorage.getItem('blaban_rotation_lock') === '1';
+  if (locked) {
+    // Wait for DOM
+    setTimeout(() => applyRotationLock(true), 200);
+  }
+})();
+
+// ============ DEVICE SUB-MENU ============
+function toggleDeviceSubMenu(e) {
+  if (e) { e.preventDefault(); e.stopPropagation(); }
+  const sub = document.getElementById('deviceSubMenu');
+  if (!sub) return;
+  const willOpen = !sub.classList.contains('is-open');
+  if (willOpen) {
+    // Reposition to be beside the device bubble
+    if (typeof positionBubbleMenu === 'function') positionBubbleMenu();
+    sub.classList.add('is-open');
+    sub.setAttribute('aria-hidden', 'false');
+    // Highlight currently active device
+    const current = localStorage.getItem('blaban_device') || 'desktop';
+    ['Desktop','Tablet','Mobile'].forEach(d => {
+      const el = document.getElementById('subDev' + d);
+      if (el) el.classList.toggle('active', current === d.toLowerCase());
+    });
+  } else {
+    sub.classList.remove('is-open');
+    sub.setAttribute('aria-hidden', 'true');
+  }
+}
+window.toggleDeviceSubMenu = toggleDeviceSubMenu;
+
+// Close device submenu on outside click
+document.addEventListener('click', (e) => {
+  const sub = document.getElementById('deviceSubMenu');
+  const deviceBubble = document.querySelector('.bubble-device');
+  if (!sub || !sub.classList.contains('is-open')) return;
+  if (deviceBubble && deviceBubble.contains(e.target)) return;
+  if (sub.contains(e.target)) return;
+  sub.classList.remove('is-open');
+  sub.setAttribute('aria-hidden', 'true');
+});
+
+// ============ REMEMBRANCE & PRAYER ALERTS ============
+const ISLAMIC_REMEMBRANCES = [
+  'سُبْحَانَ اللَّهِ وَبِحَمْدِهِ، سُبْحَانَ اللَّهِ الْعَظِيمِ',
+  'لَا إِلَهَ إِلَّا اللَّهُ وَحْدَهُ لَا شَرِيكَ لَهُ',
+  'الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ',
+  'أَسْتَغْفِرُ اللَّهَ الْعَظِيمَ وَأَتُوبُ إِلَيْهِ',
+  'لَا حَوْلَ وَلَا قُوَّةَ إِلَّا بِاللَّهِ',
+  'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ',
+  'سُبْحَانَ اللَّهِ',
+  'الْحَمْدُ لِلَّهِ',
+  'اللَّهُ أَكْبَرُ',
+  'لَا إِلَهَ إِلَّا اللَّهُ',
+  'حَسْبُنَا اللَّهُ وَنِعْمَ الْوَكِيلُ',
+  'اللَّهُمَّ إِنِّي أَعُوذُ بِكَ مِنَ الْهَمِّ وَالْحَزَنِ',
+  'رَبِّ اغْفِرْ لِي وَتُبْ عَلَيَّ إِنَّكَ أَنْتَ التَّوَّابُ الرَّحِيمُ',
+  'يَا حَيُّ يَا قَيُّومُ بِرَحْمَتِكَ أَسْتَغِيثُ',
+  'اللَّهُمَّ بَارِكْ لَنَا فِيمَا رَزَقْتَنَا',
+  'سُبْحَانَ اللَّهِ وَالْحَمْدُ لِلَّهِ وَلَا إِلَهَ إِلَّا اللَّهُ وَاللَّهُ أَكْبَرُ',
+  'أَعُوذُ بِكَلِمَاتِ اللَّهِ التَّامَّاتِ مِنْ شَرِّ مَا خَلَقَ',
+  'رَبَّنَا آتِنَا فِي الدُّنْيَا حَسَنَةً وَفِي الْآخِرَةِ حَسَنَةً',
+  'اللَّهُمَّ إِنَّكَ عَفُوٌّ تُحِبُّ الْعَفْوَ فَاعْفُ عَنِّي',
+  'بِسْمِ اللَّهِ الَّذِي لَا يَضُرُّ مَعَ اسْمِهِ شَيْءٌ'
+];
+
+let remembranceTimer = null;
+let remembranceCloseTimer = null;
+let remembranceCountdown = null;
+
+function showRemembranceBubble() {
+  if (localStorage.getItem('blaban_remembrance_off') === '1') return;
+  // Don't show if a prayer bubble is currently active
+  const prayer = document.getElementById('prayerBubble');
+  if (prayer && prayer.style.display !== 'none') return;
+  
+  const bubble = document.getElementById('remembranceBubble');
+  const textEl = document.getElementById('remembranceText');
+  const counterEl = document.getElementById('remembranceCounter');
+  if (!bubble || !textEl) return;
+  
+  // Pick a random remembrance (different from last one)
+  const lastIdx = parseInt(localStorage.getItem('blaban_last_remembrance') || '-1');
+  let idx;
+  do {
+    idx = Math.floor(Math.random() * ISLAMIC_REMEMBRANCES.length);
+  } while (idx === lastIdx && ISLAMIC_REMEMBRANCES.length > 1);
+  localStorage.setItem('blaban_last_remembrance', String(idx));
+  
+  textEl.textContent = ISLAMIC_REMEMBRANCES[idx];
+  bubble.classList.remove('closing');
+  bubble.style.display = 'block';
+  
+  let secondsLeft = 10;
+  if (counterEl) counterEl.textContent = secondsLeft;
+  if (remembranceCountdown) clearInterval(remembranceCountdown);
+  remembranceCountdown = setInterval(() => {
+    secondsLeft--;
+    if (counterEl) counterEl.textContent = Math.max(0, secondsLeft);
+    if (secondsLeft <= 0) {
+      clearInterval(remembranceCountdown);
+      closeRemembranceBubble();
+    }
+  }, 1000);
+  
+  if (remembranceCloseTimer) clearTimeout(remembranceCloseTimer);
+  remembranceCloseTimer = setTimeout(closeRemembranceBubble, 10000);
+}
+
+function closeRemembranceBubble() {
+  const bubble = document.getElementById('remembranceBubble');
+  if (!bubble) return;
+  bubble.classList.add('closing');
+  setTimeout(() => { bubble.style.display = 'none'; bubble.classList.remove('closing'); }, 400);
+  if (remembranceCountdown) clearInterval(remembranceCountdown);
+  if (remembranceCloseTimer) clearTimeout(remembranceCloseTimer);
+}
+window.closeRemembranceBubble = closeRemembranceBubble;
+
+function startRemembranceCycle() {
+  if (remembranceTimer) clearInterval(remembranceTimer);
+  // First one after 30s, then every 60s
+  setTimeout(showRemembranceBubble, 30000);
+  remembranceTimer = setInterval(showRemembranceBubble, 60000);
+}
+
+// Prayer times for Qatar/Doha (May 2026 approximate)
+function getQatarPrayerTimes() {
+  return [
+    { key: 'fajr',    name: 'الفجر',    time: '03:45', icon: '🌅' },
+    { key: 'dhuhr',   name: 'الظهر',    time: '11:35', icon: '☀️' },
+    { key: 'asr',     name: 'العصر',    time: '15:00', icon: '🌤️' },
+    { key: 'maghrib', name: 'المغرب',   time: '18:25', icon: '🌇' },
+    { key: 'isha',    name: 'العشاء',   time: '19:55', icon: '🌙' }
+  ];
+}
+
+function showPrayerBubble(prayer, type) {
+  if (localStorage.getItem('blaban_prayer_off') === '1') return;
+  closeRemembranceBubble();
+  
+  const bubble = document.getElementById('prayerBubble');
+  const iconEl = document.getElementById('prayerIcon');
+  const nameEl = document.getElementById('prayerName');
+  const msgEl = document.getElementById('prayerMessage');
+  const timeEl = document.getElementById('prayerTime');
+  if (!bubble) return;
+  
+  if (iconEl) iconEl.textContent = prayer.icon;
+  if (nameEl) nameEl.textContent = 'صلاة ' + prayer.name;
+  
+  if (type === 'before') {
+    if (msgEl) msgEl.textContent = 'باقي ربع ساعة على الأذان — استعد للصلاة 🤲';
+    if (timeEl) timeEl.textContent = '⏰ الأذان الساعة ' + prayer.time;
+  } else {
+    if (msgEl) msgEl.textContent = 'حان الآن وقت صلاة ' + prayer.name + ' — حيّ على الصلاة';
+    if (timeEl) timeEl.textContent = '🕌 ' + prayer.time;
+  }
+  
+  bubble.classList.remove('closing');
+  bubble.style.display = 'block';
+  
+  playPrayerChime(type);
+  
+  const duration = type === 'before' ? 30000 : 60000;
+  setTimeout(() => closePrayerBubble(), duration);
+}
+
+function closePrayerBubble() {
+  const bubble = document.getElementById('prayerBubble');
+  if (!bubble) return;
+  bubble.classList.add('closing');
+  setTimeout(() => { bubble.style.display = 'none'; bubble.classList.remove('closing'); }, 400);
+}
+window.closePrayerBubble = closePrayerBubble;
+
+function playPrayerChime(type) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const freqs = type === 'now' ? [523, 659, 784, 1047] : [523, 659];
+    freqs.forEach((f, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = f;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      const start = ctx.currentTime + (i * 0.25);
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.25, start + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.4);
+      osc.start(start);
+      osc.stop(start + 0.4);
+    });
+  } catch(e) {}
+}
+
+function checkPrayerTimes() {
+  const prayers = getQatarPrayerTimes();
+  const now = new Date();
+  const ch = now.getHours();
+  const cm = now.getMinutes();
+  const currentMins = ch * 60 + cm;
+  const todayKey = now.toISOString().split('T')[0];
+  
+  prayers.forEach(p => {
+    const [ph, pm] = p.time.split(':').map(Number);
+    const prayerMins = ph * 60 + pm;
+    const diff = prayerMins - currentMins;
+    
+    if (diff === 15) {
+      const key = 'prayer_before_' + todayKey + '_' + p.key;
+      if (!localStorage.getItem(key)) {
+        localStorage.setItem(key, '1');
+        showPrayerBubble(p, 'before');
+      }
+    }
+    if (diff === 0) {
+      const key = 'prayer_now_' + todayKey + '_' + p.key;
+      if (!localStorage.getItem(key)) {
+        localStorage.setItem(key, '1');
+        showPrayerBubble(p, 'now');
+      }
+    }
+  });
+  
+  // Cleanup old prayer flags (older than 2 days)
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && (k.startsWith('prayer_before_') || k.startsWith('prayer_now_'))) {
+        const parts = k.split('_');
+        // parts: ['prayer','before','YYYY-MM-DD','prayerkey']
+        if (parts.length >= 4) {
+          const dateStr = parts[2];
+          if (dateStr !== todayKey) {
+            const flagDate = new Date(dateStr);
+            const ageDays = (Date.now() - flagDate.getTime()) / 86400000;
+            if (ageDays > 1) localStorage.removeItem(k);
+          }
+        }
+      }
+    }
+  } catch(e) {}
+}
+
+function startPrayerCycle() {
+  checkPrayerTimes();
+  setInterval(checkPrayerTimes, 60000);
+}
+
+// Start cycles after page load
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    startRemembranceCycle();
+    startPrayerCycle();
+  }, 5000);
+});
+
+window.showRemembranceBubble = showRemembranceBubble;
+window.showPrayerBubble = showPrayerBubble;
+
 // ============ FORCE UPDATE — Clear all caches and reload ============
 async function forceUpdateApp() {
   const ok = confirm('سيتم مسح الـ cache وإعادة تحميل التطبيق بآخر إصدار. متابعة؟');

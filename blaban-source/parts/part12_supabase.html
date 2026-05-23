@@ -56,6 +56,8 @@ async function supaSignIn(email, password) {
     syncEnabled = true;
     await initialCloudSync();
     setupRealtimeSubscriptions();
+    // Initialize broadcast alerts channel
+    if (typeof initBroadcastChannel === 'function') initBroadcastChannel();
   }
   return { data, error };
 }
@@ -127,30 +129,55 @@ async function pullEvaluationsFromCloud(branch) {
 }
 
 // ============================================================
-// CLOUD STORAGE — Tasks
+// CLOUD STORAGE — Tasks (preserves all fields)
 // ============================================================
 async function syncTaskToCloud(task) {
   if (!syncEnabled || !currentUser) return { synced: false };
+  if (!task || !task.id) return { synced: false, error: 'invalid task' };
   try {
+    // Store full task as JSONB to preserve all fields (comments, desc, priority, etc.)
     const payload = {
-      id: task.id,
-      title: task.title || task.task,
+      id: String(task.id),
+      title: task.title || task.task || '',
       branch_id: task.branch || null,
-      assignee: task.assignee || null,
-      due_date: task.dueDate || null,
-      done: !!task.done,
-      done_by: task.doneBy || null,
-      done_at: task.doneAt || null,
+      assignee: task.assignee || task.assignedTo || null,
+      due_date: task.deadline || task.dueDate || null,
+      done: task.status === 'completed' || task.done === true,
+      done_by: task.completedBy || task.doneBy || null,
+      done_at: task.completedAt || task.doneAt || null,
       photo_url: task.photo || null,
+      // Store full task object as JSON for fields not in schema
+      extra_data: {
+        desc: task.desc || '',
+        priority: task.priority || 'normal',
+        status: task.status || 'pending',
+        createdAt: task.createdAt || null,
+        completedAt: task.completedAt || null,
+        completedBy: task.completedBy || null,
+        comments: task.comments || [],
+        photos: task.photos || []
+      },
       created_by: currentUser.id,
       updated_at: new Date().toISOString()
     };
     const { error } = await supabaseClient
       .from('blaban_tasks')
       .upsert(payload, { onConflict: 'id' });
-    if (error) console.warn('[Cloud Sync] Task failed:', error.message);
+    if (error) {
+      console.warn('[Cloud Sync] Task failed:', error.message);
+      // Fallback: try without extra_data if column doesn't exist
+      if (error.message.includes('extra_data')) {
+        delete payload.extra_data;
+        const { error: err2 } = await supabaseClient
+          .from('blaban_tasks')
+          .upsert(payload, { onConflict: 'id' });
+        if (err2) console.warn('[Cloud Sync] Task retry failed:', err2.message);
+        return { synced: !err2 };
+      }
+    }
     return { synced: !error, error };
   } catch (err) {
+    console.warn('[Cloud Sync] Task exception:', err);
     return { synced: false, error: err };
   }
 }
@@ -162,12 +189,55 @@ async function pullTasksFromCloud() {
       .from('blaban_tasks')
       .select('*')
       .order('created_at', { ascending: false });
-    if (error) return [];
+    if (error) {
+      console.warn('[Cloud Pull] Tasks failed:', error.message);
+      return [];
+    }
     return data || [];
   } catch (err) {
+    console.warn('[Cloud Pull] Tasks exception:', err);
     return [];
   }
 }
+
+// Delete task from cloud (when deleted locally)
+async function deleteTaskFromCloud(taskId) {
+  if (!syncEnabled || !currentUser) return;
+  try {
+    await supabaseClient.from('blaban_tasks').delete().eq('id', String(taskId));
+    console.log('[Cloud] Task deleted from cloud:', taskId);
+  } catch(e) { console.warn('[Cloud] Delete task failed:', e); }
+}
+window.deleteTaskFromCloud = deleteTaskFromCloud;
+
+// Map cloud task to local format (preserving all fields)
+function mapCloudTaskToLocal(t) {
+  const extra = t.extra_data || {};
+  return {
+    id: t.id,
+    title: t.title || '',
+    task: t.title || '',  // alias for compatibility
+    desc: extra.desc || '',
+    branch: t.branch_id || '',
+    assignee: t.assignee || '',
+    assignedTo: t.assignee || '',
+    deadline: t.due_date || '',
+    dueDate: t.due_date || '',
+    priority: extra.priority || 'normal',
+    status: extra.status || (t.done ? 'completed' : 'pending'),
+    done: t.done === true,
+    doneBy: t.done_by || '',
+    completedBy: t.done_by || extra.completedBy || '',
+    doneAt: t.done_at || '',
+    completedAt: t.done_at || extra.completedAt || '',
+    photo: t.photo_url || '',
+    photos: extra.photos || [],
+    comments: extra.comments || [],
+    createdAt: extra.createdAt || t.created_at || '',
+    _cloudUpdatedAt: t.updated_at
+  };
+}
+window.mapCloudTaskToLocal = mapCloudTaskToLocal;
 
 // ============================================================
 // CLOUD STORAGE — Manager Profiles
@@ -251,17 +321,17 @@ async function pullCustomItemsFromCloud() {
 }
 
 // ============================================================
-// INITIAL SYNC (after login)
+// INITIAL SYNC (after login) - SAFE: merges, doesn't overwrite
 // ============================================================
 async function initialCloudSync() {
   if (!syncEnabled) return;
   console.log('[Cloud] Starting initial sync...');
   
   try {
-    // Pull custom items first
+    // Pull custom items first (these are settings, safe to replace)
     await pullCustomItemsFromCloud();
     
-    // Pull managers
+    // Pull managers (merge: local + cloud)
     const cloudManagers = await pullManagersFromCloud();
     if (Object.keys(cloudManagers).length > 0) {
       const local = JSON.parse(localStorage.getItem('blaban_manager_profiles') || '{}');
@@ -269,62 +339,131 @@ async function initialCloudSync() {
       localStorage.setItem('blaban_manager_profiles', JSON.stringify(merged));
     }
     
-    // Pull evaluations (for all branches)
+    // === EVALUATIONS: Two-way merge ===
+    // 1. Pull cloud evaluations
     const cloudEvals = await pullEvaluationsFromCloud();
-    if (cloudEvals.length > 0) {
-      let localData;
-      try { localData = JSON.parse(localStorage.getItem('blaban_data_v3') || '{}'); }
-      catch(e) { localData = {}; }
+    let localData;
+    try { localData = JSON.parse(localStorage.getItem('blaban_data_v3') || '{}'); }
+    catch(e) { localData = {}; }
+    
+    // Apply cloud → local (newer wins)
+    cloudEvals.forEach(ev => {
+      if (!localData[ev.branch_id]) localData[ev.branch_id] = {};
+      const dateKey = ev.eval_date;
+      const cloudTime = new Date(ev.updated_at).getTime();
+      const localTime = localData[ev.branch_id][dateKey] 
+        ? new Date(localData[ev.branch_id][dateKey].updatedAt || 0).getTime() 
+        : 0;
       
-      cloudEvals.forEach(ev => {
-        if (!localData[ev.branch_id]) localData[ev.branch_id] = {};
-        const dateKey = ev.eval_date;
-        if (!localData[ev.branch_id][dateKey] || 
-            new Date(ev.updated_at) > new Date(localData[ev.branch_id][dateKey].updatedAt || 0)) {
-          localData[ev.branch_id][dateKey] = {
-            managers: ev.managers || [],
-            manager: (ev.managers || [])[0] || '',
-            results: ev.results || {},
-            notes: ev.notes || {},
-            photos: ev.photos || {},
-            actionStatus: ev.action_status || {},
-            userCritical: ev.user_critical || {},
-            scorePercent: ev.score_percent || 0,
-            updatedAt: ev.updated_at
-          };
-        }
+      if (cloudTime > localTime) {
+        // Cloud is newer, apply
+        localData[ev.branch_id][dateKey] = {
+          managers: ev.managers || [],
+          manager: (ev.managers || [])[0] || '',
+          results: ev.results || {},
+          notes: ev.notes || {},
+          photos: ev.photos || {},
+          actionStatus: ev.action_status || {},
+          userCritical: ev.user_critical || {},
+          scorePercent: ev.score_percent || 0,
+          updatedAt: ev.updated_at
+        };
+        console.log('[Cloud] Pulled newer eval:', ev.branch_id, dateKey);
+      }
+    });
+    localStorage.setItem('blaban_data_v3', JSON.stringify(localData));
+    
+    // Push local-only evaluations to cloud (THROTTLED - max 5 per session, 200ms between)
+    if (typeof appData !== 'undefined' && appData) {
+      const cloudKeys = new Set(cloudEvals.map(e => `${e.branch_id}_${e.eval_date}`));
+      const toPush = [];
+      Object.keys(appData).forEach(branch => {
+        const branchData = appData[branch];
+        if (typeof branchData !== 'object') return;
+        Object.keys(branchData).forEach(date => {
+          const key = `${branch}_${date}`;
+          if (!cloudKeys.has(key) && branchData[date]) {
+            toPush.push({ branch, date });
+          }
+        });
       });
-      localStorage.setItem('blaban_data_v3', JSON.stringify(localData));
+      
+      // Throttle: max 5 evaluations, with delay between each
+      const limited = toPush.slice(0, 5);
+      console.log('[Cloud] Pushing', limited.length, 'local-only evals (of', toPush.length, 'total)');
+      for (let i = 0; i < limited.length; i++) {
+        const { branch, date } = limited[i];
+        if (typeof autoSyncEvaluation === 'function') {
+          setTimeout(() => autoSyncEvaluation(branch, date), i * 500);
+        }
+      }
     }
     
-    // Pull tasks
+    // === TASKS: Two-way merge ===
     const cloudTasks = await pullTasksFromCloud();
-    if (cloudTasks.length > 0) {
-      const mapped = cloudTasks.map(t => ({
-        id: t.id,
-        title: t.title,
-        task: t.title,
-        branch: t.branch_id,
-        assignee: t.assignee,
-        dueDate: t.due_date,
-        done: t.done,
-        doneBy: t.done_by,
-        doneAt: t.done_at,
-        photo: t.photo_url,
-        createdAt: t.created_at
-      }));
-      localStorage.setItem('blaban_tasks_v1', JSON.stringify(mapped));
+    let localTasks = [];
+    try { localTasks = JSON.parse(localStorage.getItem('blaban_tasks_v1') || '[]'); }
+    catch(e) { localTasks = []; }
+    
+    const localTaskMap = new Map(localTasks.map(t => [String(t.id), t]));
+    const cloudTaskMap = new Map(cloudTasks.map(t => [String(t.id), t]));
+    const mergedTasks = [];
+    const allIds = new Set([...localTaskMap.keys(), ...cloudTaskMap.keys()]);
+    const tasksToPush = [];
+    
+    allIds.forEach(id => {
+      const local = localTaskMap.get(id);
+      const cloud = cloudTaskMap.get(id);
+      
+      if (local && cloud) {
+        const cloudTime = new Date(cloud.updated_at).getTime();
+        const localTime = local._cloudUpdatedAt ? new Date(local._cloudUpdatedAt).getTime() : 0;
+        if (cloudTime > localTime) {
+          mergedTasks.push(mapCloudTaskToLocal(cloud));
+        } else {
+          mergedTasks.push(local);
+          tasksToPush.push(local);
+        }
+      } else if (local) {
+        mergedTasks.push(local);
+        tasksToPush.push(local);
+      } else if (cloud) {
+        // Only cloud — pull to local
+        mergedTasks.push(mapCloudTaskToLocal(cloud));
+      }
+    });
+    
+    localStorage.setItem('blaban_tasks_v1', JSON.stringify(mergedTasks));
+    // Update in-memory tasksData
+    if (typeof tasksData !== 'undefined') {
+      tasksData.length = 0;
+      mergedTasks.forEach(t => tasksData.push(t));
+    }
+    console.log('[Cloud] Tasks merged:', mergedTasks.length, 'total');
+    
+    // Throttle pushing tasks to cloud (max 5, 500ms between - prevents browser overload)
+    const tasksLimited = tasksToPush.slice(0, 5);
+    console.log('[Cloud] Pushing', tasksLimited.length, 'local tasks (of', tasksToPush.length, 'total)');
+    for (let i = 0; i < tasksLimited.length; i++) {
+      const t = tasksLimited[i];
+      if (typeof autoSyncTask === 'function') {
+        setTimeout(() => autoSyncTask(t), i * 500);
+      }
     }
     
     // Refresh UI
     if (typeof showPage === 'function' && typeof currentPage !== 'undefined') {
       try { showPage(currentPage); } catch(e) {}
     }
+    if (typeof renderTasksPage === 'function') {
+      try { renderTasksPage(); } catch(e) {}
+    }
     
     console.log('[Cloud] Initial sync complete');
-    if (typeof showNotif === 'function') showNotif('☁️ تم تحميل البيانات من السحابة', 'success');
+    if (typeof showNotif === 'function') showNotif('☁️ تمت المزامنة مع السحابة', 'success');
   } catch (err) {
     console.error('[Cloud] Sync error:', err);
+    if (typeof showNotif === 'function') showNotif('⚠️ خطأ في المزامنة: ' + err.message, 'error');
   }
 }
 
@@ -370,23 +509,62 @@ function setupRealtimeSubscriptions() {
     .subscribe();
   realtimeChannels.push(evalChannel);
   
-  // Tasks channel
+  // Tasks channel - handles INSERT, UPDATE, DELETE
   const tasksChannel = supabaseClient
     .channel('blaban-tasks')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'blaban_tasks' }, (payload) => {
-      console.log('[Realtime] Task update:', payload.eventType);
-      // Refresh tasks
-      pullTasksFromCloud().then(tasks => {
-        const mapped = tasks.map(t => ({
-          id: t.id, title: t.title, task: t.title, branch: t.branch_id,
-          assignee: t.assignee, dueDate: t.due_date, done: t.done,
-          doneBy: t.done_by, doneAt: t.done_at, photo: t.photo_url, createdAt: t.created_at
-        }));
-        localStorage.setItem('blaban_tasks_v1', JSON.stringify(mapped));
+      console.log('[Realtime] Task event:', payload.eventType, payload.new?.id || payload.old?.id);
+      try {
+        let localTasks = JSON.parse(localStorage.getItem('blaban_tasks_v1') || '[]');
+        
+        if (payload.eventType === 'DELETE') {
+          const deletedId = String(payload.old?.id);
+          localTasks = localTasks.filter(t => String(t.id) !== deletedId);
+          if (typeof showNotif === 'function') showNotif('🗑️ حُذفت مهمة', 'info');
+        } else {
+          // INSERT or UPDATE
+          const cloudTask = payload.new;
+          if (!cloudTask) return;
+          
+          // Don't echo our own update unless it's been more than 2 seconds
+          if (cloudTask.created_by === currentUser?.id) {
+            const cloudTime = new Date(cloudTask.updated_at).getTime();
+            if (Date.now() - cloudTime < 2000) {
+              console.log('[Realtime] Skipping own recent update');
+              return;
+            }
+          }
+          
+          const mapped = mapCloudTaskToLocal(cloudTask);
+          const idx = localTasks.findIndex(t => String(t.id) === String(mapped.id));
+          if (idx >= 0) {
+            localTasks[idx] = mapped;
+          } else {
+            localTasks.unshift(mapped);
+          }
+          if (typeof showNotif === 'function') {
+            const action = payload.eventType === 'INSERT' ? 'مهمة جديدة' : 'تحديث مهمة';
+            showNotif('🔄 ' + action + ': ' + (mapped.title || ''), 'info');
+          }
+        }
+        
+        localStorage.setItem('blaban_tasks_v1', JSON.stringify(localTasks));
+        // Update in-memory tasksData
+        if (typeof tasksData !== 'undefined') {
+          tasksData.length = 0;
+          localTasks.forEach(t => tasksData.push(t));
+        }
+        
+        // Refresh UI
         if (typeof renderTasksPage === 'function') {
           try { renderTasksPage(); } catch(e) {}
         }
-      });
+        if (typeof renderDashboard === 'function') {
+          try { renderDashboard(); } catch(e) {}
+        }
+      } catch(e) {
+        console.warn('[Realtime] Task handler error:', e);
+      }
     })
     .subscribe();
   realtimeChannels.push(tasksChannel);
@@ -597,17 +775,25 @@ function saveSupaConfig() {
 
 function updateCloudStatusIndicator() {
   const btn = document.getElementById('cloudSyncBtn');
-  if (!btn) return;
+  const bubble = document.getElementById('bubbleCloudBtn');
   if (currentUser) {
-    btn.innerHTML = '☁️ متصل';
-    btn.style.background = 'linear-gradient(135deg, #27AE60, #2ECC71)';
-    btn.style.color = '#fff';
-    btn.title = 'متصل بالسحابة: ' + currentUser.email;
+    if (btn) {
+      btn.innerHTML = '☁️ متصل';
+      btn.title = 'متصل بالسحابة: ' + currentUser.email;
+    }
+    if (bubble) {
+      bubble.classList.add('cloud-connected');
+      bubble.title = 'متصل: ' + currentUser.email;
+    }
   } else {
-    btn.innerHTML = '☁️ مزامنة';
-    btn.style.background = '';
-    btn.style.color = '';
-    btn.title = 'تسجيل الدخول للمزامنة';
+    if (btn) {
+      btn.innerHTML = '☁️';
+      btn.title = 'تسجيل الدخول للمزامنة';
+    }
+    if (bubble) {
+      bubble.classList.remove('cloud-connected');
+      bubble.title = 'سجل دخول لمزامنة البيانات';
+    }
   }
 }
 
@@ -619,6 +805,292 @@ window.saveSupaConfig = saveSupaConfig;
 window.updateCloudStatusIndicator = updateCloudStatusIndicator;
 
 // ============================================================
+// BROADCAST ALERTS — Send urgent notifications to all users
+// ============================================================
+let alertsChannel = null;
+
+function openBroadcastAlert() {
+  // Check if logged in to cloud
+  if (!syncEnabled || !currentUser) {
+    if (confirm('يجب تسجيل الدخول للسحابة أولاً لإرسال تنبيه جماعي.\n\nهل تريد فتح شاشة تسجيل الدخول؟')) {
+      if (typeof openCloudAuthModal === 'function') openCloudAuthModal();
+    }
+    return;
+  }
+  
+  let modal = document.getElementById('broadcastAlertModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'broadcastAlertModal';
+    modal.className = 'modal-overlay';
+    document.body.appendChild(modal);
+  }
+  
+  modal.innerHTML = `
+    <div class="modal-box" style="max-width:520px;border:2px solid #E74C3C;">
+      <h3 style="color:#E74C3C;display:flex;align-items:center;gap:8px;">
+        <span style="font-size:28px;">🚨</span> إرسال تنبيه عاجل
+      </h3>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">
+        سيتم إرسال هذا التنبيه فوراً لكل المستخدمين المتصلين بالسحابة. سيظهر لديهم بصوت تنبيه وإشعار كبير على الشاشة.
+      </p>
+      
+      <div class="modal-input-group">
+        <label style="color:#E74C3C;font-weight:800;">⚠️ عنوان التنبيه</label>
+        <input id="alertTitle" type="text" placeholder="مثلاً: حالة طوارئ في الفرع" 
+          style="width:100%;padding:10px;border-radius:8px;border:2px solid #E74C3C;background:rgba(0,0,0,0.3);color:var(--text-light);font-family:inherit;font-size:15px;font-weight:700;">
+      </div>
+      
+      <div class="modal-input-group">
+        <label>📝 الرسالة (اختياري)</label>
+        <textarea id="alertMessage" placeholder="تفاصيل التنبيه..." rows="3"
+          style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:rgba(0,0,0,0.3);color:var(--text-light);font-family:inherit;font-size:14px;resize:vertical;"></textarea>
+      </div>
+      
+      <div class="modal-input-group">
+        <label>🎯 نوع التنبيه</label>
+        <select id="alertType" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:rgba(0,0,0,0.3);color:var(--text-light);font-family:inherit;font-size:14px;">
+          <option value="urgent">🚨 طارئ (أحمر — صوت قوي)</option>
+          <option value="important">⚠️ مهم (برتقالي — صوت متوسط)</option>
+          <option value="info">ℹ️ تنبيه عام (أزرق — صوت خفيف)</option>
+        </select>
+      </div>
+      
+      <div class="modal-input-group">
+        <label>👥 الموجّه إلى</label>
+        <select id="alertTarget" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:rgba(0,0,0,0.3);color:var(--text-light);font-family:inherit;font-size:14px;">
+          <option value="all">الكل (جميع المستخدمين)</option>
+          ${BRANCHES.map(b => `<option value="branch:${b}">فرع ${BRANCH_NAMES[b]} فقط</option>`).join('')}
+        </select>
+      </div>
+      
+      <div class="modal-actions" style="margin-top:14px;">
+        <button class="btn btn-primary btn-sm" onclick="document.getElementById('broadcastAlertModal').classList.add('hidden')">إلغاء</button>
+        <button class="btn" onclick="sendBroadcastAlert()" 
+          style="background:linear-gradient(135deg,#E74C3C,#C0392B);color:#fff;font-weight:800;padding:10px 24px;font-size:15px;">
+          🚨 إرسال التنبيه الآن
+        </button>
+      </div>
+    </div>
+  `;
+  modal.classList.remove('hidden');
+  setTimeout(() => document.getElementById('alertTitle')?.focus(), 100);
+}
+
+async function sendBroadcastAlert() {
+  const title = (document.getElementById('alertTitle')?.value || '').trim();
+  const message = (document.getElementById('alertMessage')?.value || '').trim();
+  const type = document.getElementById('alertType')?.value || 'urgent';
+  const target = document.getElementById('alertTarget')?.value || 'all';
+  
+  if (!title) {
+    alert('اكتب عنوان التنبيه أولاً');
+    return;
+  }
+  
+  if (!supabaseClient || !currentUser) {
+    alert('غير متصل بالسحابة. سجّل دخول أولاً.');
+    return;
+  }
+  
+  // Get sender name
+  let senderName = currentUser.email || 'مدير التشغيل';
+  try {
+    const { data } = await supabaseClient.from('blaban_profiles').select('full_name').eq('id', currentUser.id).maybeSingle();
+    if (data?.full_name) senderName = data.full_name;
+  } catch(e) {}
+  
+  const alertPayload = {
+    type: 'broadcast_alert',
+    alert_type: type,  // urgent | important | info
+    title: title,
+    message: message,
+    target: target,    // 'all' or 'branch:xxx'
+    from: senderName,
+    from_id: currentUser.id,
+    timestamp: new Date().toISOString()
+  };
+  
+  try {
+    if (!alertsChannel) alertsChannel = setupBroadcastChannel();
+    
+    // Send via Supabase Realtime broadcast (instant, no DB write)
+    const status = await alertsChannel.send({
+      type: 'broadcast',
+      event: 'urgent_alert',
+      payload: alertPayload
+    });
+    
+    console.log('[Alert] Broadcast sent, status:', status);
+    
+    // Also save to DB so users who join later still see recent alerts
+    try {
+      await supabaseClient.from('blaban_settings').upsert({
+        key: 'last_alert_' + Date.now(),
+        value: alertPayload,
+        updated_by: currentUser.id,
+        updated_at: new Date().toISOString()
+      });
+    } catch(e) { console.warn('[Alert] DB save failed:', e); }
+    
+    document.getElementById('broadcastAlertModal').classList.add('hidden');
+    if (typeof showNotif === 'function') showNotif('🚨 تم إرسال التنبيه لكل المستخدمين', 'success');
+    
+    // History log
+    if (typeof addHistoryEntry === 'function') {
+      addHistoryEntry({
+        type: 'alert', action: 'send',
+        target: title,
+        details: 'تنبيه ' + type + ' إلى ' + (target === 'all' ? 'الكل' : target)
+      });
+    }
+  } catch (err) {
+    console.error('[Alert] Send failed:', err);
+    alert('فشل الإرسال: ' + err.message);
+  }
+}
+
+function setupBroadcastChannel() {
+  if (!supabaseClient) return null;
+  const channel = supabaseClient.channel('blaban-alerts', {
+    config: { broadcast: { self: false, ack: true } }  // self: false means don't receive own broadcasts
+  });
+  
+  channel.on('broadcast', { event: 'urgent_alert' }, (payload) => {
+    console.log('[Alert] Received broadcast:', payload);
+    const data = payload.payload || payload;
+    
+    // Skip if this alert is for a specific branch and user isn't in it
+    if (data.target && data.target.startsWith('branch:')) {
+      const targetBranch = data.target.substring(7);
+      const myBranch = localStorage.getItem('blaban_my_branch') || '';
+      if (myBranch && myBranch !== targetBranch) {
+        console.log('[Alert] Skipping - not for my branch');
+        return;
+      }
+    }
+    
+    // Skip if from self
+    if (data.from_id === currentUser?.id) return;
+    
+    showIncomingAlert(data);
+  });
+  
+  channel.subscribe(status => {
+    console.log('[Alert] Channel status:', status);
+  });
+  
+  return channel;
+}
+
+function showIncomingAlert(data) {
+  // Remove any existing alert
+  const existing = document.querySelector('.broadcast-alert-overlay');
+  if (existing) existing.remove();
+  
+  const type = data.alert_type || 'urgent';
+  const icons = { urgent: '🚨', important: '⚠️', info: 'ℹ️' };
+  const colors = {
+    urgent: 'linear-gradient(135deg, #E74C3C, #C0392B)',
+    important: 'linear-gradient(135deg, #F39C12, #D35400)',
+    info: 'linear-gradient(135deg, #3498DB, #2980B9)'
+  };
+  
+  const overlay = document.createElement('div');
+  overlay.className = 'broadcast-alert-overlay';
+  overlay.style.background = colors[type] || colors.urgent;
+  overlay.innerHTML = `
+    <div class="alert-icon">${icons[type] || '🚨'}</div>
+    <div style="font-size:20px;font-weight:900;margin-bottom:6px;">${escapeHTML(data.title || 'تنبيه')}</div>
+    ${data.message ? `<div style="font-size:14px;font-weight:500;line-height:1.5;">${escapeHTML(data.message)}</div>` : ''}
+    <div class="alert-from">📤 من: ${escapeHTML(data.from || 'النظام')}</div>
+    <div class="alert-close-hint">انقر للإغلاق</div>
+  `;
+  document.body.appendChild(overlay);
+  
+  // Play alert sound
+  playAlertSound(type);
+  
+  // Vibrate on mobile
+  if (navigator.vibrate) {
+    try {
+      const pattern = type === 'urgent' ? [300, 100, 300, 100, 300] : [200, 100, 200];
+      navigator.vibrate(pattern);
+    } catch(e) {}
+  }
+  
+  // Auto-dismiss after 15 seconds
+  const dismissTimer = setTimeout(() => overlay.remove(), 15000);
+  
+  // Click to dismiss
+  overlay.addEventListener('click', () => {
+    clearTimeout(dismissTimer);
+    overlay.style.animation = 'fadeIn 0.3s reverse';
+    setTimeout(() => overlay.remove(), 300);
+  });
+  
+  // Browser notification (if permission granted)
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try {
+      new Notification('🚨 ' + (data.title || 'تنبيه عاجل'), {
+        body: data.message || 'من: ' + (data.from || 'مدير التشغيل'),
+        icon: './icon-192.png',
+        tag: 'urgent-alert',
+        requireInteraction: type === 'urgent',
+        vibrate: type === 'urgent' ? [300, 100, 300] : [200]
+      });
+    } catch(e) {}
+  }
+}
+
+// Simple alert sound using Web Audio API (no external file needed)
+function playAlertSound(type) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const freq = type === 'urgent' ? [800, 1000, 800, 1000] : type === 'important' ? [600, 800] : [500];
+    const duration = type === 'urgent' ? 0.15 : 0.2;
+    const totalDelay = type === 'urgent' ? 0.18 : 0.25;
+    
+    freq.forEach((f, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = f;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      const start = ctx.currentTime + (i * totalDelay);
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.4, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+      osc.start(start);
+      osc.stop(start + duration);
+    });
+  } catch(e) { console.warn('[Alert] Sound failed:', e); }
+}
+
+function escapeHTML(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Initialize broadcast channel when user logs in
+async function initBroadcastChannel() {
+  if (!syncEnabled || !supabaseClient) return;
+  if (alertsChannel) return; // already initialized
+  
+  alertsChannel = setupBroadcastChannel();
+  
+  // Request notification permission for alerts
+  if ('Notification' in window && Notification.permission === 'default') {
+    try { Notification.requestPermission(); } catch(e) {}
+  }
+}
+
+window.openBroadcastAlert = openBroadcastAlert;
+window.sendBroadcastAlert = sendBroadcastAlert;
+window.showIncomingAlert = showIncomingAlert;
+window.initBroadcastChannel = initBroadcastChannel;
+
+// ============================================================
 // INITIALIZE ON LOAD
 // ============================================================
 window.addEventListener('DOMContentLoaded', async () => {
@@ -628,6 +1100,8 @@ window.addEventListener('DOMContentLoaded', async () => {
       console.log('[Auth] Restored session:', user.email);
       setupRealtimeSubscriptions();
       await initialCloudSync();
+      // Initialize broadcast channel for alerts
+      initBroadcastChannel();
     }
     setTimeout(updateCloudStatusIndicator, 500);
   }

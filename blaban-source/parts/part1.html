@@ -698,18 +698,17 @@ body {
   padding: 4px;
 }
 
-/* ============ Maram-style title (one size bigger, glow effect, centered) ============ */
+/* ============ Maram-style title — bigger, centered with Bilal inline ============ */
 .brand-title-maram {
-  /* Maram font isn't on Google Fonts; using Marhey (similar style) with fallbacks */
   font-family: 'Marhey', 'Reem Kufi', 'Mada', 'Tajawal', sans-serif;
-  font-size: clamp(22px, 4.5vw, 38px);
+  font-size: clamp(20px, 3.5vw, 34px);
   font-weight: 700;
   color: var(--gold-light);
   letter-spacing: 1px;
-  line-height: 1.4;
-  text-align: center;  /* Centered now */
-  margin: 0 auto;
-  padding: 0 10px;
+  line-height: 1.2;
+  text-align: center;
+  margin: 0;
+  padding: 0 4px;
   text-shadow:
     0 0 4px rgba(232,201,106,0.9),
     0 0 10px rgba(232,201,106,0.7),
@@ -719,11 +718,32 @@ body {
     0 4px 14px rgba(0,0,0,0.5);
   animation: titleGlowPulse 4s ease-in-out infinite;
 }
-/* Subtitle (Bilal's name) — same font, glow, animation as title, just smaller */
-.brand-title-maram.brand-title-sub {
-  font-size: clamp(16px, 3.2vw, 26px);
-  margin-top: 4px;
-  /* All other properties inherited from .brand-title-maram */
+/* Bigger version for main title */
+.brand-title-maram.brand-title-big {
+  font-size: clamp(24px, 4.2vw, 42px);
+  font-weight: 800;
+  display: inline-block;
+  white-space: nowrap;
+}
+/* Bilal — same font/glow but a little smaller, inline beside title */
+.brand-title-maram.brand-title-bilal {
+  font-size: clamp(16px, 2.6vw, 26px);
+  font-weight: 700;
+  display: inline-block;
+  white-space: nowrap;
+  margin-inline-start: 8px;
+  opacity: 0.95;
+}
+/* Inline title container (title + Bilal on same line) centered in header */
+.header-title-inline {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  text-align: center;
 }
 @keyframes titleGlowPulse {
   0%, 100% { 
@@ -774,6 +794,40 @@ body {
   box-shadow: 0 0 16px rgba(201,168,76,0.3), inset 0 1px 3px rgba(0,0,0,0.4);
   flex-shrink: 0;
 }
+/* Enhanced glowing clock — same Marhey font + same glow as title */
+.header-clock.header-clock-glow {
+  background: linear-gradient(135deg, rgba(0,0,0,0.55), rgba(74,15,26,0.75));
+  border: 2px solid var(--gold-light);
+  box-shadow:
+    0 0 12px rgba(232,201,106,0.5),
+    0 0 24px rgba(201,168,76,0.3),
+    inset 0 1px 4px rgba(0,0,0,0.4);
+  animation: titleGlowPulse 4s ease-in-out infinite;
+}
+.header-clock-glow .clock-time {
+  font-family: 'Marhey', 'Reem Kufi', 'Mada', 'Tajawal', sans-serif !important;
+  font-size: clamp(18px, 2.6vw, 26px);
+  font-weight: 700;
+  color: var(--gold-light);
+  letter-spacing: 2px;
+  line-height: 1.2;
+  text-shadow:
+    0 0 4px rgba(232,201,106,0.9),
+    0 0 10px rgba(232,201,106,0.7),
+    0 0 20px rgba(201,168,76,0.5),
+    0 2px 6px rgba(0,0,0,0.8);
+}
+.header-clock-glow .clock-date {
+  font-family: 'Marhey', 'Reem Kufi', 'Mada', 'Tajawal', sans-serif !important;
+  font-size: clamp(11px, 1.6vw, 14px);
+  color: var(--gold-light);
+  margin-top: 3px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-shadow:
+    0 0 4px rgba(232,201,106,0.6),
+    0 2px 4px rgba(0,0,0,0.6);
+}
 .clock-time {
   font-family: 'Courier New', monospace;
   font-size: 22px;
@@ -794,6 +848,462 @@ body {
   background: linear-gradient(135deg, rgba(0,0,0,0.5), rgba(74,15,26,0.7));
   border-color: var(--gold-light);
 }
+
+/* =========== BUBBLE MENU (replaces old dropdown) =========== */
+.bubble-menu-wrap {
+  position: relative;
+  display: inline-block;
+}
+.bubble-menu-trigger {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--maroon), var(--maroon-dark));
+  border: 3px solid var(--gold);
+  color: var(--gold-light);
+  font-size: 22px;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.4), 0 0 12px rgba(201,168,76,0.4);
+  transition: all 0.3s ease;
+  position: relative;
+  z-index: 1001;
+}
+.bubble-menu-trigger:hover {
+  transform: scale(1.08);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.5), 0 0 20px rgba(201,168,76,0.6);
+}
+.bubble-menu-trigger.is-open {
+  background: linear-gradient(135deg, var(--gold), var(--gold-light));
+  color: var(--maroon-dark);
+  transform: rotate(90deg) scale(1.08);
+}
+.bubble-menu-trigger .trigger-icon {
+  display: inline-block;
+  transition: transform 0.3s ease;
+}
+
+/* Bubble container — FIXED position so it follows scroll, above chatbot */
+.bubble-menu {
+  position: fixed;
+  /* Positioned dynamically by JS based on trigger location when opened */
+  top: 80px;
+  inset-inline-end: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0;
+  z-index: 9500; /* Above chatbot (9000) */
+  pointer-events: none;
+  visibility: hidden;
+}
+.bubble-menu.is-open {
+  pointer-events: auto;
+  visibility: visible;
+}
+
+/* Each bubble — circular, drops in sequentially */
+.bubble-item {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--bg-card2), var(--bg-card));
+  border: 2px solid var(--gold);
+  color: var(--gold-light);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.5), 0 0 14px rgba(201,168,76,0.3);
+  opacity: 0;
+  transform: translateY(-30px) scale(0.3);
+  transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  font-family: 'Tajawal', sans-serif;
+  position: relative;
+}
+.bubble-item .bubble-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+.bubble-item .bubble-label {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  line-height: 1;
+  margin-top: 2px;
+}
+.bubble-item:hover {
+  transform: translateY(0) scale(1.12);
+  box-shadow: 0 10px 24px rgba(0,0,0,0.6), 0 0 22px rgba(201,168,76,0.6);
+  background: linear-gradient(135deg, var(--gold), var(--gold-light));
+  color: var(--maroon-dark);
+  border-color: var(--gold-light);
+}
+
+/* Open state — sequential reveal (one after another like beads dropping) */
+.bubble-menu.is-open .bubble-item {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+.bubble-menu.is-open .bubble-item:nth-child(1) { transition-delay: 0.00s; }
+.bubble-menu.is-open .bubble-item:nth-child(2) { transition-delay: 0.06s; }
+.bubble-menu.is-open .bubble-item:nth-child(3) { transition-delay: 0.12s; }
+.bubble-menu.is-open .bubble-item:nth-child(4) { transition-delay: 0.18s; }
+.bubble-menu.is-open .bubble-item:nth-child(5) { transition-delay: 0.24s; }
+.bubble-menu.is-open .bubble-item:nth-child(6) { transition-delay: 0.30s; }
+.bubble-menu.is-open .bubble-item:nth-child(7) { transition-delay: 0.36s; }
+.bubble-menu.is-open .bubble-item:nth-child(8) { transition-delay: 0.42s; }
+
+/* Color variants for each bubble */
+.bubble-item.bubble-alert {
+  background: linear-gradient(135deg, #E74C3C, #C0392B);
+  border-color: #FFCDC3;
+  color: #fff;
+  animation: pulseAlert 2s infinite;
+}
+.bubble-item.bubble-alert:hover {
+  background: linear-gradient(135deg, #FF6B5C, #E74C3C);
+  color: #fff;
+}
+.bubble-item.bubble-security {
+  background: linear-gradient(135deg, #9B59B6, #8E44AD);
+  border-color: #D6BAE6;
+  color: #fff;
+}
+.bubble-item.bubble-security:hover { background: linear-gradient(135deg, #B574CB, #9B59B6); color: #fff; }
+.bubble-item.bubble-cloud {
+  background: linear-gradient(135deg, #3498DB, #2980B9);
+  border-color: #B0DAF1;
+  color: #fff;
+}
+.bubble-item.bubble-cloud:hover { background: linear-gradient(135deg, #5DADE2, #3498DB); color: #fff; }
+.bubble-item.bubble-firebase {
+  background: linear-gradient(135deg, #F39C12, #D35400);
+  border-color: #FCD9A6;
+  color: #fff;
+}
+.bubble-item.bubble-firebase:hover { background: linear-gradient(135deg, #F5B041, #F39C12); color: #fff; }
+.bubble-item.bubble-update {
+  background: linear-gradient(135deg, #1ABC9C, #16A085);
+  border-color: #B5E8DD;
+  color: #fff;
+}
+.bubble-item.bubble-update:hover { background: linear-gradient(135deg, #48C9B0, #1ABC9C); color: #fff; }
+.bubble-item.bubble-rotation {
+  background: linear-gradient(135deg, #34495E, #2C3E50);
+  border-color: #ABB7C0;
+  color: #fff;
+}
+.bubble-item.bubble-rotation:hover { background: linear-gradient(135deg, #5D6D7E, #34495E); color: #fff; }
+.bubble-item.bubble-rotation.is-locked {
+  background: linear-gradient(135deg, #27AE60, #1E8449);
+  border-color: #ABEBC6;
+}
+.bubble-item.bubble-items {
+  background: linear-gradient(135deg, #5D6D7E, #34495E);
+  border-color: #BDC3C7;
+  color: #fff;
+}
+.bubble-item.bubble-items:hover { background: linear-gradient(135deg, #7F8C8D, #5D6D7E); color: #fff; }
+.bubble-item.bubble-branches {
+  background: linear-gradient(135deg, #16A085, #0E6B57);
+  border-color: #A2D9CE;
+  color: #fff;
+}
+.bubble-item.bubble-branches:hover { background: linear-gradient(135deg, #1ABC9C, #16A085); color: #fff; }
+
+/* Cloud connected indicator */
+.bubble-item.bubble-cloud.cloud-connected::after {
+  content: "✓";
+  position: absolute;
+  top: -4px;
+  inset-inline-end: -4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #2ECC71;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+
+/* Light mode adjustments */
+.light-mode .bubble-menu-trigger {
+  background: linear-gradient(135deg, var(--gold), var(--gold-light));
+  color: var(--maroon-dark);
+  border-color: var(--maroon);
+}
+.light-mode .bubble-item {
+  background: linear-gradient(135deg, #fef9ed, #fff);
+  border-color: var(--maroon);
+  color: var(--maroon-dark);
+}
+
+/* Mobile/tablet — same bubble system, slightly smaller */
+@media (max-width: 768px) {
+  .bubble-item { width: 56px; height: 56px; }
+  .bubble-item .bubble-icon { font-size: 19px; }
+  .bubble-item .bubble-label { font-size: 8px; }
+  .bubble-menu-trigger { width: 44px; height: 44px; font-size: 19px; }
+}
+
+/* ============ DEVICE SUB-MENU (sub-bubbles beside main bubble) ============ */
+.bubble-submenu {
+  position: fixed;
+  /* Positioned dynamically by JS */
+  top: 80px;
+  inset-inline-end: 110px;
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  z-index: 9501; /* Just above main menu */
+  pointer-events: none;
+  visibility: hidden;
+}
+.bubble-submenu.is-open {
+  pointer-events: auto;
+  visibility: visible;
+}
+.bubble-item.bubble-sub {
+  width: 56px;
+  height: 56px;
+  opacity: 0;
+  transform: translateX(30px) scale(0.3);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.bubble-submenu.is-open .bubble-item.bubble-sub {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+}
+.bubble-submenu.is-open .bubble-item:nth-child(1) { transition-delay: 0.00s; }
+.bubble-submenu.is-open .bubble-item:nth-child(2) { transition-delay: 0.06s; }
+.bubble-submenu.is-open .bubble-item:nth-child(3) { transition-delay: 0.12s; }
+.bubble-item.bubble-desktop {
+  background: linear-gradient(135deg, #2C3E50, #1B2631);
+  border-color: #85929E; color: #fff;
+}
+.bubble-item.bubble-tablet {
+  background: linear-gradient(135deg, #7D3C98, #5B2C6F);
+  border-color: #BB8FCE; color: #fff;
+}
+.bubble-item.bubble-mobile {
+  background: linear-gradient(135deg, #117A65, #0B5345);
+  border-color: #76D7C4; color: #fff;
+}
+.bubble-item.bubble-device {
+  background: linear-gradient(135deg, #5499C7, #2874A6);
+  border-color: #AED6F1; color: #fff;
+}
+.bubble-item.bubble-device:hover { background: linear-gradient(135deg, #85C1E9, #5499C7); color: #fff; }
+.bubble-item.bubble-sub.active {
+  box-shadow: 0 0 0 3px #2ECC71, 0 6px 18px rgba(0,0,0,0.5);
+}
+
+@media (max-width: 768px) {
+  .bubble-submenu { inset-inline-end: 90px; }
+  .bubble-item.bubble-sub { width: 48px; height: 48px; }
+}
+
+/* ============ REMEMBRANCE BUBBLE (auto every minute) ============ */
+.remembrance-bubble {
+  position: fixed;
+  bottom: 100px;
+  inset-inline-start: 20px;
+  z-index: 9999;
+  background: linear-gradient(135deg, #16A085, #0E6B57);
+  color: #fff;
+  border: 3px solid #76D7C4;
+  border-radius: 24px;
+  padding: 14px 22px;
+  max-width: 380px;
+  min-width: 240px;
+  box-shadow: 0 14px 40px rgba(22,160,133,0.5), 0 0 24px rgba(118,215,196,0.4);
+  font-family: 'Tajawal', 'Marhey', sans-serif;
+  animation: remembranceSlideIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  cursor: default;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.remembrance-bubble.closing { animation: remembranceSlideOut 0.4s ease-in forwards; }
+@keyframes remembranceSlideIn {
+  from { opacity: 0; transform: translateX(-100%) scale(0.5); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
+}
+@keyframes remembranceSlideOut {
+  from { opacity: 1; transform: translateX(0) scale(1); }
+  to   { opacity: 0; transform: translateX(-100%) scale(0.5); }
+}
+.remembrance-icon {
+  /* No background, no circle — clean icon beside text */
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+  animation: remembranceIconPulse 2s ease-in-out infinite;
+}
+@keyframes remembranceIconPulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.12); }
+}
+.remembrance-text {
+  flex: 1;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.5;
+  letter-spacing: 0.3px;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  text-align: start;
+}
+.remembrance-counter {
+  position: absolute;
+  top: 6px; inset-inline-end: 6px;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.25);
+  font-size: 12px;
+  font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+}
+.remembrance-close {
+  position: absolute;
+  top: -10px; inset-inline-end: -10px;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: #C0392B;
+  color: #fff;
+  border: 2px solid #fff;
+  font-size: 18px;
+  font-weight: 800;
+  cursor: pointer;
+  line-height: 1;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+  display: flex; align-items: center; justify-content: center;
+}
+.remembrance-close:hover { background: #E74C3C; transform: scale(1.1); }
+
+/* ============ PRAYER BUBBLE (15 min before + during prayer) ============ */
+.prayer-bubble {
+  position: fixed;
+  bottom: 100px;
+  inset-inline-end: 20px;
+  z-index: 9999;
+  background: linear-gradient(135deg, #6B1B2A, #4A0F1A);
+  color: var(--gold-light);
+  border: 3px solid var(--gold);
+  border-radius: 22px;
+  padding: 18px 26px 18px 70px;
+  max-width: 360px;
+  box-shadow: 0 14px 40px rgba(107,27,42,0.6), 0 0 28px rgba(201,168,76,0.5);
+  font-family: 'Marhey', 'Tajawal', sans-serif;
+  animation: prayerSlideIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1), prayerBubbleGlow 3s ease-in-out infinite 0.6s;
+}
+.prayer-bubble.closing { animation: prayerSlideOut 0.4s ease-in forwards; }
+@keyframes prayerSlideIn {
+  from { opacity: 0; transform: translateX(100%) scale(0.5); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
+}
+@keyframes prayerSlideOut {
+  from { opacity: 1; transform: translateX(0) scale(1); }
+  to   { opacity: 0; transform: translateX(100%) scale(0.5); }
+}
+@keyframes prayerBubbleGlow {
+  0%, 100% { box-shadow: 0 14px 40px rgba(107,27,42,0.6), 0 0 28px rgba(201,168,76,0.5); }
+  50%      { box-shadow: 0 14px 40px rgba(107,27,42,0.7), 0 0 44px rgba(201,168,76,0.8); }
+}
+.prayer-icon {
+  position: absolute;
+  top: 50%; transform: translateY(-50%);
+  inset-inline-start: 14px;
+  width: 46px; height: 46px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 30px;
+  background: rgba(201,168,76,0.2);
+  border: 2px solid var(--gold);
+  border-radius: 50%;
+}
+.prayer-name {
+  font-size: 22px;
+  font-weight: 800;
+  margin-bottom: 4px;
+  color: var(--gold-light);
+  text-shadow: 0 0 6px rgba(232,201,106,0.6), 0 2px 4px rgba(0,0,0,0.5);
+}
+.prayer-message {
+  font-size: 15px;
+  font-weight: 600;
+  color: #F0E6D3;
+  font-family: 'Tajawal', sans-serif;
+  line-height: 1.4;
+}
+.prayer-time {
+  font-size: 13px;
+  color: var(--gold);
+  margin-top: 4px;
+  font-family: 'Tajawal', sans-serif;
+}
+.prayer-close {
+  position: absolute;
+  top: -10px; inset-inline-end: -10px;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--gold);
+  color: var(--maroon-dark);
+  border: 2px solid #fff;
+  font-size: 18px;
+  font-weight: 800;
+  cursor: pointer;
+  line-height: 1;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+  display: flex; align-items: center; justify-content: center;
+}
+.prayer-close:hover { background: var(--gold-light); transform: scale(1.1); }
+
+@media (max-width: 768px) {
+  .remembrance-bubble, .prayer-bubble {
+    max-width: 85vw;
+    bottom: 90px;
+    font-size: 14px;
+  }
+  .remembrance-text { font-size: 15px; }
+  .prayer-name { font-size: 19px; }
+  .prayer-message { font-size: 13px; }
+}
+
+/* ============ ROTATION LOCK — prevents content flip on phone rotation ============ */
+/* When user enables lock, force portrait layout even if device is landscape */
+@media (orientation: landscape) and (max-width: 1024px) {
+  body.rotation-locked {
+    /* Rotate the entire page 90deg back to portrait when device is landscape */
+    width: 100vh;
+    height: 100vw;
+    transform: rotate(-90deg);
+    transform-origin: 50vh 50vh;
+    overflow: hidden;
+    position: fixed;
+    top: 0;
+    left: 0;
+  }
+  body.rotation-locked .header {
+    width: 100vh;
+  }
+}
+/* Smooth transition when toggling lock */
+body { transition: transform 0.3s ease; }
 
 /* Footer signature — same font as header title (Marhey) with strong glow */
 .page-signature {
@@ -1097,6 +1607,38 @@ body {
 .page.active { display: block; }
 .branch-page { animation: fadeIn 0.3s ease; }
 @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+
+/* Alert button pulse */
+@keyframes pulseAlert {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(231,76,60,0.7), 0 4px 12px rgba(0,0,0,0.3); }
+  50% { box-shadow: 0 0 0 10px rgba(231,76,60,0), 0 4px 12px rgba(0,0,0,0.3); }
+}
+
+/* Incoming alert overlay (when receiving broadcast) */
+@keyframes alertSlideDown {
+  from { transform: translate(-50%, -100%); opacity: 0; }
+  to { transform: translate(-50%, 0); opacity: 1; }
+}
+@keyframes alertShake {
+  0%, 100% { transform: translate(-50%, 0); }
+  10%, 30%, 50%, 70%, 90% { transform: translate(-52%, 0); }
+  20%, 40%, 60%, 80% { transform: translate(-48%, 0); }
+}
+.broadcast-alert-overlay {
+  position: fixed; top: 20px; left: 50%; transform: translate(-50%, 0);
+  z-index: 99999;
+  background: linear-gradient(135deg, #E74C3C, #C0392B);
+  color: #fff; padding: 18px 28px; border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(231,76,60,0.5), 0 0 0 3px rgba(255,255,255,0.2);
+  font-size: 18px; font-weight: 800; font-family: Tajawal, sans-serif;
+  max-width: 90vw; text-align: center;
+  animation: alertSlideDown 0.5s ease-out, alertShake 0.6s ease-in-out 0.5s;
+  cursor: pointer;
+}
+.broadcast-alert-overlay .alert-icon { font-size: 36px; margin-bottom: 8px; display: block; }
+.broadcast-alert-overlay .alert-from { font-size: 13px; opacity: 0.9; font-weight: 400; margin-top: 8px; }
+.broadcast-alert-overlay .alert-close-hint { font-size: 11px; opacity: 0.7; margin-top: 10px; font-weight: 400; }
+.broadcast-alert-overlay:hover { transform: translate(-50%, 0) scale(1.02); }
 
 .card {
   background: var(--bg-card); border: 1px solid var(--border);

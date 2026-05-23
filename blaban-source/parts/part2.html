@@ -398,8 +398,8 @@
   </div>
 </div>
 
-<!-- Device Switcher Bar -->
-<div class="device-bar">
+<!-- Device Switcher Bar (HIDDEN — replaced by bubble menu device picker) -->
+<div class="device-bar" style="display:none;">
   <span style="font-size:15px;color:var(--text-muted);margin-left:10px;">🖥️ عرض:</span>
   <button class="device-btn active" id="devDesktop" onclick="setDeviceView('desktop')">
     <span class="dev-icon">💻</span> لابتوب
@@ -423,7 +423,7 @@
 <div class="header">
   <div class="header-top">
     <div class="header-brand">
-      <!-- Circular logo frame (user can upload custom logo) -->
+      <!-- Circular logo frame -->
       <div class="logo-frame" onclick="openLogoUpload()" title="اضغط لتغيير الشعار">
         <img id="brandLogo" src="" alt="الشعار" class="logo-image" style="display:none;">
         <div id="logoPlaceholder" class="logo-placeholder">
@@ -432,26 +432,86 @@
         </div>
         <input type="file" id="logoFileInput" accept="image/*" style="display:none" onchange="handleLogoUpload(this)">
       </div>
-      <div class="header-title">
-        <h1 class="brand-title-maram">إدارة تشغيل ب لبن قطر</h1>
-        <h2 class="brand-title-maram brand-title-sub">بلال الأنصاري</h2>
+      <!-- Title centered with Bilal beside it -->
+      <div class="header-title header-title-inline">
+        <h1 class="brand-title-maram brand-title-big">إدارة تشغيل ب لبن قطر</h1>
+        <span class="brand-title-maram brand-title-bilal">— بلال الأنصاري</span>
       </div>
-      <!-- Digital clock in header -->
-      <div class="header-clock">
-        <div class="clock-time" id="headerClockTime">--:--:--</div>
-        <div class="clock-date" id="headerClockDate">--</div>
+      <!-- Glowing clock — same font + glow as title -->
+      <div class="header-clock header-clock-glow">
+        <div class="clock-time brand-title-maram" id="headerClockTime">--:--:--</div>
+        <div class="clock-date brand-title-maram" id="headerClockDate">--</div>
       </div>
     </div>
     <div class="header-controls">
       <button class="ctrl-btn" id="pwaInstallBtn" onclick="triggerInstallPWA()" style="display:none;background:linear-gradient(135deg,#27AE60,#2ECC71);color:#fff;font-weight:800;" title="تثبيت كتطبيق">📥 تثبيت</button>
-      <button class="ctrl-btn active" id="modeToggle" onclick="toggleMode()">🌙 داكن</button>
-      <button class="ctrl-btn ctrl-btn-gold" id="editModeBtn" onclick="toggleEditMode()" title="إعدادات الأمان وفتح التعديل">🔐 الأمان</button>
-      <button class="ctrl-btn" onclick="openItemsManager()" title="إدارة بنود التقييم">⚙️ البنود</button>
-      <button class="ctrl-btn" onclick="openBranchesManager()" title="إدارة الفروع">🏪 الفروع</button>
-      <button class="ctrl-btn" onclick="openSyncModal()" title="Firebase">🔥 Firebase</button>
-      <button class="ctrl-btn" id="cloudSyncBtn" onclick="openCloudAuthModal()" title="مزامنة السحابة (Supabase)">☁️ السحابة</button>
-      <button class="ctrl-btn" onclick="forceUpdateApp()" title="تحديث قسري — يمسح cache ويعيد التحميل" style="background:linear-gradient(135deg,#3498DB,#2980B9);color:#fff;font-weight:800;">🔄 تحديث</button>
-      <button class="ctrl-btn" onclick="saveAllData()">💾 حفظ</button>
+      <!-- 2 fixed buttons: Save + Mode -->
+      <button class="ctrl-btn" onclick="saveAllData()" title="حفظ كل البيانات">💾 حفظ</button>
+      <button class="ctrl-btn active" id="modeToggle" onclick="toggleMode()" title="تبديل الوضع الداكن/الفاتح">🌙 داكن</button>
+      <!-- Bubble menu container -->
+      <div class="bubble-menu-wrap">
+        <button class="bubble-menu-trigger" id="bubbleMenuBtn" onclick="toggleBubbleMenu(event)" title="القائمة">
+          <span class="trigger-icon">☰</span>
+        </button>
+        <div class="bubble-menu" id="bubbleMenu" aria-hidden="true">
+          <button class="bubble-item bubble-alert" onclick="closeBubbleMenu();openBroadcastAlert();" title="تنبيه طارئ">
+            <span class="bubble-icon">🚨</span>
+            <span class="bubble-label">تنبيه</span>
+          </button>
+          <button class="bubble-item bubble-security" onclick="closeBubbleMenu();toggleEditMode();" title="الأمان">
+            <span class="bubble-icon">🔐</span>
+            <span class="bubble-label">الأمان</span>
+          </button>
+          <button class="bubble-item bubble-items" onclick="closeBubbleMenu();openItemsManager();" title="البنود">
+            <span class="bubble-icon">⚙️</span>
+            <span class="bubble-label">البنود</span>
+          </button>
+          <button class="bubble-item bubble-branches" onclick="closeBubbleMenu();openBranchesManager();" title="الفروع">
+            <span class="bubble-icon">🏪</span>
+            <span class="bubble-label">الفروع</span>
+          </button>
+          <!-- Device view bubble (opens sub-menu with 3 device options) -->
+          <button class="bubble-item bubble-device" onclick="toggleDeviceSubMenu(event);" title="نوع العرض">
+            <span class="bubble-icon">💻</span>
+            <span class="bubble-label">العرض</span>
+          </button>
+          <button class="bubble-item bubble-cloud" id="bubbleCloudBtn" onclick="closeBubbleMenu();openCloudAuthModal();" title="السحابة">
+            <span class="bubble-icon">☁️</span>
+            <span class="bubble-label">السحابة</span>
+          </button>
+          <button class="bubble-item bubble-firebase" onclick="closeBubbleMenu();openSyncModal();" title="Firebase">
+            <span class="bubble-icon">🔥</span>
+            <span class="bubble-label">Firebase</span>
+          </button>
+          <button class="bubble-item bubble-rotation" id="rotationLockBtn" onclick="closeBubbleMenu();toggleRotationLock();" title="قفل التدوير">
+            <span class="bubble-icon">🔓</span>
+            <span class="bubble-label">قفل التدوير</span>
+          </button>
+          <button class="bubble-item bubble-update" onclick="closeBubbleMenu();forceUpdateApp();" title="تحديث قسري">
+            <span class="bubble-icon">🔄</span>
+            <span class="bubble-label">تحديث</span>
+          </button>
+        </div>
+        <!-- Device sub-menu (3 sub-bubbles for desktop/tablet/mobile) -->
+        <div class="bubble-submenu" id="deviceSubMenu" aria-hidden="true">
+          <button class="bubble-item bubble-sub bubble-desktop" id="subDevDesktop" onclick="closeBubbleMenu();setDeviceView('desktop');" title="لابتوب">
+            <span class="bubble-icon">💻</span>
+            <span class="bubble-label">لابتوب</span>
+          </button>
+          <button class="bubble-item bubble-sub bubble-tablet" id="subDevTablet" onclick="closeBubbleMenu();setDeviceView('tablet');" title="تابلت">
+            <span class="bubble-icon">📟</span>
+            <span class="bubble-label">تابلت</span>
+          </button>
+          <button class="bubble-item bubble-sub bubble-mobile" id="subDevMobile" onclick="closeBubbleMenu();setDeviceView('mobile');" title="موبايل">
+            <span class="bubble-icon">📱</span>
+            <span class="bubble-label">موبايل</span>
+          </button>
+        </div>
+      </div>
+      <!-- Hidden cloudSyncBtn kept for indicator update logic compatibility -->
+      <button class="ctrl-btn" id="cloudSyncBtn" style="display:none;" onclick="openCloudAuthModal()">☁️</button>
+      <!-- Hidden editModeBtn kept for ops session indicator compatibility -->
+      <button class="ctrl-btn" id="editModeBtn" style="display:none;" onclick="toggleEditMode()">🔐</button>
     </div>
   </div>
 </div>
@@ -460,6 +520,23 @@
 <button class="chatbot-fab" onclick="openChatbot()" title="المساعد الذكي">
   <span style="font-size:28px;">🤖</span>
 </button>
+
+<!-- Floating Remembrance Bubble (auto-shows every minute) -->
+<div class="remembrance-bubble" id="remembranceBubble" style="display:none;">
+  <button class="remembrance-close" onclick="closeRemembranceBubble()" title="إغلاق">×</button>
+  <div class="remembrance-icon">🕌</div>
+  <div class="remembrance-text" id="remembranceText">سبحان الله وبحمده، سبحان الله العظيم</div>
+  <div class="remembrance-counter" id="remembranceCounter">10</div>
+</div>
+
+<!-- Floating Prayer Alert Bubble (15 mins before + at prayer time) -->
+<div class="prayer-bubble" id="prayerBubble" style="display:none;">
+  <button class="prayer-close" onclick="closePrayerBubble()" title="إغلاق">×</button>
+  <div class="prayer-icon" id="prayerIcon">🕋</div>
+  <div class="prayer-name" id="prayerName">الصلاة</div>
+  <div class="prayer-message" id="prayerMessage">حان وقت الصلاة</div>
+  <div class="prayer-time" id="prayerTime"></div>
+</div>
 
 <!-- Branch Selector (integrated into nav-tabs below — this is just a hidden placeholder for legacy code) -->
 <div class="branch-selector-bar" id="branchSelectorBar" style="display:none;">

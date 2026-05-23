@@ -1,34 +1,18 @@
 # 🥛 إدارة تشغيل ب لبن قطر
 
-نظام تقييم وإدارة فروع ب لبن قطر — مدير التشغيل: بلال الأنصاري
+نظام إدارة شامل مع مزامنة فورية + تنبيهات جماعية
 
 ## 🚀 النشر على Vercel
+1. ارفع على GitHub
+2. Vercel → New Project → Import → Deploy
 
-```bash
-git init
-git add .
-git commit -m "Initial"
-git remote add origin https://github.com/USERNAME/REPO.git
-git push -u origin main
-```
+## ⚠️ خطوات إجبارية قبل البدء
+1. شغّل `supabase_schema.sql` في Supabase Dashboard → SQL Editor
+2. فعّل Email Authentication في Supabase
+3. كل مستخدم يسجّل دخول من زر `☁️ السحابة`
 
-ثم على vercel.com → New Project → Import → Deploy.
-
-## ⚠️ مهم — لمستخدمي النسخ السابقة
-
-إذا كنت ركبت النسخة السابقة على متصفحك (PWA أو cache)، **اضغط زر "🔄 تحديث"** في التطبيق بعد التحديث. سيقوم بـ:
-- إلغاء تسجيل Service Worker القديم
-- مسح كل caches
-- إعادة تحميل التطبيق بآخر إصدار
-
-أو يدوياً: **Ctrl+Shift+R** في المتصفح، أو **افتح في وضع التصفح الخاص**.
-
-## 🗄️ Supabase
-
-المفاتيح الافتراضية مضمّنة. لتغييرها: اضغط `☁️ السحابة → إعدادات Supabase المتقدمة`.
-
-SQL Schema: شغّل `supabase_schema.sql` في Supabase Dashboard → SQL Editor.
-
-## 🔐 إعداد الأمان أول مرة
-
-اضغط `🔐 الأمان` → أدخل بريد إلكتروني + كلمة مرور (6 أحرف فأكثر) → تأكيد.
+## 🚨 ميزة التنبيه الجماعي الجديدة
+- زر `🚨 تنبيه` في الـ Header
+- إرسال تنبيه عاجل لكل المستخدمين فوراً (أو لفرع محدد)
+- 3 مستويات: طارئ / مهم / إعلامي
+- صوت + اهتزاز + إشعار متصفح

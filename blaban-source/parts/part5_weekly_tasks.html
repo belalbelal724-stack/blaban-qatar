@@ -880,6 +880,10 @@ function deleteTask(taskId) {
   const task = tasksData.find(t=>t.id===taskId);
   tasksData = tasksData.filter(t=>t.id!==taskId);
   saveTasks();
+  // Delete from Supabase cloud too
+  if (typeof window.deleteTaskFromCloud === 'function') {
+    window.deleteTaskFromCloud(taskId);
+  }
   renderTasksPage();
   updateTasksBadge();
   if (typeof addHistoryEntry === 'function' && task) {

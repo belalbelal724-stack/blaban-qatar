@@ -1,11 +1,11 @@
 -- =============================================================
--- B Laban Qatar — Supabase Backend Schema
+-- B Laban Qatar — Supabase Backend Schema (v2 - improved)
 -- Run this in Supabase Dashboard → SQL Editor
 -- =============================================================
 
 create extension if not exists "uuid-ossp";
 
--- ====== USER PROFILES (linked to auth.users) ======
+-- ====== USER PROFILES ======
 create table if not exists public.blaban_profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text,
@@ -15,12 +15,12 @@ create table if not exists public.blaban_profiles (
   created_at timestamptz default now()
 );
 
--- Auto-create profile on signup
 create or replace function public.handle_blaban_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
   insert into public.blaban_profiles (id, email, full_name)
-  values (new.id, new.email, coalesce(new.raw_user_meta_data->>'full_name', new.email));
+  values (new.id, new.email, coalesce(new.raw_user_meta_data->>'full_name', new.email))
+  on conflict (id) do nothing;
   return new;
 end;
 $$;
@@ -30,7 +30,7 @@ create trigger on_blaban_user_created
   after insert on auth.users
   for each row execute procedure public.handle_blaban_new_user();
 
--- ====== EVALUATIONS (one row per branch+date) ======
+-- ====== EVALUATIONS ======
 create table if not exists public.blaban_evaluations (
   id uuid primary key default uuid_generate_v4(),
   branch_id text not null,
@@ -51,7 +51,7 @@ create table if not exists public.blaban_evaluations (
 create index if not exists evals_branch_idx on public.blaban_evaluations(branch_id);
 create index if not exists evals_date_idx on public.blaban_evaluations(eval_date desc);
 
--- ====== TASKS ======
+-- ====== TASKS (with extra_data for comments, desc, priority) ======
 create table if not exists public.blaban_tasks (
   id text primary key,
   title text not null,
@@ -62,10 +62,14 @@ create table if not exists public.blaban_tasks (
   done_by text,
   done_at timestamptz,
   photo_url text,
+  extra_data jsonb default '{}'::jsonb,
   created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+-- Add extra_data column if table existed already
+alter table public.blaban_tasks add column if not exists extra_data jsonb default '{}'::jsonb;
 
 create index if not exists tasks_branch_idx on public.blaban_tasks(branch_id);
 create index if not exists tasks_done_idx on public.blaban_tasks(done);
@@ -82,7 +86,7 @@ create table if not exists public.blaban_managers (
   updated_at timestamptz default now()
 );
 
--- ====== SETTINGS (custom items, etc.) ======
+-- ====== SETTINGS ======
 create table if not exists public.blaban_settings (
   key text primary key,
   value jsonb not null,
@@ -119,17 +123,25 @@ create policy "blaban_profiles_update_own" on public.blaban_profiles for update 
 drop policy if exists "blaban_profiles_insert_own" on public.blaban_profiles;
 create policy "blaban_profiles_insert_own" on public.blaban_profiles for insert with check (auth.uid() = id);
 
--- Evaluations — authenticated users read/write all
+-- Evaluations: authenticated users can read/write all
 drop policy if exists "blaban_evals_read" on public.blaban_evaluations;
 create policy "blaban_evals_read" on public.blaban_evaluations for select using (auth.role() = 'authenticated');
-drop policy if exists "blaban_evals_write" on public.blaban_evaluations;
-create policy "blaban_evals_write" on public.blaban_evaluations for all using (auth.role() = 'authenticated');
+drop policy if exists "blaban_evals_insert" on public.blaban_evaluations;
+create policy "blaban_evals_insert" on public.blaban_evaluations for insert with check (auth.role() = 'authenticated');
+drop policy if exists "blaban_evals_update" on public.blaban_evaluations;
+create policy "blaban_evals_update" on public.blaban_evaluations for update using (auth.role() = 'authenticated');
+drop policy if exists "blaban_evals_delete" on public.blaban_evaluations;
+create policy "blaban_evals_delete" on public.blaban_evaluations for delete using (auth.role() = 'authenticated');
 
 -- Tasks
 drop policy if exists "blaban_tasks_read" on public.blaban_tasks;
 create policy "blaban_tasks_read" on public.blaban_tasks for select using (auth.role() = 'authenticated');
-drop policy if exists "blaban_tasks_write" on public.blaban_tasks;
-create policy "blaban_tasks_write" on public.blaban_tasks for all using (auth.role() = 'authenticated');
+drop policy if exists "blaban_tasks_insert" on public.blaban_tasks;
+create policy "blaban_tasks_insert" on public.blaban_tasks for insert with check (auth.role() = 'authenticated');
+drop policy if exists "blaban_tasks_update" on public.blaban_tasks;
+create policy "blaban_tasks_update" on public.blaban_tasks for update using (auth.role() = 'authenticated');
+drop policy if exists "blaban_tasks_delete" on public.blaban_tasks;
+create policy "blaban_tasks_delete" on public.blaban_tasks for delete using (auth.role() = 'authenticated');
 
 -- Managers
 drop policy if exists "blaban_managers_read" on public.blaban_managers;
@@ -144,11 +156,29 @@ drop policy if exists "blaban_settings_write" on public.blaban_settings;
 create policy "blaban_settings_write" on public.blaban_settings for all using (auth.role() = 'authenticated');
 
 -- ====== REALTIME PUBLICATION ======
-alter publication supabase_realtime add table public.blaban_evaluations;
-alter publication supabase_realtime add table public.blaban_tasks;
-alter publication supabase_realtime add table public.blaban_managers;
-alter publication supabase_realtime add table public.blaban_settings;
+-- Add tables to realtime publication (ignore errors if already added)
+do $$
+begin
+  alter publication supabase_realtime add table public.blaban_evaluations;
+exception when others then null;
+end $$;
+do $$
+begin
+  alter publication supabase_realtime add table public.blaban_tasks;
+exception when others then null;
+end $$;
+do $$
+begin
+  alter publication supabase_realtime add table public.blaban_managers;
+exception when others then null;
+end $$;
+do $$
+begin
+  alter publication supabase_realtime add table public.blaban_settings;
+exception when others then null;
+end $$;
 
--- ====== Sample seed: 4 B Laban branches reference ======
--- (branches are stored as text IDs: nasr, farosiya, gharafa, wakra)
--- No table needed since they're constants in the app.
+-- Ensure REPLICA IDENTITY FULL for proper delete events
+alter table public.blaban_evaluations replica identity full;
+alter table public.blaban_tasks replica identity full;
+alter table public.blaban_managers replica identity full;
