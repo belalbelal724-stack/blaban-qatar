@@ -664,6 +664,18 @@ window.forceUpdateApp = forceUpdateApp;
 
 // ============ AUTO-DETECT NEW VERSION (when SW updates) ============
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  // Listen for messages from SW (when new version activates)
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data?.type === 'SW_UPDATED') {
+      console.log('[SW] New version active:', event.data.version);
+      if (typeof showUpdateBanner === 'function') showUpdateBanner();
+      if (typeof showNotif === 'function') {
+        showNotif('🆕 إصدار جديد متاح — اضغط "تحديث الآن"', 'info', 10000);
+      }
+    }
+  });
+  
+  // Controller change = new SW took over
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     console.log('[SW] Controller changed — new version active');
     if (typeof showUpdateBanner === 'function') showUpdateBanner();
@@ -672,13 +684,32 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     }
   });
   
+  // Listen for waiting SW (update found but not yet activated)
+  navigator.serviceWorker.ready.then(reg => {
+    reg.addEventListener('updatefound', () => {
+      console.log('[SW] Update found, installing new version...');
+      const newWorker = reg.installing;
+      if (newWorker) {
+        newWorker.addEventListener('statechange', () => {
+          console.log('[SW] New worker state:', newWorker.state);
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            // New version available — prompt user
+            if (typeof showUpdateBanner === 'function') showUpdateBanner();
+            if (typeof showNotif === 'function') {
+              showNotif('🆕 تحديث جديد جاهز — اضغط زر التحديث', 'info', 10000);
+            }
+          }
+        });
+      }
+    });
+  });
+  
   // Check for updates every 60 seconds
   setInterval(async () => {
     try {
       const reg = await navigator.serviceWorker.getRegistration();
       if (reg) {
         await reg.update();
-        // If a new SW is waiting, prompt user
         if (reg.waiting && typeof showUpdateBanner === 'function') {
           showUpdateBanner();
         }

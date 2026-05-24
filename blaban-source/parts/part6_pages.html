@@ -956,51 +956,78 @@ function changeBranchEvalsMonth(delta) {
 }
 
 function openBranchDateEval(branch, month, day) {
-  // Close modal first
+  console.log('[EvalsLog] Opening eval:', branch, 'month=' + month, 'day=' + day);
+  
+  // 1. Close the modal
   closeBranchEvalsLog();
   
-  // Set selected branch
-  if (typeof selectedBranch !== 'undefined') {
+  // 2. Update global selected branch (used by everything)
+  try {
     window.selectedBranch = branch;
-    selectedBranch = branch;
+    if (typeof selectedBranch !== 'undefined') selectedBranch = branch;
     localStorage.setItem('blaban_selected_branch', branch);
+  } catch(e) {}
+  
+  // 3. CRITICAL: Update currentMonth and currentDay globals
+  // (renderBranch uses these for the FIRST render of the date selectors)
+  try {
+    window.currentMonth = month;
+    if (typeof currentMonth !== 'undefined') currentMonth = month;
+    window.currentDay = day;
+    if (typeof currentDay !== 'undefined') currentDay = day;
+  } catch(e) {}
+  
+  // 4. Switch to branch view page
+  if (typeof showPage === 'function') {
+    try { showPage('branch-view'); } catch(e) { console.warn('showPage failed:', e); }
   }
   
-  // Show branch view
-  if (typeof showPage === 'function') showPage('branch-view');
+  // 5. Hide all branch pages, show only ours
+  document.querySelectorAll('.branch-page').forEach(p => { p.style.display = 'none'; });
+  const target = document.getElementById('branch-' + branch);
+  if (target) target.style.display = 'block';
   
-  // Render branch (creates date selectors)
-  if (typeof renderBranch === 'function') renderBranch(branch);
+  // 6. Update branch selector dropdown if exists
+  const bsSelect = document.getElementById('branchSelector');
+  if (bsSelect) bsSelect.value = branch;
   
-  // Set the month/day selectors AFTER render
+  // 7. Render the branch FRESH with the new month/day (since currentMonth/Day are set)
   setTimeout(() => {
-    const monthSel = document.getElementById(branch + '_month');
-    const daySel = document.getElementById(branch + '_day');
-    if (monthSel) {
-      monthSel.value = String(month);
-      if (typeof onMonthChange === 'function') {
-        try { onMonthChange(branch); } catch(e) {}
-      }
-    }
-    setTimeout(() => {
-      const daySel2 = document.getElementById(branch + '_day');
-      if (daySel2) {
-        daySel2.value = String(day);
-        if (typeof onDayChange === 'function') {
-          try { onDayChange(branch); } catch(e) {}
-        }
-      }
-      // Re-render
+    try {
       if (typeof renderBranch === 'function') renderBranch(branch);
-      // Scroll to top
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      // Show confirmation
+    } catch(e) { console.warn('renderBranch failed:', e); }
+    
+    // 8. Double-check the selectors are correct
+    setTimeout(() => {
+      try {
+        const mEl = document.getElementById(branch + '_month');
+        const dEl = document.getElementById(branch + '_day');
+        if (mEl && mEl.value != month) mEl.value = String(month);
+        if (dEl) {
+          // Make sure the day option exists, then set it
+          const daysInMonth = (typeof MONTH_DAYS !== 'undefined') ? MONTH_DAYS[month] : 31;
+          // Repopulate days for selected month
+          dEl.innerHTML = Array.from({length: daysInMonth}, (_, i) => 
+            `<option value="${i+1}" ${(i+1)===day ? 'selected' : ''}>${i+1}</option>`
+          ).join('');
+          dEl.value = String(day);
+        }
+        // Final re-render to make sure UI reflects the chosen date
+        if (typeof renderChecklist === 'function') renderChecklist(branch);
+        if (typeof updateScore === 'function') updateScore(branch);
+        if (typeof updateBranchDateInfo === 'function') updateBranchDateInfo(branch);
+      } catch(e) { console.warn('Final sync failed:', e); }
+      
+      // 9. Scroll to top
+      try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch(e) {}
+      
+      // 10. Notify user
       if (typeof showNotif === 'function') {
         const MONTH_NAMES = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
-        showNotif('✅ تم فتح تقييم ' + day + ' ' + MONTH_NAMES[month], 'success');
+        showNotif('✅ تم فتح تقييم ' + day + ' ' + (MONTH_NAMES[month] || month), 'success');
       }
     }, 100);
-  }, 100);
+  }, 50);
 }
 
 function closeBranchEvalsLog() {

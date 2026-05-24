@@ -19,10 +19,7 @@ function renderBranch(branch) {
     <!-- Date navigation quick bar -->
     <div class="date-nav-bar">
       <button class="date-nav-btn" onclick="setBranchDateToday('${branch}')" title="الذهاب لتاريخ اليوم">📅 اليوم</button>
-      <button class="date-nav-btn" onclick="setBranchDateYesterday('${branch}')" title="أمس">⏮️ أمس</button>
       <button class="date-nav-btn" onclick="openDatePickerForBranch('${branch}')" title="اختر تاريخاً للرجوع إليه">🗓️ اختر تاريخاً</button>
-      <button class="date-nav-btn" onclick="shiftBranchDate('${branch}',-1)" title="اليوم السابق">⬅️</button>
-      <button class="date-nav-btn" onclick="shiftBranchDate('${branch}',1)" title="اليوم التالي">➡️</button>
       <button class="date-nav-btn date-nav-log" onclick="openBranchEvalsLog('${branch}')" title="عرض جميع أيام التقييم لهذا الفرع">📋 سجل التقييمات</button>
       <span class="date-nav-info" id="${branch}_dateInfo">📆</span>
     </div>

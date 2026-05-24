@@ -1,5 +1,18 @@
-# 🥛 ب لبن قطر - Standalone
+# 🥛 إدارة تشغيل ب لبن قطر
 
-افتح `blaban_qatar_app.html` في المتصفح مباشرة.
+نظام إدارة شامل مع مزامنة فورية + تنبيهات جماعية
 
-## ⚠️ إجباري قبل البدء: شغّل supabase_schema.sql في Supabase Dashboard
+## 🚀 النشر على Vercel
+1. ارفع على GitHub
+2. Vercel → New Project → Import → Deploy
+
+## ⚠️ خطوات إجبارية قبل البدء
+1. شغّل `supabase_schema.sql` في Supabase Dashboard → SQL Editor
+2. فعّل Email Authentication في Supabase
+3. كل مستخدم يسجّل دخول من زر `☁️ السحابة`
+
+## 🚨 ميزة التنبيه الجماعي الجديدة
+- زر `🚨 تنبيه` في الـ Header
+- إرسال تنبيه عاجل لكل المستخدمين فوراً (أو لفرع محدد)
+- 3 مستويات: طارئ / مهم / إعلامي
+- صوت + اهتزاز + إشعار متصفح

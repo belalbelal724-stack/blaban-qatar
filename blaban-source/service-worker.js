@@ -1,5 +1,5 @@
-// B Laban Qatar — Service Worker v3 (network-first for HTML to avoid stale)
-const VERSION = 'blaban-v3-2026-05-23';
+// B Laban Qatar — Service Worker
+const VERSION = 'blaban-v5-2026-05-24-04-20';
 const CACHE_STATIC = `${VERSION}-static`;
 const CACHE_DYNAMIC = `${VERSION}-dynamic`;
 
@@ -11,42 +11,51 @@ const STATIC_ASSETS = [
   './icon-maskable-512.png'
 ];
 
-const CDN_PATTERNS = [
-  /https:\/\/cdnjs\.cloudflare\.com\//,
-  /https:\/\/fonts\.googleapis\.com\//,
-  /https:\/\/fonts\.gstatic\.com\//,
-  /https:\/\/www\.gstatic\.com\/firebasejs\//,
-  /https:\/\/cdn\.jsdelivr\.net\//
-];
-
+// ============ INSTALL — pre-cache static assets ============
 self.addEventListener('install', event => {
   console.log('[SW] Install:', VERSION);
   event.waitUntil(
     caches.open(CACHE_STATIC)
       .then(cache => cache.addAll(STATIC_ASSETS))
-      .then(() => self.skipWaiting())
-      .catch(err => console.warn('[SW] Pre-cache failed:', err))
+      .then(() => {
+        console.log('[SW] Static assets cached');
+        return self.skipWaiting();
+      })
+      .catch(err => console.warn('[SW] Install error:', err))
   );
 });
 
+// ============ ACTIVATE — clean up old caches ============
 self.addEventListener('activate', event => {
   console.log('[SW] Activate:', VERSION);
   event.waitUntil(
-    caches.keys().then(names => {
-      return Promise.all(
+    caches.keys()
+      .then(names => Promise.all(
         names.filter(n => !n.startsWith(VERSION))
-             .map(n => { console.log('[SW] Deleting old cache:', n); return caches.delete(n); })
-      );
-    }).then(() => self.clients.claim())
+             .map(n => {
+               console.log('[SW] Delete old cache:', n);
+               return caches.delete(n);
+             })
+      ))
+      .then(() => self.clients.claim())
+      .then(() => self.clients.matchAll({ type: 'window' }))
+      .then(clients => {
+        clients.forEach(client => {
+          try { client.postMessage({ type: 'SW_UPDATED', version: VERSION }); } catch(e) {}
+        });
+      })
   );
 });
 
+// ============ FETCH ============
 self.addEventListener('fetch', event => {
   const req = event.request;
   const url = new URL(req.url);
   if (req.method !== 'GET') return;
-  if (url.host.includes('firebasedatabase.app') || url.host.includes('firebaseio.com') ||
-      (url.host.includes('googleapis.com') && url.pathname.includes('firebase'))) return;
+  
+  // Never intercept Firebase or Supabase
+  if (url.host.includes('firebasedatabase.app') || url.host.includes('firebaseio.com')) return;
+  if (url.host.includes('googleapis.com') && url.pathname.includes('firebase')) return;
   if (url.host.includes('supabase.co') || url.host.includes('supabase.in')) return;
   
   if (url.origin === self.location.origin) {
@@ -60,80 +69,99 @@ self.addEventListener('fetch', event => {
     event.respondWith(cacheFirst(req));
     return;
   }
-  if (CDN_PATTERNS.some(p => p.test(req.url))) {
-    event.respondWith(networkFirst(req));
-    return;
+  
+  if (/cdnjs\.cloudflare\.com|fonts\.googleapis\.com|fonts\.gstatic\.com|cdn\.jsdelivr\.net/.test(url.host + url.pathname)) {
+    event.respondWith(networkFirstDynamic(req));
   }
 });
 
 async function networkFirstHTML(req) {
   try {
-    const response = await fetch(req, { cache: 'no-store' });
-    if (response.ok) {
-      const cache = await caches.open(CACHE_STATIC);
-      cache.put(req, response.clone());
+    const r = await fetch(req, { cache: 'no-store' });
+    if (r.ok) {
+      const c = await caches.open(CACHE_STATIC);
+      c.put(req, r.clone());
     }
-    return response;
-  } catch(err) {
-    const cache = await caches.open(CACHE_STATIC);
-    const cached = await cache.match(req) || await cache.match('./index.html') || await cache.match('./');
+    return r;
+  } catch(e) {
+    const c = await caches.open(CACHE_STATIC);
+    const cached = await c.match(req) || await c.match('./index.html') || await c.match('./');
     if (cached) return cached;
-    throw err;
+    throw e;
   }
 }
 
 async function cacheFirst(req) {
-  const cache = await caches.open(CACHE_STATIC);
-  const cached = await cache.match(req);
+  const c = await caches.open(CACHE_STATIC);
+  const cached = await c.match(req);
   if (cached) return cached;
   try {
-    const response = await fetch(req);
-    if (response.ok) cache.put(req, response.clone());
-    return response;
-  } catch(err) { throw err; }
+    const r = await fetch(req);
+    if (r.ok) c.put(req, r.clone());
+    return r;
+  } catch(e) { throw e; }
 }
 
-async function networkFirst(req) {
-  const cache = await caches.open(CACHE_DYNAMIC);
+async function networkFirstDynamic(req) {
+  const c = await caches.open(CACHE_DYNAMIC);
   try {
-    const response = await fetch(req);
-    if (response.ok) cache.put(req, response.clone());
-    return response;
-  } catch(err) {
-    const cached = await cache.match(req);
+    const r = await fetch(req);
+    if (r.ok) c.put(req, r.clone());
+    return r;
+  } catch(e) {
+    const cached = await c.match(req);
     if (cached) return cached;
-    throw err;
+    throw e;
   }
 }
 
+// ============ MESSAGES ============
 self.addEventListener('message', event => {
   if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
   if (event.data?.type === 'CLEAR_CACHE') {
-    caches.keys().then(names => Promise.all(names.map(n => caches.delete(n))))
+    caches.keys()
+      .then(names => Promise.all(names.map(n => caches.delete(n))))
       .then(() => event.ports[0]?.postMessage({ ok: true }));
+  }
+  if (event.data?.type === 'GET_VERSION') {
+    event.ports[0]?.postMessage({ version: VERSION });
   }
 });
 
+// ============ PUSH NOTIFICATIONS ============
 self.addEventListener('push', event => {
-  let data = { title: 'ب لبن قطر', body: 'تنبيه جديد', icon: './icon-192.png' };
-  if (event.data) { try { data = { ...data, ...event.data.json() }; } catch(e) {} }
+  let data = { title: '🥛 ب لبن قطر', body: 'تنبيه جديد', icon: './icon-192.png' };
+  if (event.data) {
+    try { data = { ...data, ...event.data.json() }; }
+    catch(e) {
+      try { data.body = event.data.text(); } catch(e2) {}
+    }
+  }
   event.waitUntil(
     self.registration.showNotification(data.title, {
-      body: data.body, icon: data.icon, badge: './icon-192.png',
-      dir: 'rtl', lang: 'ar', tag: data.tag || 'default', data: data.url || './'
+      body: data.body,
+      icon: data.icon || './icon-192.png',
+      badge: './icon-192.png',
+      dir: 'rtl',
+      lang: 'ar',
+      tag: data.tag || 'blaban-default',
+      requireInteraction: data.requireInteraction || false,
+      vibrate: data.vibrate || [200, 100, 200],
+      data: { url: data.url || './' }
     })
   );
 });
 
 self.addEventListener('notificationclick', event => {
   event.notification.close();
-  const url = event.notification.data || './';
+  const targetUrl = event.notification.data?.url || './';
   event.waitUntil(
-    self.clients.matchAll({ type: 'window' }).then(clients => {
-      for (const c of clients) {
-        if (c.url.includes(self.registration.scope)) return c.focus();
-      }
-      return self.clients.openWindow(url);
-    })
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      .then(clients => {
+        for (const c of clients) {
+          if (c.url.includes(self.registration.scope)) return c.focus();
+        }
+        return self.clients.openWindow(targetUrl);
+      })
   );
 });
