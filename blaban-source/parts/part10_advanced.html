@@ -1284,8 +1284,177 @@ function analyzeChatbotQuery(query) {
     return `🤖 **أنا مساعدك الذكي. أقدر أحلل:**\n\n• **المديرين:** أحسن، أسوأ، أداء معين\n• **الفروع:** ترتيب، أداء فرع محدد\n• **البنود:** أكثر فشلاً، النقاط الحرجة\n• **الإحصائيات:** ملخص شامل\n• **التحليل الزمني:** آخر أسبوع، اتجاهات\n• **التوصيات:** اقتراحات مبنية على البيانات\n\n**أمثلة للأسئلة:**\n- "مين أحسن مدير؟"\n- "تحليل فرع النصر"\n- "أكثر بند فاشل"\n- "النقاط الحرجة"\n- "توصيات لتحسين الأداء"`;
   }
   
-  // ============ Fallback ============
-  return `🤔 ما فهمت سؤالك بدقة. جرّب صياغة مختلفة، مثلاً:\n\n• "مين أحسن مدير؟"\n• "أعلى فرع أداءً"\n• "أكثر بند فاشل"\n• "النقاط الحرجة"\n• "توصيات"\n• "تحليل فرع [الاسم]"\n\nأو اكتب **"مساعدة"** لرؤية كل ما يمكنني فعله.`;
+  // ============ SMART FALLBACK — uses full system data ============
+  // If query mentions any branch name, give branch summary
+  try {
+    if (typeof BRANCH_NAMES !== 'undefined') {
+      for (const b of Object.keys(BRANCH_NAMES)) {
+        const bName = BRANCH_NAMES[b];
+        if (q.includes(bName) || q.includes(b)) {
+          return chatbotBranchSummary(b);
+        }
+      }
+    }
+  } catch(e) {}
+  
+  // If query is generic/data-related, give system overview
+  const dataKeywords = ['بيانات','معلومات','عرض','اعرض','اعطني','أعطني','أوضح','وضح','ايه','إيه','ما','ماذا','كم','عدد','اين','أين','كل','جميع','ملخص','تقرير','حالة','وضع','نظرة','مهام','تقييم','تقييمات','مدير','مدراء','فرع','فروع','نتيجة','نتائج','أداء','اداء'];
+  const isDataQuery = dataKeywords.some(k => q.includes(k));
+  
+  if (isDataQuery || q.length < 30) {
+    return chatbotSystemOverview(query);
+  }
+  
+  return `🤔 ما فهمت سؤالك بدقة. جرّب صياغة مختلفة، مثلاً:\n\n• "مين أحسن مدير؟"\n• "أعلى فرع أداءً"\n• "أكثر بند فاشل"\n• "النقاط الحرجة"\n• "توصيات"\n• "تحليل فرع [الاسم]"\n• "ملخص النظام"\n• "كل المهام"\n\nأو اكتب اسم أي فرع لرؤية ملخصه الكامل.`;
+}
+
+// Helper: branch full summary
+function chatbotBranchSummary(branch) {
+  try {
+    const bName = BRANCH_NAMES[branch] || branch;
+    const MONTH_NAMES = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+    const evals = [];
+    
+    if (typeof appData === 'object' && appData) {
+      Object.keys(appData).forEach(key => {
+        const parts = key.split('_');
+        if (parts.length < 3) return;
+        const day = parseInt(parts[parts.length - 1]);
+        const month = parseInt(parts[parts.length - 2]);
+        const keyBranch = parts.slice(0, parts.length - 2).join('_');
+        if (keyBranch !== branch) return;
+        if (isNaN(month) || isNaN(day)) return;
+        const visit = appData[key];
+        if (!visit) return;
+        const hasResults = visit.results && Object.keys(visit.results).length > 0;
+        if (!hasResults && !visit.manager) return;
+        let score = 0;
+        try {
+          if (typeof calcSmartScore === 'function') {
+            const s = calcSmartScore(branch, month, day);
+            score = s.percent || 0;
+          }
+        } catch(e) {}
+        evals.push({ month, day, manager: (visit.managers && visit.managers.length) ? visit.managers.join('، ') : (visit.manager || '-'), shift: visit.shift, score: Math.round(score), failedCount: Object.entries(visit.results || {}).filter(([,v]) => v === 'fail').length, okCount: Object.entries(visit.results || {}).filter(([,v]) => v === 'ok').length });
+      });
+    }
+    evals.sort((a, b) => (b.month * 31 + b.day) - (a.month * 31 + a.day));
+    
+    if (evals.length === 0) return '🏪 فرع **' + bName + '**\n\n❌ لا توجد تقييمات لهذا الفرع بعد.';
+    
+    const avg = Math.round(evals.reduce((s, e) => s + e.score, 0) / evals.length);
+    const latest = evals[0];
+    const tasks = (typeof tasksData !== 'undefined' && Array.isArray(tasksData)) ? tasksData : [];
+    const branchTasks = tasks.filter(t => t.branch === branch);
+    const pendingTasks = branchTasks.filter(t => !t.done && t.status !== 'completed');
+    
+    let resp = '🏪 **ملخص فرع ' + bName + '**\n\n';
+    resp += '📊 **الأداء العام:**\n';
+    resp += '• متوسط الأداء: **' + avg + '%**\n';
+    resp += '• عدد التقييمات: ' + evals.length + '\n';
+    resp += '• آخر تقييم: **' + latest.score + '%** بتاريخ ' + latest.day + ' ' + MONTH_NAMES[latest.month] + '\n';
+    resp += '• المدير: ' + latest.manager + (latest.shift ? ' - شيفت ' + latest.shift : '') + '\n';
+    resp += '• مطابق: ' + latest.okCount + ' بند | غير مطابق: ' + latest.failedCount + ' بند\n\n';
+    
+    resp += '📝 **المهام:**\n';
+    resp += '• إجمالي: ' + branchTasks.length + ' | معلقة: ' + pendingTasks.length + '\n';
+    if (pendingTasks.length > 0) {
+      resp += '\nأهم المهام المعلقة:\n';
+      pendingTasks.slice(0, 5).forEach(t => {
+        resp += '• ' + (t.title || t.task || '') + (t.assignee ? ' (مكلف: ' + t.assignee + ')' : '') + '\n';
+      });
+    }
+    
+    resp += '\n📈 **آخر 5 تقييمات:**\n';
+    evals.slice(0, 5).forEach(e => {
+      const emoji = e.score >= 80 ? '🟢' : e.score >= 60 ? '🟡' : '🔴';
+      resp += emoji + ' ' + e.day + ' ' + MONTH_NAMES[e.month] + ': ' + e.score + '% (' + e.manager + ')\n';
+    });
+    
+    return resp;
+  } catch(e) {
+    return '❌ خطأ في جلب بيانات الفرع: ' + e.message;
+  }
+}
+
+// Helper: full system overview
+function chatbotSystemOverview(query) {
+  try {
+    const branches = (typeof BRANCHES !== 'undefined') ? BRANCHES : [];
+    const branchNames = (typeof BRANCH_NAMES !== 'undefined') ? BRANCH_NAMES : {};
+    const tasks = (typeof tasksData !== 'undefined' && Array.isArray(tasksData)) ? tasksData : [];
+    const MONTH_NAMES = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+    
+    // Collect all evals
+    const allEvals = [];
+    if (typeof appData === 'object' && appData) {
+      Object.keys(appData).forEach(key => {
+        const parts = key.split('_');
+        if (parts.length < 3) return;
+        const day = parseInt(parts[parts.length - 1]);
+        const month = parseInt(parts[parts.length - 2]);
+        const branch = parts.slice(0, parts.length - 2).join('_');
+        if (isNaN(month) || isNaN(day)) return;
+        const visit = appData[key];
+        if (!visit) return;
+        const hasResults = visit.results && Object.keys(visit.results).length > 0;
+        if (!hasResults && !visit.manager) return;
+        let score = 0;
+        try {
+          if (typeof calcSmartScore === 'function') {
+            const s = calcSmartScore(branch, month, day);
+            score = s.percent || 0;
+          }
+        } catch(e) {}
+        allEvals.push({ branch, branchName: branchNames[branch] || branch, month, day, score: Math.round(score) });
+      });
+    }
+    allEvals.sort((a, b) => (b.month * 31 + b.day) - (a.month * 31 + a.day));
+    
+    const pendingTasks = tasks.filter(t => !t.done && t.status !== 'completed');
+    const completedTasks = tasks.filter(t => t.done || t.status === 'completed');
+    
+    let resp = '📊 **ملخص نظام ب لبن قطر**\n\n';
+    resp += '🏪 **الفروع (' + branches.length + '):**\n';
+    branches.forEach(b => {
+      const branchEvals = allEvals.filter(e => e.branch === b);
+      if (branchEvals.length === 0) {
+        resp += '• ' + (branchNames[b] || b) + ': لا توجد تقييمات\n';
+      } else {
+        const avg = Math.round(branchEvals.reduce((s, e) => s + e.score, 0) / branchEvals.length);
+        const emoji = avg >= 80 ? '🟢' : avg >= 60 ? '🟡' : '🔴';
+        resp += emoji + ' ' + (branchNames[b] || b) + ': **' + avg + '%** (' + branchEvals.length + ' تقييم)\n';
+      }
+    });
+    
+    resp += '\n📅 **آخر التقييمات:**\n';
+    allEvals.slice(0, 8).forEach(e => {
+      const emoji = e.score >= 80 ? '🟢' : e.score >= 60 ? '🟡' : '🔴';
+      resp += emoji + ' ' + e.day + ' ' + MONTH_NAMES[e.month] + ' - ' + e.branchName + ': ' + e.score + '%\n';
+    });
+    
+    resp += '\n📝 **المهام:**\n';
+    resp += '• إجمالي: ' + tasks.length + ' | معلقة: ' + pendingTasks.length + ' | منتهية: ' + completedTasks.length + '\n';
+    if (pendingTasks.length > 0) {
+      resp += '\nأهم المهام المعلقة:\n';
+      pendingTasks.slice(0, 5).forEach(t => {
+        const branchStr = t.branch ? ' - ' + (branchNames[t.branch] || t.branch) : '';
+        resp += '• ' + (t.title || t.task || '') + branchStr + '\n';
+      });
+    }
+    
+    resp += '\n💡 **اسأل عن:**\n';
+    resp += '• اسم أي فرع للحصول على ملخص كامل\n';
+    resp += '• "أحسن مدير" / "أسوأ مدير"\n';
+    resp += '• "أعلى فرع" / "أقل فرع"\n';
+    resp += '• "أكثر بند فشلاً"\n';
+    resp += '• "النقاط الحرجة"\n';
+    resp += '• "توصيات"';
+    
+    return resp;
+  } catch(e) {
+    return '❌ خطأ في جلب بيانات النظام: ' + e.message;
+  }
 }
 
 // ===================== ITEMS MANAGER (UI) =====================

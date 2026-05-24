@@ -751,4 +751,419 @@ function renderCriticalReport() {
   
   return findings;
 }
+
+// ============================================================
+// EVALUATIONS LOG (per-branch) — opens as modal from branch view
+// ============================================================
+function openBranchEvalsLog(branch) {
+  const branchName = (window.BRANCH_NAMES && window.BRANCH_NAMES[branch]) || branch;
+  const evals = collectEvalsForBranch(branch);
+  const today = new Date();
+  
+  let modal = document.getElementById('evalsLogModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'evalsLogModal';
+    modal.className = 'modal-overlay';
+    modal.onclick = (e) => { if (e.target === modal) closeBranchEvalsLog(); };
+    document.body.appendChild(modal);
+  }
+  
+  // Store state
+  modal._currentBranch = branch;
+  modal._viewMonth = today.getMonth();
+  modal._viewYear = today.getFullYear();
+  modal._evals = evals;
+  
+  renderBranchEvalsLogContent();
+  modal.classList.remove('hidden');
+}
+
+function renderBranchEvalsLogContent() {
+  const modal = document.getElementById('evalsLogModal');
+  if (!modal || !modal._currentBranch) return;
+  
+  const branch = modal._currentBranch;
+  const branchName = (window.BRANCH_NAMES && window.BRANCH_NAMES[branch]) || branch;
+  const viewYear = modal._viewYear;
+  const viewMonth = modal._viewMonth;
+  const evals = modal._evals || {};
+  
+  const monthNames = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+  const dayNames = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+  
+  const firstDay = new Date(viewYear, viewMonth, 1).getDay();
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const today = new Date();
+  const isCurrentMonth = viewYear === today.getFullYear() && viewMonth === today.getMonth();
+  
+  // Filter evals to this month
+  const monthEvals = {};
+  Object.entries(evals).forEach(([dayKey, data]) => {
+    // dayKey format: "month_day" (e.g. "4_15" = May 15)
+    const [m, d] = dayKey.split('_').map(Number);
+    if (m === viewMonth) {
+      monthEvals[d] = data;
+    }
+  });
+  
+  let html = `
+    <div class="modal-box modal-box-large" style="max-width:760px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h3 style="margin:0;color:var(--gold-light);">📋 سجل تقييمات فرع ${escapeHTML(branchName)}</h3>
+        <button class="btn btn-icon" onclick="closeBranchEvalsLog()" style="font-size:22px;line-height:1;">×</button>
+      </div>
+      
+      <!-- Month navigation -->
+      <div class="calendar-header" style="margin-bottom:12px;">
+        <h2 style="font-size:16px;">${monthNames[viewMonth]} ${viewYear}</h2>
+        <div class="calendar-nav">
+          <button onclick="changeBranchEvalsMonth(-1)">‹ السابق</button>
+          <button onclick="changeBranchEvalsMonth(1)">التالي ›</button>
+        </div>
+      </div>
+      
+      <!-- Calendar grid -->
+      <div class="calendar-grid">
+        ${dayNames.map(d => `<div class="calendar-day-name">${d}</div>`).join('')}
+        ${Array.from({length: firstDay}, () => '<div class="calendar-day empty"></div>').join('')}
+        ${Array.from({length: daysInMonth}, (_, i) => {
+          const day = i + 1;
+          const dayData = monthEvals[day];
+          const isToday = isCurrentMonth && day === today.getDate();
+          const hasEvals = !!dayData;
+          const score = dayData ? (dayData.score || 0) : 0;
+          const manager = dayData ? (dayData.manager || '-') : '';
+          
+          return `
+            <div class="calendar-day ${isToday ? 'today' : ''} ${hasEvals ? 'has-evals' : ''}"
+                 onclick="${hasEvals ? `openBranchDateEval('${branch}', ${viewMonth}, ${day})` : ''}"
+                 title="${hasEvals ? `تقييم: ${Math.round(score)}% • ${manager}` : 'لا يوجد تقييم'}">
+              <div>${day}</div>
+              ${hasEvals ? `<div class="calendar-day-count">${Math.round(score)}%</div>` : ''}
+            </div>
+          `;
+        }).join('')}
+      </div>
+      
+      <div class="calendar-legend">
+        <div class="calendar-legend-item">
+          <div class="calendar-legend-color" style="background:linear-gradient(135deg,#1ABC9C,#16A085);"></div>
+          يوم به تقييم
+        </div>
+        <div class="calendar-legend-item">
+          <div class="calendar-legend-color" style="background:transparent;border:2px solid var(--gold);"></div>
+          اليوم الحالي
+        </div>
+        <div class="calendar-legend-item">📌 اضغط على أي يوم به تقييم لفتحه</div>
+      </div>
+  `;
+  
+  // List view for this month
+  const sortedEvals = Object.entries(monthEvals)
+    .sort((a, b) => parseInt(b[0]) - parseInt(a[0]));
+  
+  if (sortedEvals.length > 0) {
+    html += `
+      <div style="margin-top:18px;">
+        <h4 style="color:var(--gold-light);margin-bottom:10px;font-size:15px;">📝 تفاصيل تقييمات ${monthNames[viewMonth]} (${sortedEvals.length})</h4>
+        <div class="calendar-summary-list" style="max-height:280px;overflow-y:auto;">
+          ${sortedEvals.map(([day, e]) => {
+            const score = e.score || 0;
+            const scoreClass = score >= 80 ? 'high' : score >= 60 ? 'mid' : 'low';
+            return `
+              <div class="calendar-summary-row" onclick="openBranchDateEval('${branch}', ${viewMonth}, ${day})">
+                <div class="calendar-summary-date">${day} ${monthNames[viewMonth]}</div>
+                <div class="calendar-summary-branch">👤 ${escapeHTML(e.manager || '-')} ${e.shift ? '• 🕐 ' + escapeHTML(e.shift) : ''}</div>
+                <div class="calendar-summary-score ${scoreClass}">${Math.round(score)}%</div>
+                <div style="text-align:center;color:var(--gold);font-weight:800;">↩ فتح</div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  } else {
+    html += `
+      <div style="margin-top:16px;padding:30px 20px;text-align:center;background:var(--bg-card);border-radius:12px;color:var(--text-muted);">
+        <div style="font-size:36px;margin-bottom:8px;">📭</div>
+        لا توجد تقييمات لفرع ${escapeHTML(branchName)} في ${monthNames[viewMonth]} ${viewYear}
+      </div>
+    `;
+  }
+  
+  html += `
+      <div style="margin-top:14px;text-align:center;">
+        <button class="btn" onclick="closeBranchEvalsLog()">إغلاق</button>
+      </div>
+    </div>
+  `;
+  
+  modal.innerHTML = html;
+}
+
+function collectEvalsForBranch(branch) {
+  const result = {};
+  try {
+    if (typeof appData !== 'object' || !appData) return result;
+    // appData keys are: "branch_month_day"
+    Object.keys(appData).forEach(key => {
+      const parts = key.split('_');
+      if (parts.length < 3) return;
+      const day = parseInt(parts[parts.length - 1]);
+      const month = parseInt(parts[parts.length - 2]);
+      const keyBranch = parts.slice(0, parts.length - 2).join('_');
+      if (keyBranch !== branch) return;
+      if (isNaN(month) || isNaN(day)) return;
+      
+      const visit = appData[key];
+      if (!visit) return;
+      
+      // Only count days with actual evaluation activity
+      const hasResults = visit.results && Object.keys(visit.results).length > 0;
+      const hasManager = visit.manager || (visit.managers && visit.managers.length > 0);
+      if (!hasResults && !hasManager) return;
+      
+      // Calculate score
+      let score = 0;
+      try {
+        if (typeof calcSmartScore === 'function') {
+          const s = calcSmartScore(branch, month, day);
+          score = s.percent || 0;
+        }
+      } catch(e) {}
+      
+      const dayKey = month + '_' + day;
+      result[dayKey] = {
+        month, day,
+        manager: (visit.managers && visit.managers.length) ? visit.managers.join('، ') : (visit.manager || '-'),
+        shift: visit.shift || '',
+        score: score,
+        itemsCount: Object.keys(visit.results || {}).length
+      };
+    });
+  } catch(e) { console.warn('[EvalsLog]', e); }
+  return result;
+}
+
+function changeBranchEvalsMonth(delta) {
+  const modal = document.getElementById('evalsLogModal');
+  if (!modal) return;
+  modal._viewMonth += delta;
+  if (modal._viewMonth > 11) { modal._viewMonth = 0; modal._viewYear++; }
+  if (modal._viewMonth < 0) { modal._viewMonth = 11; modal._viewYear--; }
+  renderBranchEvalsLogContent();
+}
+
+function openBranchDateEval(branch, month, day) {
+  // Close modal first
+  closeBranchEvalsLog();
+  
+  // Set selected branch
+  if (typeof selectedBranch !== 'undefined') {
+    window.selectedBranch = branch;
+    selectedBranch = branch;
+    localStorage.setItem('blaban_selected_branch', branch);
+  }
+  
+  // Show branch view
+  if (typeof showPage === 'function') showPage('branch-view');
+  
+  // Render branch (creates date selectors)
+  if (typeof renderBranch === 'function') renderBranch(branch);
+  
+  // Set the month/day selectors AFTER render
+  setTimeout(() => {
+    const monthSel = document.getElementById(branch + '_month');
+    const daySel = document.getElementById(branch + '_day');
+    if (monthSel) {
+      monthSel.value = String(month);
+      if (typeof onMonthChange === 'function') {
+        try { onMonthChange(branch); } catch(e) {}
+      }
+    }
+    setTimeout(() => {
+      const daySel2 = document.getElementById(branch + '_day');
+      if (daySel2) {
+        daySel2.value = String(day);
+        if (typeof onDayChange === 'function') {
+          try { onDayChange(branch); } catch(e) {}
+        }
+      }
+      // Re-render
+      if (typeof renderBranch === 'function') renderBranch(branch);
+      // Scroll to top
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      // Show confirmation
+      if (typeof showNotif === 'function') {
+        const MONTH_NAMES = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+        showNotif('✅ تم فتح تقييم ' + day + ' ' + MONTH_NAMES[month], 'success');
+      }
+    }, 100);
+  }, 100);
+}
+
+function closeBranchEvalsLog() {
+  const modal = document.getElementById('evalsLogModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+window.openBranchEvalsLog = openBranchEvalsLog;
+window.closeBranchEvalsLog = closeBranchEvalsLog;
+window.renderBranchEvalsLogContent = renderBranchEvalsLogContent;
+window.changeBranchEvalsMonth = changeBranchEvalsMonth;
+window.openBranchDateEval = openBranchDateEval;
+
+function escapeHTML(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+window.escapeHTML = escapeHTML;
+
+// ============================================================
+// CHATBOT KNOWLEDGE BASE — gives chatbot full access to system data
+// ============================================================
+function buildChatbotKnowledgeContext() {
+  try {
+    const ctx = [];
+    
+    // System overview
+    const branches = (typeof BRANCHES !== 'undefined') ? BRANCHES : [];
+    const branchNames = (typeof BRANCH_NAMES !== 'undefined') ? BRANCH_NAMES : {};
+    ctx.push('=== نظام إدارة تشغيل ب لبن قطر ===');
+    ctx.push('مدير التشغيل: بلال الأنصاري');
+    ctx.push('الفروع: ' + branches.map(b => branchNames[b] || b).join('، '));
+    ctx.push('');
+    
+    // Recent evaluations summary
+    ctx.push('=== التقييمات الأخيرة ===');
+    const allEvals = [];
+    if (typeof appData === 'object' && appData) {
+      Object.keys(appData).forEach(key => {
+        const parts = key.split('_');
+        if (parts.length < 3) return;
+        const day = parseInt(parts[parts.length - 1]);
+        const month = parseInt(parts[parts.length - 2]);
+        const branch = parts.slice(0, parts.length - 2).join('_');
+        if (isNaN(month) || isNaN(day)) return;
+        const visit = appData[key];
+        if (!visit) return;
+        const hasData = (visit.results && Object.keys(visit.results).length > 0) || visit.manager || (visit.managers && visit.managers.length);
+        if (!hasData) return;
+        let score = 0;
+        try {
+          if (typeof calcSmartScore === 'function') {
+            const s = calcSmartScore(branch, month, day);
+            score = s.percent || 0;
+          }
+        } catch(e) {}
+        allEvals.push({
+          branch: branchNames[branch] || branch,
+          month, day,
+          manager: (visit.managers && visit.managers.length) ? visit.managers.join('، ') : (visit.manager || '-'),
+          shift: visit.shift || '',
+          score: Math.round(score),
+          failed: Object.entries(visit.results || {}).filter(([,v]) => v === 'fail').length,
+          ok: Object.entries(visit.results || {}).filter(([,v]) => v === 'ok').length,
+          totalItems: Object.keys(visit.results || {}).length
+        });
+      });
+    }
+    // Sort newest first
+    allEvals.sort((a, b) => (b.month * 31 + b.day) - (a.month * 31 + a.day));
+    
+    const MONTH_NAMES = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+    allEvals.slice(0, 15).forEach(e => {
+      ctx.push('• ' + e.day + ' ' + MONTH_NAMES[e.month] + ' - فرع ' + e.branch + ': ' + e.score + '% (مطابق: ' + e.ok + '، غير مطابق: ' + e.failed + ') - المدير: ' + e.manager + (e.shift ? ' - شيفت ' + e.shift : ''));
+    });
+    if (allEvals.length > 15) ctx.push('  ... و ' + (allEvals.length - 15) + ' تقييم آخر');
+    ctx.push('');
+    
+    // Pending tasks
+    ctx.push('=== المهام ===');
+    const tasks = (typeof tasksData !== 'undefined' && Array.isArray(tasksData)) ? tasksData : [];
+    const pendingTasks = tasks.filter(t => !t.done && t.status !== 'completed');
+    const completedTasks = tasks.filter(t => t.done || t.status === 'completed');
+    ctx.push('إجمالي المهام: ' + tasks.length + ' (معلقة: ' + pendingTasks.length + '، منتهية: ' + completedTasks.length + ')');
+    pendingTasks.slice(0, 10).forEach(t => {
+      ctx.push('• [معلقة] ' + (t.title || t.task || '') + (t.branch ? ' - فرع ' + (branchNames[t.branch] || t.branch) : '') + (t.assignee ? ' - مكلف: ' + t.assignee : '') + (t.deadline || t.dueDate ? ' - ميعاد: ' + (t.deadline || t.dueDate) : ''));
+    });
+    ctx.push('');
+    
+    // Managers
+    ctx.push('=== المديرون ===');
+    try {
+      const profiles = JSON.parse(localStorage.getItem('blaban_manager_profiles') || '{}');
+      const names = Object.keys(profiles);
+      ctx.push('عدد المديرين المسجلين: ' + names.length);
+      names.slice(0, 10).forEach(n => {
+        const p = profiles[n] || {};
+        const meta = [];
+        if (p.phone) meta.push('📱 ' + p.phone);
+        if (p.branch) meta.push('🏪 ' + (branchNames[p.branch] || p.branch));
+        if (p.role) meta.push('🎯 ' + p.role);
+        ctx.push('• ' + n + (meta.length ? ' (' + meta.join('، ') + ')' : ''));
+      });
+    } catch(e) {}
+    ctx.push('');
+    
+    // Branch averages
+    ctx.push('=== متوسط أداء الفروع ===');
+    branches.forEach(b => {
+      const branchEvals = allEvals.filter(e => e.branch === (branchNames[b] || b));
+      if (branchEvals.length === 0) {
+        ctx.push('• فرع ' + (branchNames[b] || b) + ': لا توجد تقييمات بعد');
+        return;
+      }
+      const avg = Math.round(branchEvals.reduce((sum, e) => sum + e.score, 0) / branchEvals.length);
+      const recent = branchEvals[0];
+      ctx.push('• فرع ' + (branchNames[b] || b) + ': متوسط ' + avg + '% (عدد التقييمات: ' + branchEvals.length + ') - آخر تقييم: ' + recent.score + '% بتاريخ ' + recent.day + ' ' + MONTH_NAMES[recent.month]);
+    });
+    
+    return ctx.join('\n');
+  } catch(e) {
+    console.warn('[Chatbot Knowledge]', e);
+    return '';
+  }
+}
+window.buildChatbotKnowledgeContext = buildChatbotKnowledgeContext;
+
+// ============================================================
+// UPDATE BANNER
+// ============================================================
+function showUpdateBanner() {
+  if (sessionStorage.getItem('blaban_update_dismissed') === '1') return;
+  const banner = document.getElementById('updateBanner');
+  if (!banner) return;
+  banner.style.display = 'flex';
+  document.body.style.paddingTop = '52px';
+  setTimeout(() => {
+    if (banner.style.display !== 'none') dismissUpdateBanner();
+  }, 30000);
+}
+function dismissUpdateBanner() {
+  const banner = document.getElementById('updateBanner');
+  if (banner) banner.style.display = 'none';
+  document.body.style.paddingTop = '';
+  sessionStorage.setItem('blaban_update_dismissed', '1');
+}
+window.showUpdateBanner = showUpdateBanner;
+window.dismissUpdateBanner = dismissUpdateBanner;
+
+// ============================================================
+// APP BADGE (Badging API)
+// ============================================================
+function updateAppBadge() {
+  try {
+    if (!('setAppBadge' in navigator)) return;
+    const tasks = (typeof tasksData !== 'undefined' && Array.isArray(tasksData)) ? tasksData : [];
+    const pending = tasks.filter(t => !t.done && t.status !== 'completed').length;
+    if (pending > 0) {
+      navigator.setAppBadge(pending).catch(() => {});
+    } else {
+      if (navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
+    }
+  } catch(e) {}
+}
+window.updateAppBadge = updateAppBadge;
+setInterval(updateAppBadge, 60000);
 </script>

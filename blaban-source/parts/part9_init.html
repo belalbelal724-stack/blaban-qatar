@@ -215,23 +215,33 @@ function positionBubbleMenu() {
   const trigger = document.getElementById('bubbleMenuBtn');
   if (!menu || !trigger) return;
   const rect = trigger.getBoundingClientRect();
-  // Position menu below the trigger
+  // Position menu directly below the trigger button (same horizontal position)
   const top = rect.bottom + 12;
-  // Position from right edge of viewport (aligned with trigger right edge)
-  const rightOffset = window.innerWidth - rect.right;
+  // Use direct left/right pixel coordinates (avoids RTL inset-inline confusion)
+  // Align RIGHT EDGE of menu with RIGHT EDGE of trigger
+  const bubbleSize = window.innerWidth <= 768 ? 46 : 52;
+  // The menu is a column of bubbles centered. To align right edges:
+  // Right edge of menu = right edge of trigger
+  // So: left of menu = rect.right - bubbleSize
+  const menuLeft = rect.right - bubbleSize;
   menu.style.top = top + 'px';
-  menu.style.insetInlineEnd = rightOffset + 'px';
-  // Position device submenu beside main menu (to the left of it)
+  menu.style.left = menuLeft + 'px';
+  menu.style.right = 'auto';
+  menu.style.insetInlineEnd = 'auto';
+  menu.style.insetInlineStart = 'auto';
+  
+  // Position device submenu BELOW the device bubble (same column as main menu)
   const sub = document.getElementById('deviceSubMenu');
-  if (sub) {
-    sub.style.top = top + 'px';
-    // Place submenu beside the device bubble (5th in list)
-    // Calculate device bubble row position: trigger.bottom + 12 + (4 * (bubbleHeight + gap))
-    const bubbleSize = window.innerWidth <= 768 ? 56 : 64;
-    const gap = 10;
-    const deviceRowTop = top + (4 * (bubbleSize + gap));
-    sub.style.top = deviceRowTop + 'px';
-    sub.style.insetInlineEnd = (rightOffset + bubbleSize + 20) + 'px';
+  const deviceBubble = document.querySelector('.bubble-device');
+  if (sub && deviceBubble) {
+    if (menu.classList.contains('is-open')) {
+      const dbRect = deviceBubble.getBoundingClientRect();
+      sub.style.top = (dbRect.bottom + 10) + 'px';
+      sub.style.left = (dbRect.right - bubbleSize) + 'px';
+      sub.style.right = 'auto';
+      sub.style.insetInlineEnd = 'auto';
+      sub.style.insetInlineStart = 'auto';
+    }
   }
 }
 
@@ -292,17 +302,17 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeBubbleMenu();
 });
 
-// ============ ROTATION LOCK (prevent image flip on phone rotation) ============
+// ============ ORIENTATION LOCK (prevents screen rotation/flip entirely) ============
 function toggleRotationLock() {
   const isLocked = localStorage.getItem('blaban_rotation_lock') === '1';
   const newState = !isLocked;
   localStorage.setItem('blaban_rotation_lock', newState ? '1' : '0');
   applyRotationLock(newState);
   if (typeof showNotif === 'function') {
-    showNotif(newState ? '🔒 تم تثبيت الاتجاه (لا يدور مع تدوير الجهاز)' : '🔓 تم تحرير الاتجاه', 'success');
+    showNotif(newState ? '🔒 تم تثبيت الشاشة (لن تدور أو تنقلب)' : '🔓 تم تحرير الشاشة', 'success');
   }
 }
-function applyRotationLock(locked) {
+async function applyRotationLock(locked) {
   const btn = document.getElementById('rotationLockBtn');
   if (btn) {
     const icon = btn.querySelector('.bubble-icon');
@@ -314,26 +324,41 @@ function applyRotationLock(locked) {
     } else {
       btn.classList.remove('is-locked');
       if (icon) icon.textContent = '🔓';
-      if (label) label.textContent = 'قفل التدوير';
+      if (label) label.textContent = 'تثبيت';
     }
   }
-  // Apply via CSS class on body
+  
   if (locked) {
     document.body.classList.add('rotation-locked');
-    // Try Screen Orientation API (works on mobile when in fullscreen/PWA)
-    if (screen.orientation && screen.orientation.lock) {
-      screen.orientation.lock('portrait').catch(() => {
-        // API requires fullscreen, fall back to CSS-only
-      });
+    // Try Screen Orientation API to lock to current orientation
+    try {
+      if (screen.orientation && screen.orientation.lock) {
+        // Lock to current orientation (whichever it is)
+        const current = screen.orientation.type || 'portrait-primary';
+        // Try multiple lock variants for best compatibility
+        const tries = [current, 'natural', 'portrait', 'landscape'];
+        for (const t of tries) {
+          try {
+            await screen.orientation.lock(t);
+            console.log('[Lock] Orientation locked to:', t);
+            break;
+          } catch(e) { /* try next */ }
+        }
+      }
+    } catch(e) {
+      console.warn('[Lock] Native lock failed (need fullscreen/PWA mode):', e);
     }
+    // Prevent any visual flip via CSS (extra safety)
+    // The CSS class .rotation-locked applies will-change and prevents transform animations
   } else {
     document.body.classList.remove('rotation-locked');
-    if (screen.orientation && screen.orientation.unlock) {
-      try { screen.orientation.unlock(); } catch(e) {}
-    }
+    try {
+      if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
+    } catch(e) {}
   }
 }
 window.toggleRotationLock = toggleRotationLock;
+window.applyRotationLock = applyRotationLock;
 
 // Restore rotation lock preference on load
 (function() {
@@ -430,7 +455,8 @@ function showRemembranceBubble() {
   bubble.classList.remove('closing');
   bubble.style.display = 'block';
   
-  let secondsLeft = 10;
+  // 5 second countdown
+  let secondsLeft = 5;
   if (counterEl) counterEl.textContent = secondsLeft;
   if (remembranceCountdown) clearInterval(remembranceCountdown);
   remembranceCountdown = setInterval(() => {
@@ -443,7 +469,7 @@ function showRemembranceBubble() {
   }, 1000);
   
   if (remembranceCloseTimer) clearTimeout(remembranceCloseTimer);
-  remembranceCloseTimer = setTimeout(closeRemembranceBubble, 10000);
+  remembranceCloseTimer = setTimeout(closeRemembranceBubble, 5000);
 }
 
 function closeRemembranceBubble() {
@@ -458,9 +484,9 @@ window.closeRemembranceBubble = closeRemembranceBubble;
 
 function startRemembranceCycle() {
   if (remembranceTimer) clearInterval(remembranceTimer);
-  // First one after 30s, then every 60s
+  // First one after 30s, then every 3 minutes (180000ms)
   setTimeout(showRemembranceBubble, 30000);
-  remembranceTimer = setInterval(showRemembranceBubble, 60000);
+  remembranceTimer = setInterval(showRemembranceBubble, 180000);
 }
 
 // Prayer times for Qatar/Doha (May 2026 approximate)
@@ -640,8 +666,9 @@ window.forceUpdateApp = forceUpdateApp;
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     console.log('[SW] Controller changed — new version active');
+    if (typeof showUpdateBanner === 'function') showUpdateBanner();
     if (typeof showNotif === 'function') {
-      showNotif('🆕 إصدار جديد متاح — اضغط 🔄 تحديث لتفعيله', 'info', 8000);
+      showNotif('🆕 إصدار جديد متاح — اضغط على بانر "تحديث الآن"', 'info', 8000);
     }
   });
   
@@ -649,10 +676,33 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   setInterval(async () => {
     try {
       const reg = await navigator.serviceWorker.getRegistration();
-      if (reg) reg.update();
+      if (reg) {
+        await reg.update();
+        // If a new SW is waiting, prompt user
+        if (reg.waiting && typeof showUpdateBanner === 'function') {
+          showUpdateBanner();
+        }
+      }
     } catch(e) {}
   }, 60000);
+  
+  // Check once on load
+  setTimeout(async () => {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg && reg.waiting && typeof showUpdateBanner === 'function') {
+        showUpdateBanner();
+      }
+    } catch(e) {}
+  }, 3000);
 }
+
+// Update app badge on tasks change
+window.addEventListener('load', () => {
+  if (typeof updateAppBadge === 'function') {
+    setTimeout(updateAppBadge, 2000);
+  }
+});
 </script>
 </body>
 </html>

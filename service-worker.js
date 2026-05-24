@@ -1,6 +1,6 @@
-const VERSION = 'blaban-v5-' + Date.now();
-const CACHE_STATIC = ${VERSION}-static;
-const CACHE_DYNAMIC = ${VERSION}-dynamic;
+const VERSION = 'blaban-v4-broadcast-' + Date.now();
+const CACHE_STATIC = `${VERSION}-static`;
+const CACHE_DYNAMIC = `${VERSION}-dynamic`;
 const STATIC_ASSETS = ['./manifest.json','./icon-192.png','./icon-512.png','./apple-touch-icon.png','./icon-maskable-512.png'];
 
 self.addEventListener('install', e => {
@@ -11,10 +11,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   console.log('[SW] Activate:', VERSION);
   e.waitUntil(
-    caches.keys().then(names => Promise.all(
-      names.filter(n => n !== CACHE_STATIC && n !== CACHE_DYNAMIC)
-           .map(n => { console.log('[SW] Delete old:', n); return caches.delete(n); })
-    ))
+    caches.keys().then(names => Promise.all(names.filter(n => !n.startsWith('blaban-v4')).map(n => { console.log('[SW] Delete old:', n); return caches.delete(n); })))
     .then(() => self.clients.claim())
   );
 });

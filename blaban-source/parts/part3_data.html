@@ -260,7 +260,8 @@ function initData() {
   } catch(e) { tasksData = []; }
 }
 
-// Debounce helper to prevent excessive cloud sync
+// Lightweight cloud sync — fires immediately after each save (no debouncing)
+// The autoSync* functions are smart: they only sync the specific record that changed
 let _saveDataSyncTimer = null;
 let _saveTasksSyncTimer = null;
 
@@ -269,19 +270,27 @@ function saveData() {
   catch(e) { localStorage.removeItem('blaban_data_v2'); localStorage.setItem('blaban_data_v3', JSON.stringify(appData)); }
   // Push to firebase if connected
   if (typeof pushDataToFirebase === 'function') pushDataToFirebase();
-  // Debounced Supabase sync (waits 1.5s after last save to avoid spamming)
+  // Immediate Supabase sync — uploads ONLY the last-edited branch/date (lightweight)
   if (typeof window.syncEnabled === 'function' && window.syncEnabled()) {
+    // Quick debounce 200ms to batch rapid clicks (e.g. fast checkbox toggling)
     if (_saveDataSyncTimer) clearTimeout(_saveDataSyncTimer);
     _saveDataSyncTimer = setTimeout(() => {
       try {
-        // Only sync the LAST modified branch/date, not all data
         const lastBranch = window._lastEditedBranch;
         const lastDate = window._lastEditedDate;
         if (lastBranch && lastDate && appData[lastBranch] && appData[lastBranch][lastDate]) {
           if (typeof autoSyncEvaluation === 'function') autoSyncEvaluation(lastBranch, lastDate);
+        } else {
+          // Fallback: sync today for all branches that have data today
+          const today = new Date().toISOString().split('T')[0];
+          Object.keys(appData || {}).forEach(branch => {
+            if (appData[branch] && appData[branch][today]) {
+              if (typeof autoSyncEvaluation === 'function') autoSyncEvaluation(branch, today);
+            }
+          });
         }
       } catch(e) { console.warn('[Supabase] auto-sync error:', e); }
-    }, 1500);
+    }, 200);
   }
 }
 
@@ -289,7 +298,7 @@ function saveTasks() {
   try { localStorage.setItem('blaban_tasks_v1', JSON.stringify(tasksData)); }
   catch(e) { console.error('Tasks save failed', e); }
   if (typeof pushDataToFirebase === 'function') pushDataToFirebase();
-  // Debounced sync only the last modified task
+  // Immediate Supabase task sync
   if (typeof window.syncEnabled === 'function' && window.syncEnabled()) {
     if (_saveTasksSyncTimer) clearTimeout(_saveTasksSyncTimer);
     _saveTasksSyncTimer = setTimeout(() => {
@@ -298,9 +307,15 @@ function saveTasks() {
         if (lastTaskId) {
           const task = tasksData.find(t => String(t.id) === String(lastTaskId));
           if (task && typeof autoSyncTask === 'function') autoSyncTask(task);
+        } else {
+          // Fallback: sync only the 3 most recent tasks (avoid spamming)
+          const recent = (tasksData || []).slice(0, 3);
+          recent.forEach(t => {
+            if (typeof autoSyncTask === 'function') autoSyncTask(t);
+          });
         }
       } catch(e) { console.warn('[Supabase] task sync error:', e); }
-    }, 1500);
+    }, 200);
   }
 }
 

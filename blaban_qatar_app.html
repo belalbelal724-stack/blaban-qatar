@@ -889,9 +889,10 @@ body {
 /* Bubble container — FIXED position so it follows scroll, above chatbot */
 .bubble-menu {
   position: fixed;
-  /* Positioned dynamically by JS based on trigger location when opened */
+  /* Positioned dynamically by JS via left/top */
   top: 80px;
-  inset-inline-end: 20px;
+  left: auto;
+  right: 20px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -1075,9 +1076,10 @@ body {
 /* ============ DEVICE SUB-MENU (drops vertically below the device bubble, same side as main menu) ============ */
 .bubble-submenu {
   position: fixed;
-  /* Positioned dynamically by JS — same right edge as main menu */
+  /* Positioned dynamically by JS via left/top */
   top: 80px;
-  inset-inline-end: 20px;
+  left: auto;
+  right: 20px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1616,6 +1618,287 @@ body { transition: transform 0.3s ease; }
   font-size: 10px; padding: 1px 6px; border-radius: 10px;
   font-weight: 800; min-width: 18px; text-align: center;
 }
+/* Live badge - red dot pulsing */
+.nav-tab .live-badge {
+  color: #FF3B30;
+  font-size: 16px;
+  margin-inline-start: 4px;
+  animation: livePulse 1.5s ease-in-out infinite;
+}
+@keyframes livePulse {
+  0%, 100% { opacity: 1; text-shadow: 0 0 8px rgba(255,59,48,0.9); }
+  50%      { opacity: 0.5; text-shadow: 0 0 14px rgba(255,59,48,1); }
+}
+.nav-tab.tab-live { color: #FF3B30; }
+.nav-tab.tab-live.active { background: linear-gradient(135deg, #FF3B30, #C0392B); color: #fff; }
+
+/* ============ LIVE FEED ============ */
+.live-feed-header {
+  background: linear-gradient(135deg, #C0392B, #6B1B2A);
+  color: #fff;
+  border-radius: 14px;
+  padding: 16px 20px;
+  margin-bottom: 14px;
+  display: flex; align-items: center; gap: 12px;
+  box-shadow: 0 6px 20px rgba(192,57,43,0.3);
+}
+.live-dot {
+  width: 14px; height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  animation: livePulse 1.5s infinite;
+  flex-shrink: 0;
+}
+.live-feed-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-muted);
+  font-size: 15px;
+  background: var(--bg-card);
+  border-radius: 14px;
+  border: 1px dashed var(--gold);
+}
+.live-feed-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  display: flex;
+  gap: 12px;
+  transition: all 0.3s ease;
+  position: relative;
+}
+.live-feed-item.is-fresh {
+  border: 2px solid #2ECC71;
+  box-shadow: 0 0 16px rgba(46,204,113,0.3);
+  animation: liveFresh 2s ease-out;
+}
+@keyframes liveFresh {
+  from { background: rgba(46,204,113,0.18); }
+  to   { background: var(--bg-card); }
+}
+.live-feed-icon {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--gold), var(--gold-light));
+  color: var(--maroon-dark);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+}
+.live-feed-body { flex: 1; min-width: 0; }
+.live-feed-title { font-weight: 800; color: var(--gold-light); font-size: 15px; margin-bottom: 4px; }
+.live-feed-meta { font-size: 12px; color: var(--text-muted); display: flex; gap: 10px; flex-wrap: wrap; }
+.live-feed-meta span { display: inline-flex; align-items: center; gap: 4px; }
+.live-feed-detail { font-size: 13px; color: var(--text-light); margin-top: 6px; line-height: 1.5; }
+.live-feed-photos { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.live-feed-photos img { width: 56px; height: 56px; border-radius: 8px; object-fit: cover; border: 2px solid var(--gold); cursor: pointer; }
+.live-fresh-tag {
+  background: #2ECC71;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 8px;
+  margin-inline-start: 6px;
+  display: inline-block;
+  animation: livePulse 1.5s infinite;
+}
+
+/* ============ CALENDAR VIEW ============ */
+.calendar-header {
+  background: linear-gradient(135deg, var(--maroon), var(--maroon-dark));
+  border: 2px solid var(--gold);
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 14px;
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;
+}
+.calendar-header h2 { margin: 0; color: var(--gold-light); font-size: 19px; }
+.calendar-nav { display: flex; gap: 8px; align-items: center; }
+.calendar-nav button {
+  background: var(--gold); color: var(--maroon-dark);
+  border: none; padding: 8px 16px; border-radius: 10px;
+  font-weight: 800; cursor: pointer; font-family: Tajawal, sans-serif;
+  transition: all 0.2s ease;
+}
+.calendar-nav button:hover { background: var(--gold-light); transform: scale(1.05); }
+.calendar-nav-current { color: var(--gold-light); font-weight: 800; font-size: 17px; min-width: 130px; text-align: center; }
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  background: var(--bg-card);
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+}
+.calendar-day-name {
+  text-align: center;
+  font-weight: 800;
+  color: var(--gold);
+  padding: 6px 0;
+  font-size: 12px;
+}
+.calendar-day {
+  aspect-ratio: 1;
+  background: var(--bg-card2);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s ease;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-light);
+  border: 1px solid transparent;
+}
+.calendar-day:hover { transform: scale(1.05); border-color: var(--gold); }
+.calendar-day.empty { background: transparent; cursor: default; pointer-events: none; }
+.calendar-day.today { border: 2px solid var(--gold); color: var(--gold-light); font-weight: 900; }
+.calendar-day.has-evals { background: linear-gradient(135deg, #1ABC9C, #16A085); color: #fff; }
+.calendar-day-dots {
+  display: flex; gap: 2px; margin-top: 2px;
+}
+.calendar-day-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--gold);
+}
+.calendar-day-count {
+  position: absolute;
+  top: 2px;
+  inset-inline-end: 4px;
+  background: var(--red);
+  color: #fff;
+  font-size: 9px;
+  border-radius: 8px;
+  min-width: 16px;
+  padding: 0 4px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+.calendar-legend {
+  margin-top: 14px;
+  display: flex; gap: 16px; flex-wrap: wrap;
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.calendar-legend-item { display: flex; align-items: center; gap: 6px; }
+.calendar-legend-color { width: 16px; height: 16px; border-radius: 4px; }
+
+.calendar-summary-list {
+  margin-top: 14px;
+  background: var(--bg-card);
+  border-radius: 14px;
+  padding: 14px;
+}
+.calendar-summary-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 80px 60px;
+  gap: 10px;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border);
+  align-items: center;
+  font-size: 13px;
+  cursor: pointer;
+}
+.calendar-summary-row:hover { background: rgba(201,168,76,0.08); }
+.calendar-summary-row:last-child { border-bottom: none; }
+.calendar-summary-date { font-weight: 800; color: var(--gold-light); }
+.calendar-summary-branch { color: var(--text-light); }
+.calendar-summary-score { font-weight: 800; text-align: center; padding: 4px 8px; border-radius: 8px; }
+.calendar-summary-score.high { background: rgba(46,204,113,0.2); color: #2ECC71; }
+.calendar-summary-score.mid { background: rgba(243,156,18,0.2); color: #F39C12; }
+.calendar-summary-score.low { background: rgba(231,76,60,0.2); color: #E74C3C; }
+
+/* ============ GLOBAL SEARCH ============ */
+.search-result-group { margin-bottom: 16px; }
+.search-result-group-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--gold);
+  padding: 8px 12px;
+  background: rgba(201,168,76,0.1);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.search-result-item {
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.search-result-item:hover {
+  border-color: var(--gold);
+  background: rgba(201,168,76,0.08);
+  transform: translateX(-4px);
+}
+.search-result-icon {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--gold), var(--gold-light));
+  color: var(--maroon-dark);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.search-result-body { flex: 1; min-width: 0; }
+.search-result-title { font-weight: 800; color: var(--gold-light); font-size: 14px; }
+.search-result-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.search-highlight { background: rgba(255,235,59,0.4); color: #fff; padding: 0 3px; border-radius: 3px; font-weight: 800; }
+
+/* ============ UPDATE BANNER ============ */
+.update-banner {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  background: linear-gradient(135deg, #3498DB, #2980B9);
+  color: #fff;
+  padding: 12px 18px;
+  display: flex; align-items: center; gap: 12px;
+  z-index: 99998;
+  font-family: 'Tajawal', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  box-shadow: 0 4px 14px rgba(52,152,219,0.4);
+  animation: updateBannerSlide 0.5s ease-out;
+}
+@keyframes updateBannerSlide {
+  from { transform: translateY(-100%); }
+  to   { transform: translateY(0); }
+}
+.update-banner-icon { font-size: 22px; animation: livePulse 1.5s infinite; }
+.update-banner-text { flex: 1; }
+.update-banner-btn {
+  background: #fff; color: #2980B9;
+  border: none; padding: 6px 18px;
+  border-radius: 10px; font-weight: 800;
+  cursor: pointer; font-family: Tajawal, sans-serif; font-size: 13px;
+  transition: all 0.2s ease;
+}
+.update-banner-btn:hover { background: var(--gold-light); transform: scale(1.05); }
+.update-banner-close {
+  background: transparent; border: none; color: #fff;
+  font-size: 20px; cursor: pointer; padding: 4px 8px;
+  opacity: 0.8;
+}
+.update-banner-close:hover { opacity: 1; }
 
 .main { padding: var(--spacing) var(--spacing); max-width: 1400px; margin: 0 auto; }
 .page { display: none; animation: fadeIn 0.3s ease; }
@@ -1836,6 +2119,17 @@ body.view-tablet .main { padding: 12px 10px; }
   background: linear-gradient(135deg, var(--maroon), var(--maroon-light));
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+/* Highlighted log button */
+.date-nav-btn.date-nav-log {
+  background: linear-gradient(135deg, #16A085, #0E6B57);
+  border-color: #76D7C4;
+  color: #fff;
+  font-weight: 800;
+}
+.date-nav-btn.date-nav-log:hover {
+  background: linear-gradient(135deg, #1ABC9C, #16A085);
+  box-shadow: 0 4px 14px rgba(22,160,133,0.4);
 }
 .date-nav-info {
   font-size: var(--fs-sm);
@@ -4001,6 +4295,14 @@ body.pdf-capturing .page-signature { color: #6B1B2A !important; }
   <div id="other-depts" class="page"><div id="depts-content"></div></div>
 </div>
 
+<!-- New version available banner -->
+<div id="updateBanner" class="update-banner" style="display:none;">
+  <span class="update-banner-icon">🆕</span>
+  <span class="update-banner-text">إصدار جديد متاح من التطبيق</span>
+  <button class="update-banner-btn" onclick="forceUpdateApp()">تحديث الآن</button>
+  <button class="update-banner-close" onclick="dismissUpdateBanner()" title="تأجيل">×</button>
+</div>
+
 <script>
 // ===================== DATA DEFINITIONS =====================
 // Default 5 branches (Khaisa added)
@@ -4263,7 +4565,8 @@ function initData() {
   } catch(e) { tasksData = []; }
 }
 
-// Debounce helper to prevent excessive cloud sync
+// Lightweight cloud sync — fires immediately after each save (no debouncing)
+// The autoSync* functions are smart: they only sync the specific record that changed
 let _saveDataSyncTimer = null;
 let _saveTasksSyncTimer = null;
 
@@ -4272,19 +4575,27 @@ function saveData() {
   catch(e) { localStorage.removeItem('blaban_data_v2'); localStorage.setItem('blaban_data_v3', JSON.stringify(appData)); }
   // Push to firebase if connected
   if (typeof pushDataToFirebase === 'function') pushDataToFirebase();
-  // Debounced Supabase sync (waits 1.5s after last save to avoid spamming)
+  // Immediate Supabase sync — uploads ONLY the last-edited branch/date (lightweight)
   if (typeof window.syncEnabled === 'function' && window.syncEnabled()) {
+    // Quick debounce 200ms to batch rapid clicks (e.g. fast checkbox toggling)
     if (_saveDataSyncTimer) clearTimeout(_saveDataSyncTimer);
     _saveDataSyncTimer = setTimeout(() => {
       try {
-        // Only sync the LAST modified branch/date, not all data
         const lastBranch = window._lastEditedBranch;
         const lastDate = window._lastEditedDate;
         if (lastBranch && lastDate && appData[lastBranch] && appData[lastBranch][lastDate]) {
           if (typeof autoSyncEvaluation === 'function') autoSyncEvaluation(lastBranch, lastDate);
+        } else {
+          // Fallback: sync today for all branches that have data today
+          const today = new Date().toISOString().split('T')[0];
+          Object.keys(appData || {}).forEach(branch => {
+            if (appData[branch] && appData[branch][today]) {
+              if (typeof autoSyncEvaluation === 'function') autoSyncEvaluation(branch, today);
+            }
+          });
         }
       } catch(e) { console.warn('[Supabase] auto-sync error:', e); }
-    }, 1500);
+    }, 200);
   }
 }
 
@@ -4292,7 +4603,7 @@ function saveTasks() {
   try { localStorage.setItem('blaban_tasks_v1', JSON.stringify(tasksData)); }
   catch(e) { console.error('Tasks save failed', e); }
   if (typeof pushDataToFirebase === 'function') pushDataToFirebase();
-  // Debounced sync only the last modified task
+  // Immediate Supabase task sync
   if (typeof window.syncEnabled === 'function' && window.syncEnabled()) {
     if (_saveTasksSyncTimer) clearTimeout(_saveTasksSyncTimer);
     _saveTasksSyncTimer = setTimeout(() => {
@@ -4301,9 +4612,15 @@ function saveTasks() {
         if (lastTaskId) {
           const task = tasksData.find(t => String(t.id) === String(lastTaskId));
           if (task && typeof autoSyncTask === 'function') autoSyncTask(task);
+        } else {
+          // Fallback: sync only the 3 most recent tasks (avoid spamming)
+          const recent = (tasksData || []).slice(0, 3);
+          recent.forEach(t => {
+            if (typeof autoSyncTask === 'function') autoSyncTask(t);
+          });
         }
       } catch(e) { console.warn('[Supabase] task sync error:', e); }
-    }, 1500);
+    }, 200);
   }
 }
 
@@ -4804,6 +5121,7 @@ function renderBranch(branch) {
       <button class="date-nav-btn" onclick="openDatePickerForBranch('${branch}')" title="اختر تاريخاً للرجوع إليه">🗓️ اختر تاريخاً</button>
       <button class="date-nav-btn" onclick="shiftBranchDate('${branch}',-1)" title="اليوم السابق">⬅️</button>
       <button class="date-nav-btn" onclick="shiftBranchDate('${branch}',1)" title="اليوم التالي">➡️</button>
+      <button class="date-nav-btn date-nav-log" onclick="openBranchEvalsLog('${branch}')" title="عرض جميع أيام التقييم لهذا الفرع">📋 سجل التقييمات</button>
       <span class="date-nav-info" id="${branch}_dateInfo">📆</span>
     </div>
     
@@ -7791,6 +8109,421 @@ function renderCriticalReport() {
   
   return findings;
 }
+
+// ============================================================
+// EVALUATIONS LOG (per-branch) — opens as modal from branch view
+// ============================================================
+function openBranchEvalsLog(branch) {
+  const branchName = (window.BRANCH_NAMES && window.BRANCH_NAMES[branch]) || branch;
+  const evals = collectEvalsForBranch(branch);
+  const today = new Date();
+  
+  let modal = document.getElementById('evalsLogModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'evalsLogModal';
+    modal.className = 'modal-overlay';
+    modal.onclick = (e) => { if (e.target === modal) closeBranchEvalsLog(); };
+    document.body.appendChild(modal);
+  }
+  
+  // Store state
+  modal._currentBranch = branch;
+  modal._viewMonth = today.getMonth();
+  modal._viewYear = today.getFullYear();
+  modal._evals = evals;
+  
+  renderBranchEvalsLogContent();
+  modal.classList.remove('hidden');
+}
+
+function renderBranchEvalsLogContent() {
+  const modal = document.getElementById('evalsLogModal');
+  if (!modal || !modal._currentBranch) return;
+  
+  const branch = modal._currentBranch;
+  const branchName = (window.BRANCH_NAMES && window.BRANCH_NAMES[branch]) || branch;
+  const viewYear = modal._viewYear;
+  const viewMonth = modal._viewMonth;
+  const evals = modal._evals || {};
+  
+  const monthNames = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+  const dayNames = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+  
+  const firstDay = new Date(viewYear, viewMonth, 1).getDay();
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const today = new Date();
+  const isCurrentMonth = viewYear === today.getFullYear() && viewMonth === today.getMonth();
+  
+  // Filter evals to this month
+  const monthEvals = {};
+  Object.entries(evals).forEach(([dayKey, data]) => {
+    // dayKey format: "month_day" (e.g. "4_15" = May 15)
+    const [m, d] = dayKey.split('_').map(Number);
+    if (m === viewMonth) {
+      monthEvals[d] = data;
+    }
+  });
+  
+  let html = `
+    <div class="modal-box modal-box-large" style="max-width:760px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h3 style="margin:0;color:var(--gold-light);">📋 سجل تقييمات فرع ${escapeHTML(branchName)}</h3>
+        <button class="btn btn-icon" onclick="closeBranchEvalsLog()" style="font-size:22px;line-height:1;">×</button>
+      </div>
+      
+      <!-- Month navigation -->
+      <div class="calendar-header" style="margin-bottom:12px;">
+        <h2 style="font-size:16px;">${monthNames[viewMonth]} ${viewYear}</h2>
+        <div class="calendar-nav">
+          <button onclick="changeBranchEvalsMonth(-1)">‹ السابق</button>
+          <button onclick="changeBranchEvalsMonth(1)">التالي ›</button>
+        </div>
+      </div>
+      
+      <!-- Calendar grid -->
+      <div class="calendar-grid">
+        ${dayNames.map(d => `<div class="calendar-day-name">${d}</div>`).join('')}
+        ${Array.from({length: firstDay}, () => '<div class="calendar-day empty"></div>').join('')}
+        ${Array.from({length: daysInMonth}, (_, i) => {
+          const day = i + 1;
+          const dayData = monthEvals[day];
+          const isToday = isCurrentMonth && day === today.getDate();
+          const hasEvals = !!dayData;
+          const score = dayData ? (dayData.score || 0) : 0;
+          const manager = dayData ? (dayData.manager || '-') : '';
+          
+          return `
+            <div class="calendar-day ${isToday ? 'today' : ''} ${hasEvals ? 'has-evals' : ''}"
+                 onclick="${hasEvals ? `openBranchDateEval('${branch}', ${viewMonth}, ${day})` : ''}"
+                 title="${hasEvals ? `تقييم: ${Math.round(score)}% • ${manager}` : 'لا يوجد تقييم'}">
+              <div>${day}</div>
+              ${hasEvals ? `<div class="calendar-day-count">${Math.round(score)}%</div>` : ''}
+            </div>
+          `;
+        }).join('')}
+      </div>
+      
+      <div class="calendar-legend">
+        <div class="calendar-legend-item">
+          <div class="calendar-legend-color" style="background:linear-gradient(135deg,#1ABC9C,#16A085);"></div>
+          يوم به تقييم
+        </div>
+        <div class="calendar-legend-item">
+          <div class="calendar-legend-color" style="background:transparent;border:2px solid var(--gold);"></div>
+          اليوم الحالي
+        </div>
+        <div class="calendar-legend-item">📌 اضغط على أي يوم به تقييم لفتحه</div>
+      </div>
+  `;
+  
+  // List view for this month
+  const sortedEvals = Object.entries(monthEvals)
+    .sort((a, b) => parseInt(b[0]) - parseInt(a[0]));
+  
+  if (sortedEvals.length > 0) {
+    html += `
+      <div style="margin-top:18px;">
+        <h4 style="color:var(--gold-light);margin-bottom:10px;font-size:15px;">📝 تفاصيل تقييمات ${monthNames[viewMonth]} (${sortedEvals.length})</h4>
+        <div class="calendar-summary-list" style="max-height:280px;overflow-y:auto;">
+          ${sortedEvals.map(([day, e]) => {
+            const score = e.score || 0;
+            const scoreClass = score >= 80 ? 'high' : score >= 60 ? 'mid' : 'low';
+            return `
+              <div class="calendar-summary-row" onclick="openBranchDateEval('${branch}', ${viewMonth}, ${day})">
+                <div class="calendar-summary-date">${day} ${monthNames[viewMonth]}</div>
+                <div class="calendar-summary-branch">👤 ${escapeHTML(e.manager || '-')} ${e.shift ? '• 🕐 ' + escapeHTML(e.shift) : ''}</div>
+                <div class="calendar-summary-score ${scoreClass}">${Math.round(score)}%</div>
+                <div style="text-align:center;color:var(--gold);font-weight:800;">↩ فتح</div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  } else {
+    html += `
+      <div style="margin-top:16px;padding:30px 20px;text-align:center;background:var(--bg-card);border-radius:12px;color:var(--text-muted);">
+        <div style="font-size:36px;margin-bottom:8px;">📭</div>
+        لا توجد تقييمات لفرع ${escapeHTML(branchName)} في ${monthNames[viewMonth]} ${viewYear}
+      </div>
+    `;
+  }
+  
+  html += `
+      <div style="margin-top:14px;text-align:center;">
+        <button class="btn" onclick="closeBranchEvalsLog()">إغلاق</button>
+      </div>
+    </div>
+  `;
+  
+  modal.innerHTML = html;
+}
+
+function collectEvalsForBranch(branch) {
+  const result = {};
+  try {
+    if (typeof appData !== 'object' || !appData) return result;
+    // appData keys are: "branch_month_day"
+    Object.keys(appData).forEach(key => {
+      const parts = key.split('_');
+      if (parts.length < 3) return;
+      const day = parseInt(parts[parts.length - 1]);
+      const month = parseInt(parts[parts.length - 2]);
+      const keyBranch = parts.slice(0, parts.length - 2).join('_');
+      if (keyBranch !== branch) return;
+      if (isNaN(month) || isNaN(day)) return;
+      
+      const visit = appData[key];
+      if (!visit) return;
+      
+      // Only count days with actual evaluation activity
+      const hasResults = visit.results && Object.keys(visit.results).length > 0;
+      const hasManager = visit.manager || (visit.managers && visit.managers.length > 0);
+      if (!hasResults && !hasManager) return;
+      
+      // Calculate score
+      let score = 0;
+      try {
+        if (typeof calcSmartScore === 'function') {
+          const s = calcSmartScore(branch, month, day);
+          score = s.percent || 0;
+        }
+      } catch(e) {}
+      
+      const dayKey = month + '_' + day;
+      result[dayKey] = {
+        month, day,
+        manager: (visit.managers && visit.managers.length) ? visit.managers.join('، ') : (visit.manager || '-'),
+        shift: visit.shift || '',
+        score: score,
+        itemsCount: Object.keys(visit.results || {}).length
+      };
+    });
+  } catch(e) { console.warn('[EvalsLog]', e); }
+  return result;
+}
+
+function changeBranchEvalsMonth(delta) {
+  const modal = document.getElementById('evalsLogModal');
+  if (!modal) return;
+  modal._viewMonth += delta;
+  if (modal._viewMonth > 11) { modal._viewMonth = 0; modal._viewYear++; }
+  if (modal._viewMonth < 0) { modal._viewMonth = 11; modal._viewYear--; }
+  renderBranchEvalsLogContent();
+}
+
+function openBranchDateEval(branch, month, day) {
+  // Close modal first
+  closeBranchEvalsLog();
+  
+  // Set selected branch
+  if (typeof selectedBranch !== 'undefined') {
+    window.selectedBranch = branch;
+    selectedBranch = branch;
+    localStorage.setItem('blaban_selected_branch', branch);
+  }
+  
+  // Show branch view
+  if (typeof showPage === 'function') showPage('branch-view');
+  
+  // Render branch (creates date selectors)
+  if (typeof renderBranch === 'function') renderBranch(branch);
+  
+  // Set the month/day selectors AFTER render
+  setTimeout(() => {
+    const monthSel = document.getElementById(branch + '_month');
+    const daySel = document.getElementById(branch + '_day');
+    if (monthSel) {
+      monthSel.value = String(month);
+      if (typeof onMonthChange === 'function') {
+        try { onMonthChange(branch); } catch(e) {}
+      }
+    }
+    setTimeout(() => {
+      const daySel2 = document.getElementById(branch + '_day');
+      if (daySel2) {
+        daySel2.value = String(day);
+        if (typeof onDayChange === 'function') {
+          try { onDayChange(branch); } catch(e) {}
+        }
+      }
+      // Re-render
+      if (typeof renderBranch === 'function') renderBranch(branch);
+      // Scroll to top
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      // Show confirmation
+      if (typeof showNotif === 'function') {
+        const MONTH_NAMES = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+        showNotif('✅ تم فتح تقييم ' + day + ' ' + MONTH_NAMES[month], 'success');
+      }
+    }, 100);
+  }, 100);
+}
+
+function closeBranchEvalsLog() {
+  const modal = document.getElementById('evalsLogModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+window.openBranchEvalsLog = openBranchEvalsLog;
+window.closeBranchEvalsLog = closeBranchEvalsLog;
+window.renderBranchEvalsLogContent = renderBranchEvalsLogContent;
+window.changeBranchEvalsMonth = changeBranchEvalsMonth;
+window.openBranchDateEval = openBranchDateEval;
+
+function escapeHTML(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+window.escapeHTML = escapeHTML;
+
+// ============================================================
+// CHATBOT KNOWLEDGE BASE — gives chatbot full access to system data
+// ============================================================
+function buildChatbotKnowledgeContext() {
+  try {
+    const ctx = [];
+    
+    // System overview
+    const branches = (typeof BRANCHES !== 'undefined') ? BRANCHES : [];
+    const branchNames = (typeof BRANCH_NAMES !== 'undefined') ? BRANCH_NAMES : {};
+    ctx.push('=== نظام إدارة تشغيل ب لبن قطر ===');
+    ctx.push('مدير التشغيل: بلال الأنصاري');
+    ctx.push('الفروع: ' + branches.map(b => branchNames[b] || b).join('، '));
+    ctx.push('');
+    
+    // Recent evaluations summary
+    ctx.push('=== التقييمات الأخيرة ===');
+    const allEvals = [];
+    if (typeof appData === 'object' && appData) {
+      Object.keys(appData).forEach(key => {
+        const parts = key.split('_');
+        if (parts.length < 3) return;
+        const day = parseInt(parts[parts.length - 1]);
+        const month = parseInt(parts[parts.length - 2]);
+        const branch = parts.slice(0, parts.length - 2).join('_');
+        if (isNaN(month) || isNaN(day)) return;
+        const visit = appData[key];
+        if (!visit) return;
+        const hasData = (visit.results && Object.keys(visit.results).length > 0) || visit.manager || (visit.managers && visit.managers.length);
+        if (!hasData) return;
+        let score = 0;
+        try {
+          if (typeof calcSmartScore === 'function') {
+            const s = calcSmartScore(branch, month, day);
+            score = s.percent || 0;
+          }
+        } catch(e) {}
+        allEvals.push({
+          branch: branchNames[branch] || branch,
+          month, day,
+          manager: (visit.managers && visit.managers.length) ? visit.managers.join('، ') : (visit.manager || '-'),
+          shift: visit.shift || '',
+          score: Math.round(score),
+          failed: Object.entries(visit.results || {}).filter(([,v]) => v === 'fail').length,
+          ok: Object.entries(visit.results || {}).filter(([,v]) => v === 'ok').length,
+          totalItems: Object.keys(visit.results || {}).length
+        });
+      });
+    }
+    // Sort newest first
+    allEvals.sort((a, b) => (b.month * 31 + b.day) - (a.month * 31 + a.day));
+    
+    const MONTH_NAMES = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+    allEvals.slice(0, 15).forEach(e => {
+      ctx.push('• ' + e.day + ' ' + MONTH_NAMES[e.month] + ' - فرع ' + e.branch + ': ' + e.score + '% (مطابق: ' + e.ok + '، غير مطابق: ' + e.failed + ') - المدير: ' + e.manager + (e.shift ? ' - شيفت ' + e.shift : ''));
+    });
+    if (allEvals.length > 15) ctx.push('  ... و ' + (allEvals.length - 15) + ' تقييم آخر');
+    ctx.push('');
+    
+    // Pending tasks
+    ctx.push('=== المهام ===');
+    const tasks = (typeof tasksData !== 'undefined' && Array.isArray(tasksData)) ? tasksData : [];
+    const pendingTasks = tasks.filter(t => !t.done && t.status !== 'completed');
+    const completedTasks = tasks.filter(t => t.done || t.status === 'completed');
+    ctx.push('إجمالي المهام: ' + tasks.length + ' (معلقة: ' + pendingTasks.length + '، منتهية: ' + completedTasks.length + ')');
+    pendingTasks.slice(0, 10).forEach(t => {
+      ctx.push('• [معلقة] ' + (t.title || t.task || '') + (t.branch ? ' - فرع ' + (branchNames[t.branch] || t.branch) : '') + (t.assignee ? ' - مكلف: ' + t.assignee : '') + (t.deadline || t.dueDate ? ' - ميعاد: ' + (t.deadline || t.dueDate) : ''));
+    });
+    ctx.push('');
+    
+    // Managers
+    ctx.push('=== المديرون ===');
+    try {
+      const profiles = JSON.parse(localStorage.getItem('blaban_manager_profiles') || '{}');
+      const names = Object.keys(profiles);
+      ctx.push('عدد المديرين المسجلين: ' + names.length);
+      names.slice(0, 10).forEach(n => {
+        const p = profiles[n] || {};
+        const meta = [];
+        if (p.phone) meta.push('📱 ' + p.phone);
+        if (p.branch) meta.push('🏪 ' + (branchNames[p.branch] || p.branch));
+        if (p.role) meta.push('🎯 ' + p.role);
+        ctx.push('• ' + n + (meta.length ? ' (' + meta.join('، ') + ')' : ''));
+      });
+    } catch(e) {}
+    ctx.push('');
+    
+    // Branch averages
+    ctx.push('=== متوسط أداء الفروع ===');
+    branches.forEach(b => {
+      const branchEvals = allEvals.filter(e => e.branch === (branchNames[b] || b));
+      if (branchEvals.length === 0) {
+        ctx.push('• فرع ' + (branchNames[b] || b) + ': لا توجد تقييمات بعد');
+        return;
+      }
+      const avg = Math.round(branchEvals.reduce((sum, e) => sum + e.score, 0) / branchEvals.length);
+      const recent = branchEvals[0];
+      ctx.push('• فرع ' + (branchNames[b] || b) + ': متوسط ' + avg + '% (عدد التقييمات: ' + branchEvals.length + ') - آخر تقييم: ' + recent.score + '% بتاريخ ' + recent.day + ' ' + MONTH_NAMES[recent.month]);
+    });
+    
+    return ctx.join('\n');
+  } catch(e) {
+    console.warn('[Chatbot Knowledge]', e);
+    return '';
+  }
+}
+window.buildChatbotKnowledgeContext = buildChatbotKnowledgeContext;
+
+// ============================================================
+// UPDATE BANNER
+// ============================================================
+function showUpdateBanner() {
+  if (sessionStorage.getItem('blaban_update_dismissed') === '1') return;
+  const banner = document.getElementById('updateBanner');
+  if (!banner) return;
+  banner.style.display = 'flex';
+  document.body.style.paddingTop = '52px';
+  setTimeout(() => {
+    if (banner.style.display !== 'none') dismissUpdateBanner();
+  }, 30000);
+}
+function dismissUpdateBanner() {
+  const banner = document.getElementById('updateBanner');
+  if (banner) banner.style.display = 'none';
+  document.body.style.paddingTop = '';
+  sessionStorage.setItem('blaban_update_dismissed', '1');
+}
+window.showUpdateBanner = showUpdateBanner;
+window.dismissUpdateBanner = dismissUpdateBanner;
+
+// ============================================================
+// APP BADGE (Badging API)
+// ============================================================
+function updateAppBadge() {
+  try {
+    if (!('setAppBadge' in navigator)) return;
+    const tasks = (typeof tasksData !== 'undefined' && Array.isArray(tasksData)) ? tasksData : [];
+    const pending = tasks.filter(t => !t.done && t.status !== 'completed').length;
+    if (pending > 0) {
+      navigator.setAppBadge(pending).catch(() => {});
+    } else {
+      if (navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
+    }
+  } catch(e) {}
+}
+window.updateAppBadge = updateAppBadge;
+setInterval(updateAppBadge, 60000);
 </script>
 <script>
 // ===================== UNIFIED SHARING MODULE =====================
@@ -10852,8 +11585,177 @@ function analyzeChatbotQuery(query) {
     return `🤖 **أنا مساعدك الذكي. أقدر أحلل:**\n\n• **المديرين:** أحسن، أسوأ، أداء معين\n• **الفروع:** ترتيب، أداء فرع محدد\n• **البنود:** أكثر فشلاً، النقاط الحرجة\n• **الإحصائيات:** ملخص شامل\n• **التحليل الزمني:** آخر أسبوع، اتجاهات\n• **التوصيات:** اقتراحات مبنية على البيانات\n\n**أمثلة للأسئلة:**\n- "مين أحسن مدير؟"\n- "تحليل فرع النصر"\n- "أكثر بند فاشل"\n- "النقاط الحرجة"\n- "توصيات لتحسين الأداء"`;
   }
   
-  // ============ Fallback ============
-  return `🤔 ما فهمت سؤالك بدقة. جرّب صياغة مختلفة، مثلاً:\n\n• "مين أحسن مدير؟"\n• "أعلى فرع أداءً"\n• "أكثر بند فاشل"\n• "النقاط الحرجة"\n• "توصيات"\n• "تحليل فرع [الاسم]"\n\nأو اكتب **"مساعدة"** لرؤية كل ما يمكنني فعله.`;
+  // ============ SMART FALLBACK — uses full system data ============
+  // If query mentions any branch name, give branch summary
+  try {
+    if (typeof BRANCH_NAMES !== 'undefined') {
+      for (const b of Object.keys(BRANCH_NAMES)) {
+        const bName = BRANCH_NAMES[b];
+        if (q.includes(bName) || q.includes(b)) {
+          return chatbotBranchSummary(b);
+        }
+      }
+    }
+  } catch(e) {}
+  
+  // If query is generic/data-related, give system overview
+  const dataKeywords = ['بيانات','معلومات','عرض','اعرض','اعطني','أعطني','أوضح','وضح','ايه','إيه','ما','ماذا','كم','عدد','اين','أين','كل','جميع','ملخص','تقرير','حالة','وضع','نظرة','مهام','تقييم','تقييمات','مدير','مدراء','فرع','فروع','نتيجة','نتائج','أداء','اداء'];
+  const isDataQuery = dataKeywords.some(k => q.includes(k));
+  
+  if (isDataQuery || q.length < 30) {
+    return chatbotSystemOverview(query);
+  }
+  
+  return `🤔 ما فهمت سؤالك بدقة. جرّب صياغة مختلفة، مثلاً:\n\n• "مين أحسن مدير؟"\n• "أعلى فرع أداءً"\n• "أكثر بند فاشل"\n• "النقاط الحرجة"\n• "توصيات"\n• "تحليل فرع [الاسم]"\n• "ملخص النظام"\n• "كل المهام"\n\nأو اكتب اسم أي فرع لرؤية ملخصه الكامل.`;
+}
+
+// Helper: branch full summary
+function chatbotBranchSummary(branch) {
+  try {
+    const bName = BRANCH_NAMES[branch] || branch;
+    const MONTH_NAMES = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+    const evals = [];
+    
+    if (typeof appData === 'object' && appData) {
+      Object.keys(appData).forEach(key => {
+        const parts = key.split('_');
+        if (parts.length < 3) return;
+        const day = parseInt(parts[parts.length - 1]);
+        const month = parseInt(parts[parts.length - 2]);
+        const keyBranch = parts.slice(0, parts.length - 2).join('_');
+        if (keyBranch !== branch) return;
+        if (isNaN(month) || isNaN(day)) return;
+        const visit = appData[key];
+        if (!visit) return;
+        const hasResults = visit.results && Object.keys(visit.results).length > 0;
+        if (!hasResults && !visit.manager) return;
+        let score = 0;
+        try {
+          if (typeof calcSmartScore === 'function') {
+            const s = calcSmartScore(branch, month, day);
+            score = s.percent || 0;
+          }
+        } catch(e) {}
+        evals.push({ month, day, manager: (visit.managers && visit.managers.length) ? visit.managers.join('، ') : (visit.manager || '-'), shift: visit.shift, score: Math.round(score), failedCount: Object.entries(visit.results || {}).filter(([,v]) => v === 'fail').length, okCount: Object.entries(visit.results || {}).filter(([,v]) => v === 'ok').length });
+      });
+    }
+    evals.sort((a, b) => (b.month * 31 + b.day) - (a.month * 31 + a.day));
+    
+    if (evals.length === 0) return '🏪 فرع **' + bName + '**\n\n❌ لا توجد تقييمات لهذا الفرع بعد.';
+    
+    const avg = Math.round(evals.reduce((s, e) => s + e.score, 0) / evals.length);
+    const latest = evals[0];
+    const tasks = (typeof tasksData !== 'undefined' && Array.isArray(tasksData)) ? tasksData : [];
+    const branchTasks = tasks.filter(t => t.branch === branch);
+    const pendingTasks = branchTasks.filter(t => !t.done && t.status !== 'completed');
+    
+    let resp = '🏪 **ملخص فرع ' + bName + '**\n\n';
+    resp += '📊 **الأداء العام:**\n';
+    resp += '• متوسط الأداء: **' + avg + '%**\n';
+    resp += '• عدد التقييمات: ' + evals.length + '\n';
+    resp += '• آخر تقييم: **' + latest.score + '%** بتاريخ ' + latest.day + ' ' + MONTH_NAMES[latest.month] + '\n';
+    resp += '• المدير: ' + latest.manager + (latest.shift ? ' - شيفت ' + latest.shift : '') + '\n';
+    resp += '• مطابق: ' + latest.okCount + ' بند | غير مطابق: ' + latest.failedCount + ' بند\n\n';
+    
+    resp += '📝 **المهام:**\n';
+    resp += '• إجمالي: ' + branchTasks.length + ' | معلقة: ' + pendingTasks.length + '\n';
+    if (pendingTasks.length > 0) {
+      resp += '\nأهم المهام المعلقة:\n';
+      pendingTasks.slice(0, 5).forEach(t => {
+        resp += '• ' + (t.title || t.task || '') + (t.assignee ? ' (مكلف: ' + t.assignee + ')' : '') + '\n';
+      });
+    }
+    
+    resp += '\n📈 **آخر 5 تقييمات:**\n';
+    evals.slice(0, 5).forEach(e => {
+      const emoji = e.score >= 80 ? '🟢' : e.score >= 60 ? '🟡' : '🔴';
+      resp += emoji + ' ' + e.day + ' ' + MONTH_NAMES[e.month] + ': ' + e.score + '% (' + e.manager + ')\n';
+    });
+    
+    return resp;
+  } catch(e) {
+    return '❌ خطأ في جلب بيانات الفرع: ' + e.message;
+  }
+}
+
+// Helper: full system overview
+function chatbotSystemOverview(query) {
+  try {
+    const branches = (typeof BRANCHES !== 'undefined') ? BRANCHES : [];
+    const branchNames = (typeof BRANCH_NAMES !== 'undefined') ? BRANCH_NAMES : {};
+    const tasks = (typeof tasksData !== 'undefined' && Array.isArray(tasksData)) ? tasksData : [];
+    const MONTH_NAMES = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+    
+    // Collect all evals
+    const allEvals = [];
+    if (typeof appData === 'object' && appData) {
+      Object.keys(appData).forEach(key => {
+        const parts = key.split('_');
+        if (parts.length < 3) return;
+        const day = parseInt(parts[parts.length - 1]);
+        const month = parseInt(parts[parts.length - 2]);
+        const branch = parts.slice(0, parts.length - 2).join('_');
+        if (isNaN(month) || isNaN(day)) return;
+        const visit = appData[key];
+        if (!visit) return;
+        const hasResults = visit.results && Object.keys(visit.results).length > 0;
+        if (!hasResults && !visit.manager) return;
+        let score = 0;
+        try {
+          if (typeof calcSmartScore === 'function') {
+            const s = calcSmartScore(branch, month, day);
+            score = s.percent || 0;
+          }
+        } catch(e) {}
+        allEvals.push({ branch, branchName: branchNames[branch] || branch, month, day, score: Math.round(score) });
+      });
+    }
+    allEvals.sort((a, b) => (b.month * 31 + b.day) - (a.month * 31 + a.day));
+    
+    const pendingTasks = tasks.filter(t => !t.done && t.status !== 'completed');
+    const completedTasks = tasks.filter(t => t.done || t.status === 'completed');
+    
+    let resp = '📊 **ملخص نظام ب لبن قطر**\n\n';
+    resp += '🏪 **الفروع (' + branches.length + '):**\n';
+    branches.forEach(b => {
+      const branchEvals = allEvals.filter(e => e.branch === b);
+      if (branchEvals.length === 0) {
+        resp += '• ' + (branchNames[b] || b) + ': لا توجد تقييمات\n';
+      } else {
+        const avg = Math.round(branchEvals.reduce((s, e) => s + e.score, 0) / branchEvals.length);
+        const emoji = avg >= 80 ? '🟢' : avg >= 60 ? '🟡' : '🔴';
+        resp += emoji + ' ' + (branchNames[b] || b) + ': **' + avg + '%** (' + branchEvals.length + ' تقييم)\n';
+      }
+    });
+    
+    resp += '\n📅 **آخر التقييمات:**\n';
+    allEvals.slice(0, 8).forEach(e => {
+      const emoji = e.score >= 80 ? '🟢' : e.score >= 60 ? '🟡' : '🔴';
+      resp += emoji + ' ' + e.day + ' ' + MONTH_NAMES[e.month] + ' - ' + e.branchName + ': ' + e.score + '%\n';
+    });
+    
+    resp += '\n📝 **المهام:**\n';
+    resp += '• إجمالي: ' + tasks.length + ' | معلقة: ' + pendingTasks.length + ' | منتهية: ' + completedTasks.length + '\n';
+    if (pendingTasks.length > 0) {
+      resp += '\nأهم المهام المعلقة:\n';
+      pendingTasks.slice(0, 5).forEach(t => {
+        const branchStr = t.branch ? ' - ' + (branchNames[t.branch] || t.branch) : '';
+        resp += '• ' + (t.title || t.task || '') + branchStr + '\n';
+      });
+    }
+    
+    resp += '\n💡 **اسأل عن:**\n';
+    resp += '• اسم أي فرع للحصول على ملخص كامل\n';
+    resp += '• "أحسن مدير" / "أسوأ مدير"\n';
+    resp += '• "أعلى فرع" / "أقل فرع"\n';
+    resp += '• "أكثر بند فشلاً"\n';
+    resp += '• "النقاط الحرجة"\n';
+    resp += '• "توصيات"';
+    
+    return resp;
+  } catch(e) {
+    return '❌ خطأ في جلب بيانات النظام: ' + e.message;
+  }
 }
 
 // ===================== ITEMS MANAGER (UI) =====================
@@ -12793,12 +13695,11 @@ function setupRealtimeSubscriptions() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'blaban_evaluations' }, (payload) => {
       console.log('[Realtime] Eval update:', payload.eventType);
       if (payload.new && payload.new.created_by !== currentUser?.id) {
-        // Apply update from another user
         try {
           let localData = JSON.parse(localStorage.getItem('blaban_data_v3') || '{}');
           const ev = payload.new;
           if (!localData[ev.branch_id]) localData[ev.branch_id] = {};
-          localData[ev.branch_id][ev.eval_date] = {
+          const evObj = {
             managers: ev.managers || [],
             manager: (ev.managers || [])[0] || '',
             results: ev.results || {},
@@ -12809,12 +13710,40 @@ function setupRealtimeSubscriptions() {
             scorePercent: ev.score_percent || 0,
             updatedAt: ev.updated_at
           };
+          localData[ev.branch_id][ev.eval_date] = evObj;
           localStorage.setItem('blaban_data_v3', JSON.stringify(localData));
-          if (typeof showNotif === 'function') showNotif('🔄 تحديث مباشر: ' + (ev.branch_id || '') + ' (' + ev.eval_date + ')', 'info');
           
-          // Refresh current page
+          // Update in-memory appData object too (critical for live UI updates!)
+          if (typeof appData !== 'undefined' && appData) {
+            if (!appData[ev.branch_id]) appData[ev.branch_id] = {};
+            appData[ev.branch_id][ev.eval_date] = evObj;
+          }
+          
+          const branchName = (window.BRANCH_NAMES?.[ev.branch_id]) || ev.branch_id;
+          if (typeof showNotif === 'function') {
+            showNotif('🔄 تحديث مباشر: ' + branchName + ' (' + ev.eval_date + ')', 'info');
+          }
+          
+          // OS notification (works in background)
+          if (typeof showOSNotification === 'function') {
+            showOSNotification({
+              title: '📊 تقييم جديد — فرع ' + branchName,
+              body: 'بتاريخ ' + ev.eval_date + ' — نسبة ' + Math.round(ev.score_percent || 0) + '%',
+              icon: './icon-192.png',
+              tag: 'eval-' + ev.branch_id + '-' + ev.eval_date,
+              vibrate: [200]
+            });
+          }
+          
+          // Refresh current page + dashboard
           if (typeof currentPage !== 'undefined' && typeof showPage === 'function') {
             try { showPage(currentPage); } catch(e) {}
+          }
+          if (typeof renderDashboard === 'function') {
+            try { renderDashboard(); } catch(e) {}
+          }
+          if (typeof renderBranch === 'function' && typeof selectedBranch !== 'undefined' && selectedBranch === ev.branch_id) {
+            try { renderBranch(ev.branch_id); } catch(e) {}
           }
         } catch(e) { console.warn(e); }
       }
@@ -12850,6 +13779,7 @@ function setupRealtimeSubscriptions() {
           
           const mapped = mapCloudTaskToLocal(cloudTask);
           const idx = localTasks.findIndex(t => String(t.id) === String(mapped.id));
+          const isNewTask = idx < 0;
           if (idx >= 0) {
             localTasks[idx] = mapped;
           } else {
@@ -12858,6 +13788,16 @@ function setupRealtimeSubscriptions() {
           if (typeof showNotif === 'function') {
             const action = payload.eventType === 'INSERT' ? 'مهمة جديدة' : 'تحديث مهمة';
             showNotif('🔄 ' + action + ': ' + (mapped.title || ''), 'info');
+          }
+          // Send OS notification for new tasks (works even when app is closed)
+          if (isNewTask && typeof showOSNotification === 'function') {
+            showOSNotification({
+              title: '📋 مهمة جديدة من مدير التشغيل',
+              body: mapped.title + (mapped.branch ? ' — فرع ' + (window.BRANCH_NAMES?.[mapped.branch] || mapped.branch) : ''),
+              icon: './icon-192.png',
+              tag: 'task-' + mapped.id,
+              vibrate: [200, 100, 200]
+            });
           }
         }
         
@@ -12874,6 +13814,10 @@ function setupRealtimeSubscriptions() {
         }
         if (typeof renderDashboard === 'function') {
           try { renderDashboard(); } catch(e) {}
+        }
+        // Update tasks badge
+        if (typeof updateTasksBadge === 'function') {
+          try { updateTasksBadge(); } catch(e) {}
         }
       } catch(e) {
         console.warn('[Realtime] Task handler error:', e);
@@ -13321,63 +14265,155 @@ function showIncomingAlert(data) {
   `;
   document.body.appendChild(overlay);
   
-  // Play alert sound
+  // Play LOUD alert sound for 5 seconds
   playAlertSound(type);
   
-  // Vibrate on mobile
+  // Strong vibration on mobile
   if (navigator.vibrate) {
     try {
-      const pattern = type === 'urgent' ? [300, 100, 300, 100, 300] : [200, 100, 200];
+      const pattern = type === 'urgent' 
+        ? [500, 100, 500, 100, 500, 100, 500, 100, 500] // 5 seconds total
+        : type === 'important' 
+        ? [300, 100, 300, 100, 300] 
+        : [200];
       navigator.vibrate(pattern);
     } catch(e) {}
   }
   
   // Auto-dismiss after 15 seconds
   const dismissTimer = setTimeout(() => overlay.remove(), 15000);
-  
-  // Click to dismiss
   overlay.addEventListener('click', () => {
     clearTimeout(dismissTimer);
     overlay.style.animation = 'fadeIn 0.3s reverse';
     setTimeout(() => overlay.remove(), 300);
   });
   
-  // Browser notification (if permission granted)
-  if ('Notification' in window && Notification.permission === 'granted') {
-    try {
-      new Notification('🚨 ' + (data.title || 'تنبيه عاجل'), {
-        body: data.message || 'من: ' + (data.from || 'مدير التشغيل'),
-        icon: './icon-192.png',
-        tag: 'urgent-alert',
-        requireInteraction: type === 'urgent',
-        vibrate: type === 'urgent' ? [300, 100, 300] : [200]
-      });
-    } catch(e) {}
-  }
+  // OS-level notification — appears even when browser is in background
+  showOSNotification({
+    title: '🚨 ' + (data.title || 'تنبيه عاجل من مدير التشغيل'),
+    body: data.message || 'من: ' + (data.from || 'مدير التشغيل'),
+    icon: './icon-192.png',
+    badge: './icon-192.png',
+    tag: 'urgent-alert-' + Date.now(),
+    requireInteraction: type === 'urgent',
+    vibrate: type === 'urgent' ? [500,100,500,100,500] : [200,100,200],
+    renotify: true,
+    sound: './alert.mp3'
+  });
 }
 
-// Simple alert sound using Web Audio API (no external file needed)
+// Show OS notification (works when app is in background)
+async function showOSNotification(options) {
+  if (!('Notification' in window)) return;
+  
+  // Request permission if needed
+  if (Notification.permission === 'default') {
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') return;
+    } catch(e) { return; }
+  }
+  if (Notification.permission !== 'granted') return;
+  
+  try {
+    // Use service worker notification (works when tab is closed)
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) {
+        await reg.showNotification(options.title, {
+          body: options.body,
+          icon: options.icon || './icon-192.png',
+          badge: options.badge || './icon-192.png',
+          tag: options.tag || 'default',
+          requireInteraction: options.requireInteraction || false,
+          vibrate: options.vibrate || [200],
+          renotify: options.renotify || false,
+          dir: 'rtl',
+          lang: 'ar',
+          data: { url: window.location.href }
+        });
+        return;
+      }
+    }
+    // Fallback: regular Notification API
+    new Notification(options.title, {
+      body: options.body,
+      icon: options.icon,
+      tag: options.tag,
+      dir: 'rtl',
+      lang: 'ar'
+    });
+  } catch(e) { console.warn('[Notif] Failed:', e); }
+}
+window.showOSNotification = showOSNotification;
+
+// Loud, prolonged alert sound (5 seconds)
 function playAlertSound(type) {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const freq = type === 'urgent' ? [800, 1000, 800, 1000] : type === 'important' ? [600, 800] : [500];
-    const duration = type === 'urgent' ? 0.15 : 0.2;
-    const totalDelay = type === 'urgent' ? 0.18 : 0.25;
     
-    freq.forEach((f, i) => {
+    if (type === 'urgent') {
+      // 5-second loud urgent siren — alternating high/low tones
+      const totalDuration = 5; // seconds
+      const cycleLen = 0.5; // each beep is 0.5s
+      const cycles = Math.floor(totalDuration / cycleLen);
+      
+      for (let i = 0; i < cycles; i++) {
+        const startTime = ctx.currentTime + (i * cycleLen);
+        // Alternate frequencies for a siren effect
+        const freq = (i % 2 === 0) ? 1200 : 800;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+        
+        osc.type = 'square'; // louder, sharper
+        osc.frequency.value = freq;
+        filter.type = 'lowpass';
+        filter.frequency.value = 3000;
+        
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        
+        gain.gain.setValueAtTime(0, startTime);
+        gain.gain.linearRampToValueAtTime(0.7, startTime + 0.02); // Loud!
+        gain.gain.linearRampToValueAtTime(0.6, startTime + cycleLen - 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + cycleLen);
+        
+        osc.start(startTime);
+        osc.stop(startTime + cycleLen);
+      }
+    } else if (type === 'important') {
+      // 2-second medium alert
+      const freqs = [800, 1000, 800, 1000];
+      freqs.forEach((f, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = f;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        const start = ctx.currentTime + (i * 0.4);
+        gain.gain.setValueAtTime(0, start);
+        gain.gain.linearRampToValueAtTime(0.5, start + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.35);
+        osc.start(start);
+        osc.stop(start + 0.35);
+      });
+    } else {
+      // Single soft tone for info
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'sine';
-      osc.frequency.value = f;
+      osc.frequency.value = 600;
       osc.connect(gain);
       gain.connect(ctx.destination);
-      const start = ctx.currentTime + (i * totalDelay);
-      gain.gain.setValueAtTime(0, start);
-      gain.gain.linearRampToValueAtTime(0.4, start + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
-      osc.start(start);
-      osc.stop(start + duration);
-    });
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.5);
+    }
   } catch(e) { console.warn('[Alert] Sound failed:', e); }
 }
 
@@ -13637,29 +14673,32 @@ function positionBubbleMenu() {
   const trigger = document.getElementById('bubbleMenuBtn');
   if (!menu || !trigger) return;
   const rect = trigger.getBoundingClientRect();
-  // Position menu below the trigger
+  // Position menu directly below the trigger button (same horizontal position)
   const top = rect.bottom + 12;
-  // Position from right edge of viewport (aligned with trigger right edge)
-  const rightOffset = window.innerWidth - rect.right;
+  // Use direct left/right pixel coordinates (avoids RTL inset-inline confusion)
+  // Align RIGHT EDGE of menu with RIGHT EDGE of trigger
+  const bubbleSize = window.innerWidth <= 768 ? 46 : 52;
+  // The menu is a column of bubbles centered. To align right edges:
+  // Right edge of menu = right edge of trigger
+  // So: left of menu = rect.right - bubbleSize
+  const menuLeft = rect.right - bubbleSize;
   menu.style.top = top + 'px';
-  menu.style.insetInlineEnd = rightOffset + 'px';
+  menu.style.left = menuLeft + 'px';
+  menu.style.right = 'auto';
+  menu.style.insetInlineEnd = 'auto';
+  menu.style.insetInlineStart = 'auto';
+  
   // Position device submenu BELOW the device bubble (same column as main menu)
   const sub = document.getElementById('deviceSubMenu');
   const deviceBubble = document.querySelector('.bubble-device');
   if (sub && deviceBubble) {
-    // If the bubble menu is open, use the actual rendered position of device bubble
     if (menu.classList.contains('is-open')) {
       const dbRect = deviceBubble.getBoundingClientRect();
-      // Drop sub-bubbles vertically right below the device bubble
       sub.style.top = (dbRect.bottom + 10) + 'px';
-      sub.style.insetInlineEnd = (window.innerWidth - dbRect.right) + 'px';
-    } else {
-      // Fallback: estimate position
-      const bubbleSize = window.innerWidth <= 768 ? 46 : 52;
-      const gap = 10;
-      const deviceRowTop = top + (4 * (bubbleSize + gap));
-      sub.style.top = (deviceRowTop + bubbleSize + 10) + 'px';
-      sub.style.insetInlineEnd = rightOffset + 'px';
+      sub.style.left = (dbRect.right - bubbleSize) + 'px';
+      sub.style.right = 'auto';
+      sub.style.insetInlineEnd = 'auto';
+      sub.style.insetInlineStart = 'auto';
     }
   }
 }
@@ -13721,17 +14760,17 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeBubbleMenu();
 });
 
-// ============ ROTATION LOCK (prevent image flip on phone rotation) ============
+// ============ ORIENTATION LOCK (prevents screen rotation/flip entirely) ============
 function toggleRotationLock() {
   const isLocked = localStorage.getItem('blaban_rotation_lock') === '1';
   const newState = !isLocked;
   localStorage.setItem('blaban_rotation_lock', newState ? '1' : '0');
   applyRotationLock(newState);
   if (typeof showNotif === 'function') {
-    showNotif(newState ? '🔒 تم تثبيت الاتجاه (لا يدور مع تدوير الجهاز)' : '🔓 تم تحرير الاتجاه', 'success');
+    showNotif(newState ? '🔒 تم تثبيت الشاشة (لن تدور أو تنقلب)' : '🔓 تم تحرير الشاشة', 'success');
   }
 }
-function applyRotationLock(locked) {
+async function applyRotationLock(locked) {
   const btn = document.getElementById('rotationLockBtn');
   if (btn) {
     const icon = btn.querySelector('.bubble-icon');
@@ -13743,26 +14782,41 @@ function applyRotationLock(locked) {
     } else {
       btn.classList.remove('is-locked');
       if (icon) icon.textContent = '🔓';
-      if (label) label.textContent = 'قفل التدوير';
+      if (label) label.textContent = 'تثبيت';
     }
   }
-  // Apply via CSS class on body
+  
   if (locked) {
     document.body.classList.add('rotation-locked');
-    // Try Screen Orientation API (works on mobile when in fullscreen/PWA)
-    if (screen.orientation && screen.orientation.lock) {
-      screen.orientation.lock('portrait').catch(() => {
-        // API requires fullscreen, fall back to CSS-only
-      });
+    // Try Screen Orientation API to lock to current orientation
+    try {
+      if (screen.orientation && screen.orientation.lock) {
+        // Lock to current orientation (whichever it is)
+        const current = screen.orientation.type || 'portrait-primary';
+        // Try multiple lock variants for best compatibility
+        const tries = [current, 'natural', 'portrait', 'landscape'];
+        for (const t of tries) {
+          try {
+            await screen.orientation.lock(t);
+            console.log('[Lock] Orientation locked to:', t);
+            break;
+          } catch(e) { /* try next */ }
+        }
+      }
+    } catch(e) {
+      console.warn('[Lock] Native lock failed (need fullscreen/PWA mode):', e);
     }
+    // Prevent any visual flip via CSS (extra safety)
+    // The CSS class .rotation-locked applies will-change and prevents transform animations
   } else {
     document.body.classList.remove('rotation-locked');
-    if (screen.orientation && screen.orientation.unlock) {
-      try { screen.orientation.unlock(); } catch(e) {}
-    }
+    try {
+      if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
+    } catch(e) {}
   }
 }
 window.toggleRotationLock = toggleRotationLock;
+window.applyRotationLock = applyRotationLock;
 
 // Restore rotation lock preference on load
 (function() {
@@ -13859,7 +14913,8 @@ function showRemembranceBubble() {
   bubble.classList.remove('closing');
   bubble.style.display = 'block';
   
-  let secondsLeft = 10;
+  // 5 second countdown
+  let secondsLeft = 5;
   if (counterEl) counterEl.textContent = secondsLeft;
   if (remembranceCountdown) clearInterval(remembranceCountdown);
   remembranceCountdown = setInterval(() => {
@@ -13872,7 +14927,7 @@ function showRemembranceBubble() {
   }, 1000);
   
   if (remembranceCloseTimer) clearTimeout(remembranceCloseTimer);
-  remembranceCloseTimer = setTimeout(closeRemembranceBubble, 10000);
+  remembranceCloseTimer = setTimeout(closeRemembranceBubble, 5000);
 }
 
 function closeRemembranceBubble() {
@@ -13887,9 +14942,9 @@ window.closeRemembranceBubble = closeRemembranceBubble;
 
 function startRemembranceCycle() {
   if (remembranceTimer) clearInterval(remembranceTimer);
-  // First one after 30s, then every 60s
+  // First one after 30s, then every 3 minutes (180000ms)
   setTimeout(showRemembranceBubble, 30000);
-  remembranceTimer = setInterval(showRemembranceBubble, 60000);
+  remembranceTimer = setInterval(showRemembranceBubble, 180000);
 }
 
 // Prayer times for Qatar/Doha (May 2026 approximate)
@@ -14069,8 +15124,9 @@ window.forceUpdateApp = forceUpdateApp;
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     console.log('[SW] Controller changed — new version active');
+    if (typeof showUpdateBanner === 'function') showUpdateBanner();
     if (typeof showNotif === 'function') {
-      showNotif('🆕 إصدار جديد متاح — اضغط 🔄 تحديث لتفعيله', 'info', 8000);
+      showNotif('🆕 إصدار جديد متاح — اضغط على بانر "تحديث الآن"', 'info', 8000);
     }
   });
   
@@ -14078,10 +15134,33 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   setInterval(async () => {
     try {
       const reg = await navigator.serviceWorker.getRegistration();
-      if (reg) reg.update();
+      if (reg) {
+        await reg.update();
+        // If a new SW is waiting, prompt user
+        if (reg.waiting && typeof showUpdateBanner === 'function') {
+          showUpdateBanner();
+        }
+      }
     } catch(e) {}
   }, 60000);
+  
+  // Check once on load
+  setTimeout(async () => {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg && reg.waiting && typeof showUpdateBanner === 'function') {
+        showUpdateBanner();
+      }
+    } catch(e) {}
+  }, 3000);
 }
+
+// Update app badge on tasks change
+window.addEventListener('load', () => {
+  if (typeof updateAppBadge === 'function') {
+    setTimeout(updateAppBadge, 2000);
+  }
+});
 </script>
 </body>
 </html>
