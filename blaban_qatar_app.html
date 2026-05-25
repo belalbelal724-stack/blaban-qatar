@@ -2724,14 +2724,100 @@ body.view-tablet .main { padding: 12px 10px; }
   border: 1px solid var(--green);
 }
 
-/* Mobile: stack circle above body */
-@media (max-width: 600px) {
-  .manager-card-fixed { flex-wrap: wrap; }
-  .manager-card-fixed .score-circle {
-    width: 60px; height: 60px; min-width: 60px; min-height: 60px;
-    font-size: 16px;
+/* Mobile: stack vertically with proper sizing */
+@media (max-width: 768px) {
+  .manager-score-row,
+  .manager-card-fixed {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px;
   }
-  .manager-spark-stats { gap: 8px; font-size: 11px; }
+  .manager-card-fixed .score-circle {
+    width: 56px; height: 56px; min-width: 56px; min-height: 56px;
+    font-size: 15px;
+    align-self: center;
+  }
+  .manager-card-body {
+    width: 100%;
+    min-width: 0;
+  }
+  .manager-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .manager-name {
+    font-size: 16px;
+    line-height: 1.3;
+    word-break: break-word;
+  }
+  .manager-trend {
+    font-size: 11px;
+    word-break: break-word;
+  }
+  .manager-meta {
+    font-size: 11px;
+    line-height: 1.5;
+    word-break: break-word;
+  }
+  .manager-spark-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .manager-spark-box {
+    width: 100%;
+    overflow-x: auto;
+  }
+  .manager-spark-box svg {
+    max-width: 100%;
+    height: auto;
+  }
+  .manager-spark-stats {
+    gap: 8px;
+    font-size: 11px;
+    justify-content: space-between;
+    width: 100%;
+  }
+  .manager-tags {
+    gap: 3px;
+  }
+  .manager-tags .tag {
+    font-size: 10px;
+    padding: 2px 6px;
+  }
+  .manager-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .manager-verdict {
+    font-size: 11px;
+    padding: 6px 10px;
+    text-align: center;
+    line-height: 1.4;
+  }
+  .manager-actions .btn {
+    width: 100%;
+    font-size: 12px;
+    padding: 8px 12px;
+  }
+  .manager-ap-mini-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    font-size: 11px;
+  }
+}
+
+/* Very small screens */
+@media (max-width: 380px) {
+  .manager-score-row,
+  .manager-card-fixed { padding: 10px; }
+  .manager-name { font-size: 14px; }
+  .manager-trend, .manager-meta { font-size: 10px; }
+  .manager-spark-stats { font-size: 10px; gap: 6px; }
 }
 
 .action-plan-item {
@@ -4565,8 +4651,7 @@ function initData() {
   } catch(e) { tasksData = []; }
 }
 
-// Lightweight cloud sync — fires immediately after each save (no debouncing)
-// The autoSync* functions are smart: they only sync the specific record that changed
+// Lightweight cloud sync — fires immediately after each save
 let _saveDataSyncTimer = null;
 let _saveTasksSyncTimer = null;
 
@@ -4575,9 +4660,31 @@ function saveData() {
   catch(e) { localStorage.removeItem('blaban_data_v2'); localStorage.setItem('blaban_data_v3', JSON.stringify(appData)); }
   // Push to firebase if connected
   if (typeof pushDataToFirebase === 'function') pushDataToFirebase();
-  // Immediate Supabase sync — uploads ONLY the last-edited branch/date (lightweight)
+  
+  // ============ INSTANT BROADCAST (< 100ms) ============
+  // Send a broadcast for the last-edited key — arrives instantly on all devices
+  try {
+    const lastKey = window._lastEditedKey || window._currentEditKey;
+    if (lastKey && appData[lastKey] && typeof broadcastDataChange === 'function') {
+      const parts = lastKey.split('_');
+      if (parts.length >= 3) {
+        const day = parseInt(parts[parts.length - 1]);
+        const month = parseInt(parts[parts.length - 2]);
+        const branch = parts.slice(0, parts.length - 2).join('_');
+        if (!isNaN(month) && !isNaN(day)) {
+          broadcastDataChange('eval', 'update', {
+            branch: branch,
+            month: month,
+            day: day,
+            visit: appData[lastKey]
+          });
+        }
+      }
+    }
+  } catch(e) { console.warn('[Broadcast eval]', e); }
+  
+  // ============ DB SYNC (Supabase persistence — ~500ms) ============
   if (typeof window.syncEnabled === 'function' && window.syncEnabled()) {
-    // Quick debounce 200ms to batch rapid clicks (e.g. fast checkbox toggling)
     if (_saveDataSyncTimer) clearTimeout(_saveDataSyncTimer);
     _saveDataSyncTimer = setTimeout(() => {
       try {
@@ -4586,7 +4693,6 @@ function saveData() {
         if (lastBranch && lastDate && appData[lastBranch] && appData[lastBranch][lastDate]) {
           if (typeof autoSyncEvaluation === 'function') autoSyncEvaluation(lastBranch, lastDate);
         } else {
-          // Fallback: sync today for all branches that have data today
           const today = new Date().toISOString().split('T')[0];
           Object.keys(appData || {}).forEach(branch => {
             if (appData[branch] && appData[branch][today]) {
@@ -4603,7 +4709,19 @@ function saveTasks() {
   try { localStorage.setItem('blaban_tasks_v1', JSON.stringify(tasksData)); }
   catch(e) { console.error('Tasks save failed', e); }
   if (typeof pushDataToFirebase === 'function') pushDataToFirebase();
-  // Immediate Supabase task sync
+  
+  // ============ INSTANT BROADCAST of last-edited task ============
+  try {
+    const lastTaskId = window._lastEditedTaskId;
+    if (lastTaskId && typeof broadcastDataChange === 'function') {
+      const task = tasksData.find(t => String(t.id) === String(lastTaskId));
+      if (task) {
+        broadcastDataChange('task', 'update', task);
+      }
+    }
+  } catch(e) { console.warn('[Broadcast task]', e); }
+  
+  // ============ DB SYNC ============
   if (typeof window.syncEnabled === 'function' && window.syncEnabled()) {
     if (_saveTasksSyncTimer) clearTimeout(_saveTasksSyncTimer);
     _saveTasksSyncTimer = setTimeout(() => {
@@ -4613,7 +4731,6 @@ function saveTasks() {
           const task = tasksData.find(t => String(t.id) === String(lastTaskId));
           if (task && typeof autoSyncTask === 'function') autoSyncTask(task);
         } else {
-          // Fallback: sync only the 3 most recent tasks (avoid spamming)
           const recent = (tasksData || []).slice(0, 3);
           recent.forEach(t => {
             if (typeof autoSyncTask === 'function') autoSyncTask(t);
@@ -4632,6 +4749,9 @@ function getVisitData(branch, month, day) {
   if (!appData[key].reported24h) appData[key].reported24h = {};
   if (!appData[key].comments) appData[key].comments = {};
   if (!appData[key].actionStatus) appData[key].actionStatus = {};
+  // Track this as currently-being-edited (for instant broadcast)
+  window._lastEditedKey = key;
+  window._currentEditKey = key;
   return appData[key];
 }
 
@@ -7031,6 +7151,7 @@ function submitNewTask() {
   };
   
   tasksData.unshift(newTask);
+  window._lastEditedTaskId = newTask.id;
   saveTasks();
   closeAddTaskModal();
   renderTasksPage();
@@ -7080,6 +7201,7 @@ function addTaskComment(taskId, type, branch) {
   // Legacy status field
   if (task.status === 'pending') task.status = 'in-progress';
   
+  window._lastEditedTaskId = task.id;
   saveTasks();
   textarea.value = '';
   renderTasksPage();
@@ -7151,6 +7273,7 @@ function completeTask(taskId, branch) {
     task.status = 'in-progress';
   }
   
+  window._lastEditedTaskId = task.id;
   saveTasks();
   renderTasksPage();
   updateTasksBadge();
@@ -7272,6 +7395,7 @@ function completeTaskAllBranches(taskId) {
   task.status = 'completed';
   task.completedAt = new Date().toISOString();
   
+  window._lastEditedTaskId = task.id;
   saveTasks();
   renderTasksPage();
   updateTasksBadge();
@@ -7283,6 +7407,10 @@ function deleteTask(taskId) {
   const task = tasksData.find(t=>t.id===taskId);
   tasksData = tasksData.filter(t=>t.id!==taskId);
   saveTasks();
+  // Broadcast delete to all devices instantly
+  if (typeof broadcastDataChange === 'function') {
+    broadcastDataChange('task_delete', 'delete', { id: taskId });
+  }
   // Delete from Supabase cloud too
   if (typeof window.deleteTaskFromCloud === 'function') {
     window.deleteTaskFromCloud(taskId);
@@ -9185,6 +9313,140 @@ function exportManagersExcel() {
 function exportAllExcel() {
   const wb=XLSX.utils.book_new();
   const allItems=CHECKLIST.flatMap(s=>s.items.map(i=>({...i,section:s.section})));
+  
+  // ===== Sheet 1: Combined summary of all branches =====
+  const combinedRows = [['ملخص تقييم الفروع — كل الشهور']];
+  combinedRows.push([]);
+  combinedRows.push(['الفرع','الشهر','اليوم','المدير','الشيفت','نسبة المطابقة','عدد البنود','مطابق','غير مطابق','معفى','بنود حرجة فاشلة']);
+  
+  BRANCHES.forEach(branch => {
+    for(let m=0;m<12;m++) for(let d=1;d<=MONTH_DAYS[m];d++){
+      const key=getKey(branch,m,d); 
+      if(!appData[key])continue; 
+      const v=appData[key];
+      if(!v.results || Object.keys(v.results).length===0) continue;
+      
+      let okCount=0, failCount=0, excusedCount=0, criticalFails=0;
+      Object.entries(v.results).forEach(([id,result])=>{
+        const item = allItems.find(i=>i.id===id);
+        if(result==='ok') okCount++;
+        else if(result==='fail') {
+          const dept = v.deptAssign?.[id] || 'الفرع';
+          const excused = dept!=='الفرع' && v.reported24h?.[id]===true;
+          if(excused) excusedCount++;
+          else {
+            failCount++;
+            if(item?.critical) criticalFails++;
+          }
+        }
+      });
+      const total = okCount + failCount + excusedCount;
+      const pct = total > 0 ? Math.round((okCount/(okCount+failCount))*100) : 0;
+      
+      combinedRows.push([
+        BRANCH_NAMES[branch] || branch,
+        MONTHS[m],
+        d,
+        v.manager || '-',
+        v.shift || '-',
+        pct + '%',
+        total,
+        okCount,
+        failCount,
+        excusedCount,
+        criticalFails
+      ]);
+    }
+  });
+  
+  const wsCombined = XLSX.utils.aoa_to_sheet(combinedRows);
+  XLSX.utils.book_append_sheet(wb, wsCombined, '📊 الملخص العام');
+  
+  // ===== Sheet 2: Managers Performance =====
+  try {
+    const managerStats = typeof buildManagerStats === 'function' ? buildManagerStats() : {};
+    if (Object.keys(managerStats).length > 0) {
+      const mgrRows = [['تقييم أداء المديرين — تراكمي وتحليلي']];
+      mgrRows.push([]);
+      mgrRows.push(['#','اسم المدير','عدد الزيارات','المتوسط %','أعلى %','أدنى %','الاتجاه','الفروع','أكثر بنود الفشل','الحالة','الإنجاز/الأكشن بلان']);
+      
+      const sorted = Object.entries(managerStats).sort((a,b) => {
+        const avgA = a[1].visits.reduce((s,v)=>s+v.pct,0)/a[1].visits.length;
+        const avgB = b[1].visits.reduce((s,v)=>s+v.pct,0)/b[1].visits.length;
+        return avgB - avgA;
+      });
+      
+      sorted.forEach(([name, stats], idx) => {
+        const visits = stats.visits;
+        const avg = Math.round(visits.reduce((s,v)=>s+v.pct,0) / visits.length);
+        const max = Math.max(...visits.map(v=>v.pct));
+        const min = Math.min(...visits.map(v=>v.pct));
+        const trend = typeof analyzeManagerTrend === 'function' ? analyzeManagerTrend(visits) : { trend: 'stable', delta: 0 };
+        const trendTxt = trend.trend==='up' ? `📈 تحسّن +${trend.delta}%` : trend.trend==='down' ? `📉 تراجع ${trend.delta}%` : `➡️ مستقر`;
+        const branchesTxt = [...stats.branches].map(b => BRANCH_NAMES[b] || b).join('، ');
+        const failList = Object.entries(stats.failItems || {}).sort((a,b)=>b[1]-a[1]).slice(0,3);
+        const failTxt = failList.map(([id, cnt]) => {
+          const item = allItems.find(i=>i.id===id);
+          return (item?.text || id).substring(0, 30) + ` (${cnt}×)`;
+        }).join(' | ') || '-';
+        const verdict = avg < 70 ? '🔴 إنذار رسمي' : avg < 90 ? '🟡 متابعة مكثفة' : '🟢 تقدير ومكافأة';
+        
+        // Compute action plan completion for this manager
+        let totalAP = 0, doneAP = 0;
+        visits.forEach(v => {
+          const visit = getVisitData(v.branch, v.m, v.d);
+          allItems.forEach(item => {
+            if (visit.results?.[item.id] === 'fail') {
+              totalAP++;
+              if (visit.actionStatus?.[item.id]?.status === 'done') doneAP++;
+            }
+          });
+        });
+        const apTxt = totalAP > 0 ? `${doneAP}/${totalAP} (${Math.round((doneAP/totalAP)*100)}%)` : '-';
+        
+        mgrRows.push([
+          idx + 1,
+          name,
+          visits.length,
+          avg + '%',
+          max + '%',
+          min + '%',
+          trendTxt,
+          branchesTxt,
+          failTxt,
+          verdict,
+          apTxt
+        ]);
+      });
+      
+      // Detail section: per-visit list
+      mgrRows.push([]);
+      mgrRows.push(['تفاصيل الزيارات']);
+      mgrRows.push(['اسم المدير','الفرع','التاريخ','الشيفت','النسبة %']);
+      sorted.forEach(([name, stats]) => {
+        const sortedVisits = [...stats.visits].sort((a,b) => a.m*31+a.d - (b.m*31+b.d));
+        sortedVisits.forEach(v => {
+          mgrRows.push([
+            name,
+            BRANCH_NAMES[v.branch] || v.branch,
+            `${v.d} ${MONTHS[v.m]}`,
+            v.shift || '-',
+            v.pct + '%'
+          ]);
+        });
+      });
+      
+      const wsMgr = XLSX.utils.aoa_to_sheet(mgrRows);
+      // Set column widths
+      wsMgr['!cols'] = [
+        {wch:5}, {wch:25}, {wch:10}, {wch:10}, {wch:10}, {wch:10},
+        {wch:18}, {wch:25}, {wch:40}, {wch:18}, {wch:15}
+      ];
+      XLSX.utils.book_append_sheet(wb, wsMgr, '👔 المديرون');
+    }
+  } catch(e) { console.warn('[Excel] Manager sheet failed:', e); }
+  
+  // ===== Sheet 3+: Per branch detail =====
   BRANCHES.forEach(branch=>{
     const rows=[['الشهر','اليوم','المدير','الشيفت','القسم','البند','النتيجة','الإدارة','معفى؟','الملاحظة','تعليق']];
     for(let m=0;m<12;m++) for(let d=1;d<=MONTH_DAYS[m];d++){
@@ -13700,6 +13962,31 @@ async function initialCloudSync() {
     
     console.log('[Cloud] Initial sync complete');
     if (typeof showNotif === 'function') showNotif('☁️ تمت المزامنة مع السحابة', 'success');
+    
+    // Check for pending alerts (sent in last 5 minutes) and show them
+    try {
+      const { data: alertSettings } = await supabaseClient
+        .from('blaban_settings')
+        .select('*')
+        .like('key', 'last_alert_%')
+        .order('updated_at', { ascending: false })
+        .limit(5);
+      
+      if (alertSettings && alertSettings.length > 0) {
+        const now = Date.now();
+        const fiveMinAgo = now - 5 * 60 * 1000;
+        const recentAlert = alertSettings.find(a => {
+          const t = new Date(a.updated_at).getTime();
+          return t > fiveMinAgo && a.value && a.value.from_id !== currentUser?.id;
+        });
+        if (recentAlert) {
+          console.log('[Alert] Showing pending alert from cloud:', recentAlert.value);
+          setTimeout(() => {
+            try { showIncomingAlert(recentAlert.value); } catch(e) {}
+          }, 1500);
+        }
+      }
+    } catch(e) { console.warn('[Alert] Pending check failed:', e); }
   } catch (err) {
     console.error('[Cloud] Sync error:', err);
     if (typeof showNotif === 'function') showNotif('⚠️ خطأ في المزامنة: ' + err.message, 'error');
@@ -14257,12 +14544,232 @@ function setupBroadcastChannel() {
     showIncomingAlert(data);
   });
   
+  // ============ INSTANT DATA CHANGE BROADCAST ============
+  // Same mechanism as urgent_alert, but for data updates
+  // This is FASTER than postgres_changes (no DB round-trip needed)
+  channel.on('broadcast', { event: 'data_change' }, (payload) => {
+    try {
+      const data = payload.payload || payload;
+      if (!data || data.from_id === currentUser?.id) return; // skip own changes
+      
+      console.log('[InstantSync] Received:', data.kind, data.action);
+      
+      switch (data.kind) {
+        case 'eval':
+          applyRemoteEvalChange(data);
+          break;
+        case 'task':
+          applyRemoteTaskChange(data);
+          break;
+        case 'task_delete':
+          applyRemoteTaskDelete(data);
+          break;
+        case 'manager':
+          applyRemoteManagerChange(data);
+          break;
+        case 'branch':
+          applyRemoteBranchChange(data);
+          break;
+        case 'item':
+          applyRemoteItemChange(data);
+          break;
+      }
+    } catch(e) { console.warn('[InstantSync] Handler error:', e); }
+  });
+  
   channel.subscribe(status => {
-    console.log('[Alert] Channel status:', status);
+    console.log('[Broadcast] Channel status:', status);
   });
   
   return channel;
 }
+
+// ============ BROADCAST DATA CHANGES (instant, <100ms) ============
+function broadcastDataChange(kind, action, data) {
+  try {
+    if (!alertsChannel) {
+      if (typeof supabaseClient !== 'undefined' && supabaseClient && currentUser) {
+        alertsChannel = setupBroadcastChannel();
+      }
+      if (!alertsChannel) return;
+    }
+    if (!currentUser) return;
+    
+    alertsChannel.send({
+      type: 'broadcast',
+      event: 'data_change',
+      payload: {
+        kind: kind,        // 'eval' | 'task' | 'task_delete' | 'manager' | 'branch' | 'item'
+        action: action,    // 'create' | 'update' | 'delete'
+        data: data,
+        from: currentUser.email || 'مستخدم',
+        from_id: currentUser.id,
+        timestamp: Date.now()
+      }
+    }).catch(e => console.warn('[Broadcast] send failed:', e));
+  } catch(e) { console.warn('[Broadcast] error:', e); }
+}
+window.broadcastDataChange = broadcastDataChange;
+
+// ============ APPLY REMOTE CHANGES (when received from broadcast) ============
+function applyRemoteEvalChange(data) {
+  try {
+    const ev = data.data;
+    if (!ev || !ev.branch || !ev.month && ev.month !== 0 || !ev.day) return;
+    
+    // Update appData (merge — never replace silently)
+    const key = ev.branch + '_' + ev.month + '_' + ev.day;
+    if (typeof appData !== 'undefined' && appData) {
+      // Merge incoming data
+      if (!appData[key]) appData[key] = { results:{}, notes:{}, comments:{}, actionStatus:{}, images:{}, deptAssign:{}, reported24h:{}, manager:'', shift:'', managers:[] };
+      Object.assign(appData[key], ev.visit || {});
+      // Re-save locally
+      try { localStorage.setItem('blaban_data_v3', JSON.stringify(appData)); } catch(e) {}
+    }
+    
+    // Notify user
+    const branchName = (window.BRANCH_NAMES && window.BRANCH_NAMES[ev.branch]) || ev.branch;
+    if (typeof showNotif === 'function') {
+      showNotif('🔄 تحديث مباشر: تقييم ' + branchName, 'info', 3000);
+    }
+    
+    // OS notification for offline users
+    if (typeof showOSNotification === 'function') {
+      showOSNotification({
+        title: '📊 تحديث تقييم',
+        body: 'فرع ' + branchName + ' — ' + ev.day + '/' + (ev.month + 1),
+        icon: './icon-192.png',
+        tag: 'eval-' + key
+      });
+    }
+    
+    // Refresh UI (only the relevant branch/page)
+    if (typeof selectedBranch !== 'undefined' && selectedBranch === ev.branch && typeof renderBranch === 'function') {
+      try { renderBranch(ev.branch); } catch(e) {}
+    }
+    if (typeof renderDashboard === 'function') {
+      try { renderDashboard(); } catch(e) {}
+    }
+  } catch(e) { console.warn('[InstantSync eval]', e); }
+}
+
+function applyRemoteTaskChange(data) {
+  try {
+    const task = data.data;
+    if (!task || !task.id) return;
+    
+    if (typeof tasksData === 'undefined') return;
+    
+    const idx = tasksData.findIndex(t => String(t.id) === String(task.id));
+    const isNew = idx < 0;
+    if (idx >= 0) {
+      tasksData[idx] = task;
+    } else {
+      tasksData.unshift(task);
+    }
+    
+    try { localStorage.setItem('blaban_tasks_v1', JSON.stringify(tasksData)); } catch(e) {}
+    
+    if (typeof showNotif === 'function') {
+      showNotif('🔄 ' + (isNew ? 'مهمة جديدة' : 'تحديث مهمة') + ': ' + (task.title || ''), 'info', 3000);
+    }
+    
+    if (isNew && typeof showOSNotification === 'function') {
+      showOSNotification({
+        title: '📋 مهمة جديدة',
+        body: task.title || 'مهمة جديدة',
+        icon: './icon-192.png',
+        tag: 'task-' + task.id,
+        vibrate: [200, 100, 200]
+      });
+    }
+    
+    if (typeof renderTasksPage === 'function') {
+      try { renderTasksPage(); } catch(e) {}
+    }
+    if (typeof updateTasksBadge === 'function') {
+      try { updateTasksBadge(); } catch(e) {}
+    }
+    if (typeof updateAppBadge === 'function') updateAppBadge();
+  } catch(e) { console.warn('[InstantSync task]', e); }
+}
+
+function applyRemoteTaskDelete(data) {
+  try {
+    const taskId = data.data?.id;
+    if (!taskId || typeof tasksData === 'undefined') return;
+    
+    const before = tasksData.length;
+    tasksData = tasksData.filter(t => String(t.id) !== String(taskId));
+    if (tasksData.length < before) {
+      try { localStorage.setItem('blaban_tasks_v1', JSON.stringify(tasksData)); } catch(e) {}
+      if (typeof showNotif === 'function') showNotif('🗑️ حُذفت مهمة', 'info', 2500);
+      if (typeof renderTasksPage === 'function') { try { renderTasksPage(); } catch(e) {} }
+      if (typeof updateTasksBadge === 'function') { try { updateTasksBadge(); } catch(e) {} }
+    }
+  } catch(e) { console.warn('[InstantSync task_delete]', e); }
+}
+
+function applyRemoteManagerChange(data) {
+  try {
+    const mgr = data.data;
+    if (!mgr || !mgr.name) return;
+    
+    const profiles = JSON.parse(localStorage.getItem('blaban_manager_profiles') || '{}');
+    profiles[mgr.name] = mgr;
+    localStorage.setItem('blaban_manager_profiles', JSON.stringify(profiles));
+    
+    if (typeof showNotif === 'function') showNotif('🔄 تحديث مدير: ' + mgr.name, 'info', 3000);
+    
+    if (typeof currentPage !== 'undefined' && currentPage === 'managers' && typeof renderManagersPage === 'function') {
+      try { renderManagersPage(); } catch(e) {}
+    }
+  } catch(e) { console.warn('[InstantSync manager]', e); }
+}
+
+function applyRemoteBranchChange(data) {
+  try {
+    const action = data.action;
+    const b = data.data;
+    if (!b) return;
+    
+    if (action === 'create' || action === 'update') {
+      const customBranches = JSON.parse(localStorage.getItem('blaban_custom_branches') || '[]');
+      const customNames = JSON.parse(localStorage.getItem('blaban_custom_branch_names') || '{}');
+      if (b.id && !customBranches.includes(b.id) && b.id !== 'nasr' && b.id !== 'farosiya' && b.id !== 'gharafa' && b.id !== 'wakra' && b.id !== 'khaisa') {
+        customBranches.push(b.id);
+      }
+      if (b.id && b.name) customNames[b.id] = b.name;
+      localStorage.setItem('blaban_custom_branches', JSON.stringify(customBranches));
+      localStorage.setItem('blaban_custom_branch_names', JSON.stringify(customNames));
+    } else if (action === 'delete') {
+      let customBranches = JSON.parse(localStorage.getItem('blaban_custom_branches') || '[]');
+      const customNames = JSON.parse(localStorage.getItem('blaban_custom_branch_names') || '{}');
+      customBranches = customBranches.filter(x => x !== b.id);
+      delete customNames[b.id];
+      localStorage.setItem('blaban_custom_branches', JSON.stringify(customBranches));
+      localStorage.setItem('blaban_custom_branch_names', JSON.stringify(customNames));
+    }
+    
+    if (typeof reloadBranches === 'function') { try { reloadBranches(); } catch(e) {} }
+    if (typeof showNotif === 'function') showNotif('🏪 تحديث الفروع', 'info', 2500);
+  } catch(e) { console.warn('[InstantSync branch]', e); }
+}
+
+function applyRemoteItemChange(data) {
+  try {
+    if (typeof showNotif === 'function') showNotif('⚙️ تحديث في بنود التقييم', 'info', 2500);
+    // Reload custom items if function exists
+    if (typeof loadCustomItems === 'function') { try { loadCustomItems(); } catch(e) {} }
+  } catch(e) { console.warn('[InstantSync item]', e); }
+}
+
+window.applyRemoteEvalChange = applyRemoteEvalChange;
+window.applyRemoteTaskChange = applyRemoteTaskChange;
+window.applyRemoteTaskDelete = applyRemoteTaskDelete;
+window.applyRemoteManagerChange = applyRemoteManagerChange;
+window.applyRemoteBranchChange = applyRemoteBranchChange;
+window.applyRemoteItemChange = applyRemoteItemChange;
 
 function showIncomingAlert(data) {
   // Remove any existing alert
@@ -14312,17 +14819,17 @@ function showIncomingAlert(data) {
     setTimeout(() => overlay.remove(), 300);
   });
   
-  // OS-level notification — appears even when browser is in background
+  // STRONG OS-level notification (rings via SW even when app is in background)
   showOSNotification({
     title: '🚨 ' + (data.title || 'تنبيه عاجل من مدير التشغيل'),
     body: data.message || 'من: ' + (data.from || 'مدير التشغيل'),
     icon: './icon-192.png',
     badge: './icon-192.png',
     tag: 'urgent-alert-' + Date.now(),
-    requireInteraction: type === 'urgent',
-    vibrate: type === 'urgent' ? [500,100,500,100,500] : [200,100,200],
+    requireInteraction: type === 'urgent', // stays until user clicks
+    vibrate: type === 'urgent' ? [500,100,500,100,500,100,500] : [200,100,200],
     renotify: true,
-    sound: './alert.mp3'
+    silent: false // ensure sound plays
   });
 }
 

@@ -628,6 +628,7 @@ function submitNewTask() {
   };
   
   tasksData.unshift(newTask);
+  window._lastEditedTaskId = newTask.id;
   saveTasks();
   closeAddTaskModal();
   renderTasksPage();
@@ -677,6 +678,7 @@ function addTaskComment(taskId, type, branch) {
   // Legacy status field
   if (task.status === 'pending') task.status = 'in-progress';
   
+  window._lastEditedTaskId = task.id;
   saveTasks();
   textarea.value = '';
   renderTasksPage();
@@ -748,6 +750,7 @@ function completeTask(taskId, branch) {
     task.status = 'in-progress';
   }
   
+  window._lastEditedTaskId = task.id;
   saveTasks();
   renderTasksPage();
   updateTasksBadge();
@@ -869,6 +872,7 @@ function completeTaskAllBranches(taskId) {
   task.status = 'completed';
   task.completedAt = new Date().toISOString();
   
+  window._lastEditedTaskId = task.id;
   saveTasks();
   renderTasksPage();
   updateTasksBadge();
@@ -880,6 +884,10 @@ function deleteTask(taskId) {
   const task = tasksData.find(t=>t.id===taskId);
   tasksData = tasksData.filter(t=>t.id!==taskId);
   saveTasks();
+  // Broadcast delete to all devices instantly
+  if (typeof broadcastDataChange === 'function') {
+    broadcastDataChange('task_delete', 'delete', { id: taskId });
+  }
   // Delete from Supabase cloud too
   if (typeof window.deleteTaskFromCloud === 'function') {
     window.deleteTaskFromCloud(taskId);
