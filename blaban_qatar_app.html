@@ -906,61 +906,60 @@ body {
   visibility: visible;
 }
 
-/* ============ UNIFORM METALLIC GOLD BUBBLES (all the same color, glowing) ============ */
-/* Override the base for a richer metallic look */
+/* ============ UNIFORM BEIGE BUBBLES with MAROON glowing border ============ */
 .bubble-item {
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  /* Metallic gold gradient (multi-stop for shine effect) */
-  background: linear-gradient(135deg, #E8C96A 0%, #C9A84C 40%, #8B6F2A 70%, #C9A84C 100%);
-  border: 2px solid #F4DC8A;
-  color: #2C1810;
+  /* Beige background */
+  background: linear-gradient(135deg, #F5E6CC 0%, #E8D4A8 50%, #D6BC85 100%);
+  /* Maroon glowing border */
+  border: 2.5px solid #6B1B2A;
+  /* Maroon text */
+  color: #4A0F1A;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 1px;
-  /* Strong gold glow */
+  /* Glowing maroon halo */
   box-shadow: 
-    0 0 14px rgba(232,201,106,0.7),
-    0 0 28px rgba(201,168,76,0.4),
-    0 6px 18px rgba(0,0,0,0.5),
-    inset 0 1px 2px rgba(255,255,255,0.5),
-    inset 0 -2px 4px rgba(0,0,0,0.2);
+    0 0 14px rgba(107,27,42,0.7),
+    0 0 28px rgba(107,27,42,0.4),
+    0 6px 18px rgba(0,0,0,0.4),
+    inset 0 1px 2px rgba(255,255,255,0.6),
+    inset 0 -2px 4px rgba(107,27,42,0.15);
   opacity: 0;
   transform: translateY(-30px) scale(0.3);
   transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
   font-family: 'Tajawal', sans-serif;
   position: relative;
-  /* Pulsing glow animation */
-  animation: bubbleGoldPulse 2.5s ease-in-out infinite;
+  /* Pulsing maroon glow */
+  animation: bubbleMaroonPulse 2.5s ease-in-out infinite;
 }
-@keyframes bubbleGoldPulse {
+@keyframes bubbleMaroonPulse {
   0%, 100% { 
     box-shadow: 
-      0 0 14px rgba(232,201,106,0.7),
-      0 0 28px rgba(201,168,76,0.4),
-      0 6px 18px rgba(0,0,0,0.5),
-      inset 0 1px 2px rgba(255,255,255,0.5),
-      inset 0 -2px 4px rgba(0,0,0,0.2);
+      0 0 14px rgba(107,27,42,0.7),
+      0 0 28px rgba(107,27,42,0.4),
+      0 6px 18px rgba(0,0,0,0.4),
+      inset 0 1px 2px rgba(255,255,255,0.6),
+      inset 0 -2px 4px rgba(107,27,42,0.15);
   }
   50% { 
     box-shadow: 
-      0 0 20px rgba(244,220,138,0.9),
-      0 0 40px rgba(232,201,106,0.6),
-      0 6px 18px rgba(0,0,0,0.5),
-      inset 0 1px 2px rgba(255,255,255,0.6),
-      inset 0 -2px 4px rgba(0,0,0,0.2);
+      0 0 20px rgba(140,40,60,1),
+      0 0 40px rgba(107,27,42,0.7),
+      0 6px 18px rgba(0,0,0,0.4),
+      inset 0 1px 2px rgba(255,255,255,0.7),
+      inset 0 -2px 4px rgba(107,27,42,0.15);
   }
 }
 .bubble-item .bubble-icon {
   font-size: 18px;
   line-height: 1;
-  /* Dark glow that pops against gold */
-  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.4))
-          drop-shadow(0 0 2px rgba(255,255,255,0.5));
+  filter: drop-shadow(0 1px 2px rgba(74,15,26,0.4));
 }
 .bubble-item .bubble-label {
   font-size: 8px;
@@ -968,30 +967,29 @@ body {
   letter-spacing: 0.3px;
   line-height: 1;
   margin-top: 2px;
-  color: #2C1810; /* Dark for contrast against gold */
-  text-shadow: 0 0 2px rgba(255,255,255,0.6), 0 1px 1px rgba(0,0,0,0.2);
+  color: #4A0F1A;
+  text-shadow: 0 1px 1px rgba(255,255,255,0.5);
 }
 .bubble-item:hover {
   transform: translateY(0) scale(1.15);
-  background: linear-gradient(135deg, #F8E190 0%, #E8C96A 40%, #C9A84C 70%, #E8C96A 100%);
-  border-color: #FFE9A0;
+  background: linear-gradient(135deg, #FFF0D6 0%, #F5E6CC 50%, #E8D4A8 100%);
+  border-color: #8B2336;
   box-shadow: 
-    0 0 28px rgba(255,233,160,1),
-    0 0 50px rgba(232,201,106,0.7),
-    0 10px 24px rgba(0,0,0,0.6),
-    inset 0 2px 3px rgba(255,255,255,0.7),
-    inset 0 -2px 4px rgba(0,0,0,0.2);
-  animation: none; /* freeze the pulse on hover */
+    0 0 28px rgba(140,40,60,1),
+    0 0 50px rgba(107,27,42,0.8),
+    0 10px 24px rgba(0,0,0,0.5),
+    inset 0 2px 3px rgba(255,255,255,0.8),
+    inset 0 -2px 4px rgba(107,27,42,0.15);
+  animation: none;
 }
 .bubble-item:hover .bubble-icon {
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5))
-          drop-shadow(0 0 3px rgba(255,255,255,0.8));
+  filter: drop-shadow(0 1px 2px rgba(74,15,26,0.6));
 }
 .bubble-item:hover .bubble-label {
-  color: #1A0E08;
+  color: #1A0508;
 }
 
-/* Open state — sequential reveal (one after another like beads dropping) */
+/* Open state — sequential reveal */
 .bubble-menu.is-open .bubble-item {
   opacity: 1;
   transform: translateY(0) scale(1);
@@ -1005,7 +1003,7 @@ body {
 .bubble-menu.is-open .bubble-item:nth-child(7) { transition-delay: 0.36s; }
 .bubble-menu.is-open .bubble-item:nth-child(8) { transition-delay: 0.42s; }
 
-/* ALERT bubble — only one that stays red with pulse (it's an alert!) */
+/* ALERT bubble — stays red with stronger pulse */
 .bubble-item.bubble-alert {
   background: linear-gradient(135deg, #FF6B5C 0%, #E74C3C 40%, #B23128 70%, #E74C3C 100%);
   border-color: #FFCDC3;
@@ -1494,12 +1492,92 @@ body { transition: transform 0.3s ease; }
   text-shadow: none !important;
 }
 
-/* Header presence + chat */
-.ctrl-presence, .ctrl-chat {
+/* ============ SCREEN ORIENTATION LOCK (Samsung-style) ============ */
+/* When locked to portrait but device is landscape, rotate the body 90deg */
+@media (orientation: landscape) {
+  body.screen-locked-portrait {
+    transform: rotate(-90deg);
+    transform-origin: left top;
+    width: 100vh;
+    height: 100vw;
+    overflow-x: hidden;
+    overflow-y: auto;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    transition: none;
+  }
+}
+@media (orientation: portrait) {
+  body.screen-locked-landscape {
+    transform: rotate(90deg);
+    transform-origin: left top;
+    width: 100vh;
+    height: 100vw;
+    overflow-x: hidden;
+    overflow-y: auto;
+    position: absolute;
+    top: 0;
+    left: 100%;
+    transition: none;
+  }
+}
+/* No animations during lock — prevents freeze */
+body.screen-locked-portrait *,
+body.screen-locked-landscape * {
+  animation-duration: 0.001ms !important;
+  animation-delay: 0s !important;
+}
+
+/* Header chat icon with embedded presence indicator */
+.ctrl-chat {
   position: relative;
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+.chat-icon-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+}
+/* The presence dot — 2 stacked dots showing "people online" */
+.presence-dot {
+  position: absolute;
+  top: -3px;
+  inset-inline-end: -5px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  /* Two side-by-side green pulses for "multiple people" feel */
+  background: 
+    radial-gradient(circle at 35% 50%, #2ECC71 0, #2ECC71 3.5px, transparent 4px),
+    radial-gradient(circle at 70% 50%, #2ECC71 0, #2ECC71 3.5px, transparent 4px),
+    rgba(0,0,0,0.4);
+  box-shadow: 
+    0 0 6px rgba(46,204,113,1),
+    0 0 12px rgba(46,204,113,0.6),
+    0 0 0 1.5px rgba(0,0,0,0.5);
+  animation: presenceDotPulse 1.5s ease-in-out infinite;
+}
+@keyframes presenceDotPulse {
+  0%, 100% {
+    box-shadow:
+      0 0 6px rgba(46,204,113,1),
+      0 0 12px rgba(46,204,113,0.6),
+      0 0 0 1.5px rgba(0,0,0,0.5);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow:
+      0 0 10px rgba(46,204,113,1),
+      0 0 20px rgba(46,204,113,0.8),
+      0 0 0 1.5px rgba(0,0,0,0.5);
+    transform: scale(1.12);
+  }
 }
 .ctrl-badge {
   display: inline-flex;
@@ -4326,13 +4404,16 @@ body.pdf-capturing .page-signature { color: #6B1B2A !important; }
     </div>
     <div class="header-controls">
       <button class="ctrl-btn" id="pwaInstallBtn" onclick="triggerInstallPWA()" style="display:none;background:linear-gradient(135deg,#27AE60,#2ECC71);color:#fff;font-weight:800;" title="تثبيت كتطبيق">📥 تثبيت</button>
-      <!-- Online users + Chat -->
-      <button class="ctrl-btn ctrl-presence" id="presenceBtn" onclick="openPresenceList()" title="المتصلون الآن">
-        🟢 <span id="presenceCounter" class="ctrl-badge ctrl-badge-green" style="display:none;">0</span>
+      <!-- Combined chat + presence button -->
+      <button class="ctrl-btn ctrl-chat" id="chatBtn" onclick="openChatPanel()" title="الدردشة والمتصلون">
+        <span class="chat-icon-wrap">
+          💬
+          <span id="presenceCounter" class="presence-dot" style="display:none;" title="المتصلون"></span>
+        </span>
+        <span id="chatPanelBadge" class="ctrl-badge ctrl-badge-red" style="display:none;">0</span>
       </button>
-      <button class="ctrl-btn ctrl-chat" id="chatBtn" onclick="openChatPanel()" title="الدردشة بين الأعضاء">
-        💬 <span id="chatPanelBadge" class="ctrl-badge ctrl-badge-red" style="display:none;">0</span>
-      </button>
+      <!-- Screen orientation lock (Samsung-style) -->
+      <button class="ctrl-btn" id="screenLockBtn" onclick="toggleScreenLock()" title="منع تدوير الشاشة">🔓</button>
       <!-- 2 fixed buttons: Save + Mode -->
       <button class="ctrl-btn" onclick="saveAllData()" title="حفظ كل البيانات">💾 حفظ</button>
       <button class="ctrl-btn active" id="modeToggle" onclick="toggleMode()" title="تبديل الوضع الداكن/الفاتح">🌙 داكن</button>
@@ -4863,7 +4944,17 @@ function getVisitData(branch, month, day) {
 // ===================== SMART SCORING =====================
 function calcSmartScore(branch, month, day) {
   const visit = getVisitData(branch, month, day);
-  const allItems = CHECKLIST.flatMap(s => s.items);
+  // Only include items that were ACTIVE on this date (custom items added later are excluded)
+  let allItems = CHECKLIST.flatMap(s => s.items).filter(item => {
+    if (typeof isItemActiveForDate === 'function') {
+      return isItemActiveForDate(item, month, day);
+    }
+    return true;
+  });
+  // Include one-shot items for THIS specific visit
+  if (visit.oneShotItems && Array.isArray(visit.oneShotItems)) {
+    allItems = allItems.concat(visit.oneShotItems);
+  }
   let ok = 0, excused = 0, deducted = 0;
   const excusedItems = [], deductedItems = [];
   allItems.forEach(item => {
@@ -4878,7 +4969,8 @@ function calcSmartScore(branch, month, day) {
   });
   const answered = ok + excused + deducted;
   const pct = answered > 0 ? Math.round(((ok + excused) / answered) * 100) : null;
-  return { pct, ok, excused, deducted, answered, excusedItems, deductedItems };
+  // Also provide 'percent' alias for compatibility
+  return { pct, percent: pct, ok, excused, deducted, answered, excusedItems, deductedItems };
 }
 
 // ===================== STATE =====================
@@ -5112,11 +5204,39 @@ function applyChecklistCustomizations() {
 }
 applyChecklistCustomizations();
 
-// Add a custom item
+// Check if a custom item should appear on a given date
+// Returns true for built-in items (always shown), and only-for-future for custom items
+function isItemActiveForDate(item, month, day, year) {
+  // Built-in items are always active
+  if (!item.custom) return true;
+  // If no addedDate metadata (legacy), always show
+  if (item.addedMonth == null && item.addedYear == null) return true;
+  
+  const targetYear = year || new Date().getFullYear();
+  const targetDate = new Date(targetYear, month, day);
+  const addedDate = new Date(item.addedYear || targetYear, item.addedMonth || 0, item.addedDay || 1);
+  
+  // Show only if target date is ON or AFTER the date the item was added
+  return targetDate >= addedDate;
+}
+window.isItemActiveForDate = isItemActiveForDate;
+
+// Add a custom item — only shows in evals from this date forward (not in past)
 function addCustomItem(section, text, icon, critical) {
   const custom = JSON.parse(localStorage.getItem('blaban_custom_items') || '[]');
   const id = 'cust_' + Date.now();
-  const item = { id, section, text, icon: icon || '📌', critical: !!critical, custom: true };
+  // addedDateKey: month_day at creation time, so we know when to start showing it
+  const now = new Date();
+  const item = { 
+    id, section, text, 
+    icon: icon || '📌', 
+    critical: !!critical, 
+    custom: true,
+    addedAt: now.toISOString(),
+    addedMonth: now.getMonth(),
+    addedDay: now.getDate(),
+    addedYear: now.getFullYear()
+  };
   custom.push(item);
   localStorage.setItem('blaban_custom_items', JSON.stringify(custom));
   let sec = CHECKLIST.find(s => s.section === section);
@@ -5431,20 +5551,18 @@ function renderChecklist(branch) {
     html += `<div class="alert alert-info" style="font-size:var(--fs-sm);margin-bottom:10px;">
       🔒 <strong>وضع القراءة فقط</strong> — أنت مدير فرع، يمكنك مشاهدة التقييم والعمل على الأكشن بلان أدناه فقط. التعديل على نتائج التقييم محصور بمدير التشغيل.
     </div>`;
-  } else {
-    // Add custom item buttons (only for ops manager)
-    html += `<div class="add-item-buttons" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
-      <button class="btn btn-sm" style="background:linear-gradient(135deg,#16A085,#0E6B57);color:#fff;font-weight:800;" onclick="openAddItemForThisEval('${branch}', ${month}, ${day})" title="بند يظهر فقط في هذا التقييم">
-        ➕ بند خاص بهذا التقييم
-      </button>
-      <button class="btn btn-sm" style="background:linear-gradient(135deg,#D35400,#E67E22);color:#fff;font-weight:800;" onclick="openAddPermanentItem()" title="بند يضاف لكل التقييمات القادمة">
-        ⭐ بند دائم في كل التقييمات
-      </button>
-    </div>`;
   }
   CHECKLIST.forEach(sec => {
+    // Filter out custom items added AFTER this evaluation date (don't pollute history)
+    const visibleItems = sec.items.filter(item => {
+      if (typeof isItemActiveForDate === 'function') {
+        return isItemActiveForDate(item, month, day);
+      }
+      return true;
+    });
+    if (visibleItems.length === 0) return; // skip empty sections
     html += `<div class="checklist-section${isReadonly?' readonly':''}"><div class="section-header">${sec.section}</div>`;
-    sec.items.forEach(item => {
+    visibleItems.forEach(item => {
       const result = visitData.results[item.id];
       const dept = visitData.deptAssign[item.id] || 'الفرع';
       const reported = visitData.reported24h[item.id] === true;
@@ -10912,89 +11030,1421 @@ async function pdfExportSection(pageId, sectionTitle, branch) {
   }
 }
 
-async function pdfExportComprehensive(branch) {
-  if (!window.jspdf) {
-    showNotif('❌ مكتبة PDF غير محمّلة', 'error');
+// ============================================================
+// DATA-DRIVEN PDF EXPORTS (no html2canvas — uses jsPDF directly)
+// Reads from appData/tasksData/managers + draws charts manually
+// ============================================================
+
+// Helper: setup PDF with Arabic-friendly defaults
+function _newPdf() {
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  // jsPDF can't render Arabic glyphs without a font, but it can render via canvas (which we do for text)
+  // We'll render text as canvas images for proper RTL/Arabic support
+  return pdf;
+}
+
+// Helper: render Arabic text on a temporary canvas, return as image data URL
+function _arabicTextCanvas(text, options) {
+  const opts = Object.assign({
+    fontSize: 12, fontWeight: 700, color: '#000', bg: 'transparent',
+    width: 800, padding: 8, lineHeight: 1.5, align: 'right', maxLines: 0
+  }, options || {});
+  
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  const dpr = 2; // for sharper text
+  
+  ctx.font = `${opts.fontWeight} ${opts.fontSize}px Tajawal, "Arial", sans-serif`;
+  
+  // Word wrap
+  const words = String(text || '').split(/\s+/);
+  const lines = [];
+  let current = '';
+  words.forEach(w => {
+    const test = current ? current + ' ' + w : w;
+    const m = ctx.measureText(test);
+    if (m.width > opts.width - opts.padding * 2 && current) {
+      lines.push(current);
+      current = w;
+    } else {
+      current = test;
+    }
+  });
+  if (current) lines.push(current);
+  
+  if (opts.maxLines && lines.length > opts.maxLines) {
+    lines.length = opts.maxLines;
+    if (lines.length > 0) lines[lines.length - 1] += '...';
+  }
+  
+  const lineH = opts.fontSize * opts.lineHeight;
+  const height = lines.length * lineH + opts.padding * 2;
+  
+  canvas.width = opts.width * dpr;
+  canvas.height = height * dpr;
+  ctx.scale(dpr, dpr);
+  
+  // Background
+  if (opts.bg && opts.bg !== 'transparent') {
+    ctx.fillStyle = opts.bg;
+    ctx.fillRect(0, 0, opts.width, height);
+  }
+  
+  // Text
+  ctx.font = `${opts.fontWeight} ${opts.fontSize}px Tajawal, "Arial", sans-serif`;
+  ctx.fillStyle = opts.color;
+  ctx.textBaseline = 'top';
+  ctx.textAlign = opts.align;
+  ctx.direction = 'rtl';
+  
+  const xPos = opts.align === 'right' ? opts.width - opts.padding : opts.align === 'center' ? opts.width / 2 : opts.padding;
+  
+  lines.forEach((line, i) => {
+    ctx.fillText(line, xPos, opts.padding + i * lineH);
+  });
+  
+  return { dataUrl: canvas.toDataURL('image/png'), height: height };
+}
+
+// Helper: add Arabic text block to PDF at given position
+function _pdfText(pdf, text, x, y, opts) {
+  const { dataUrl, height } = _arabicTextCanvas(text, opts);
+  const widthMM = (opts.width || 800) / 800 * (opts.targetWidth || 190);
+  const heightMM = (height / 800) * (opts.targetWidth || 190);
+  pdf.addImage(dataUrl, 'PNG', x, y, opts.targetWidth || widthMM, heightMM);
+  return y + heightMM + (opts.spacing || 3);
+}
+
+// Helper: ensure room on page, add new page if not
+function _ensureRoom(pdf, currentY, needed) {
+  const pageH = pdf.internal.pageSize.getHeight();
+  if (currentY + needed > pageH - 15) {
+    pdf.addPage();
+    return 15;
+  }
+  return currentY;
+}
+
+// Helper: draw a horizontal bar chart on PDF using canvas
+function _drawBarChart(pdf, items, x, y, width, height, opts) {
+  const cfg = Object.assign({ title: '', maxValue: null, color: '#C9A84C', showValues: true }, opts || {});
+  
+  const canvas = document.createElement('canvas');
+  const dpr = 2;
+  canvas.width = width * 4 * dpr;
+  canvas.height = height * 4 * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr * 4, dpr * 4);
+  
+  // Background
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, width, height);
+  
+  // Title
+  if (cfg.title) {
+    ctx.font = 'bold 5px Tajawal, sans-serif';
+    ctx.fillStyle = '#4A0F1A';
+    ctx.textAlign = 'right';
+    ctx.direction = 'rtl';
+    ctx.fillText(cfg.title, width - 4, 6);
+  }
+  
+  if (!items || items.length === 0) {
+    ctx.font = '4px Tajawal, sans-serif';
+    ctx.fillStyle = '#888';
+    ctx.textAlign = 'center';
+    ctx.fillText('لا توجد بيانات', width / 2, height / 2);
+    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', x, y, width, height);
     return;
   }
   
-  // Show selected branch first
-  if (branch && typeof selectedBranch !== 'undefined') {
-    selectedBranch = branch;
+  const titleH = cfg.title ? 10 : 4;
+  const chartH = height - titleH - 4;
+  const labelW = 30;
+  const barAreaW = width - labelW - 20; // 20 for value text
+  
+  const maxVal = cfg.maxValue || Math.max(...items.map(i => i.value), 1);
+  const barH = Math.max(3, Math.min(8, chartH / items.length - 1.5));
+  const gap = 1.5;
+  
+  items.forEach((item, i) => {
+    const yPos = titleH + i * (barH + gap);
+    const w = (item.value / maxVal) * barAreaW;
+    
+    // Label (right side in RTL)
+    ctx.font = 'bold 3.5px Tajawal, sans-serif';
+    ctx.fillStyle = '#333';
+    ctx.textAlign = 'right';
+    ctx.direction = 'rtl';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(item.label).substring(0, 25), width - 2, yPos + barH / 2);
+    
+    // Bar background
+    ctx.fillStyle = '#EEE';
+    ctx.fillRect(15, yPos, width - labelW - 17, barH);
+    
+    // Bar fill
+    const color = item.color || cfg.color;
+    ctx.fillStyle = color;
+    // Bar grows from RIGHT side (RTL)
+    ctx.fillRect(width - labelW - 2 - w, yPos, w, barH);
+    
+    // Value text
+    if (cfg.showValues) {
+      ctx.font = 'bold 3.5px Tajawal, sans-serif';
+      ctx.fillStyle = '#000';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      const valText = item.valueText || (typeof item.value === 'number' ? Math.round(item.value) + (cfg.unit || '') : item.value);
+      ctx.fillText(valText, 1, yPos + barH / 2);
+    }
+  });
+  
+  pdf.addImage(canvas.toDataURL('image/png'), 'PNG', x, y, width, height);
+}
+
+// Helper: draw a simple line chart (trend over time)
+function _drawLineChart(pdf, points, x, y, width, height, opts) {
+  const cfg = Object.assign({ title: '', color: '#C9A84C', minY: 0, maxY: 100, fillUnder: true }, opts || {});
+  
+  const canvas = document.createElement('canvas');
+  const dpr = 2;
+  canvas.width = width * 4 * dpr;
+  canvas.height = height * 4 * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr * 4, dpr * 4);
+  
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, width, height);
+  
+  // Title
+  if (cfg.title) {
+    ctx.font = 'bold 5px Tajawal, sans-serif';
+    ctx.fillStyle = '#4A0F1A';
+    ctx.textAlign = 'right';
+    ctx.direction = 'rtl';
+    ctx.fillText(cfg.title, width - 4, 6);
   }
   
-  const sections = [
-    { id: 'branch-view', title: '📋 التقييم التفصيلي' },
-    { id: 'dashboard', title: '📡 لوحة المعلومات' },
-    { id: 'managers', title: '👔 تقييم المديرين' },
-    { id: 'analytics', title: '📊 التحليل والإحصائيات' },
-    { id: 'recommendations', title: '💡 التوصيات' },
-    { id: 'ops-manager', title: '🌐 نظرة عامة' },
-    { id: 'other-depts', title: '🏢 الإدارات الأخرى' },
-    { id: 'tasks', title: '📋 المهام' }
-  ];
+  const titleH = cfg.title ? 10 : 4;
+  const padding = 6;
+  const chartArea = {
+    x: padding,
+    y: titleH,
+    w: width - padding * 2,
+    h: height - titleH - padding
+  };
   
-  _showPdfLoading('إعداد التقرير الشامل...');
-  _updatePdfProgress(5, `سيتم التقاط ${sections.length} أقسام`);
+  // Grid lines
+  ctx.strokeStyle = '#EEE';
+  ctx.lineWidth = 0.2;
+  [0, 0.25, 0.5, 0.75, 1].forEach(t => {
+    const yLine = chartArea.y + chartArea.h * t;
+    ctx.beginPath();
+    ctx.moveTo(chartArea.x, yLine);
+    ctx.lineTo(chartArea.x + chartArea.w, yLine);
+    ctx.stroke();
+    // Y axis labels
+    ctx.font = '3px Tajawal, sans-serif';
+    ctx.fillStyle = '#888';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const val = Math.round(cfg.maxY - (cfg.maxY - cfg.minY) * t);
+    ctx.fillText(val + '%', 1, yLine);
+  });
+  
+  if (!points || points.length === 0) {
+    ctx.font = '4px Tajawal, sans-serif';
+    ctx.fillStyle = '#888';
+    ctx.textAlign = 'center';
+    ctx.fillText('لا توجد بيانات', width / 2, height / 2);
+    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', x, y, width, height);
+    return;
+  }
+  
+  const range = cfg.maxY - cfg.minY || 1;
+  const stepX = points.length > 1 ? chartArea.w / (points.length - 1) : 0;
+  
+  // Fill area under line
+  if (cfg.fillUnder) {
+    ctx.beginPath();
+    ctx.moveTo(chartArea.x, chartArea.y + chartArea.h);
+    points.forEach((p, i) => {
+      const px = chartArea.x + i * stepX;
+      const py = chartArea.y + chartArea.h - ((p.value - cfg.minY) / range) * chartArea.h;
+      if (i === 0) ctx.lineTo(px, py);
+      else ctx.lineTo(px, py);
+    });
+    ctx.lineTo(chartArea.x + (points.length - 1) * stepX, chartArea.y + chartArea.h);
+    ctx.closePath();
+    ctx.fillStyle = cfg.color + '40'; // 25% opacity
+    ctx.fill();
+  }
+  
+  // Line
+  ctx.beginPath();
+  points.forEach((p, i) => {
+    const px = chartArea.x + i * stepX;
+    const py = chartArea.y + chartArea.h - ((p.value - cfg.minY) / range) * chartArea.h;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  });
+  ctx.strokeStyle = cfg.color;
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+  
+  // Points
+  points.forEach((p, i) => {
+    const px = chartArea.x + i * stepX;
+    const py = chartArea.y + chartArea.h - ((p.value - cfg.minY) / range) * chartArea.h;
+    ctx.fillStyle = cfg.color;
+    ctx.beginPath();
+    ctx.arc(px, py, 0.8, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  
+  // X axis labels (every few)
+  ctx.font = '2.8px Tajawal, sans-serif';
+  ctx.fillStyle = '#666';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  const labelStride = Math.max(1, Math.floor(points.length / 8));
+  points.forEach((p, i) => {
+    if (i % labelStride === 0 || i === points.length - 1) {
+      const px = chartArea.x + i * stepX;
+      ctx.fillText(String(p.label || ''), px, chartArea.y + chartArea.h + 1);
+    }
+  });
+  
+  pdf.addImage(canvas.toDataURL('image/png'), 'PNG', x, y, width, height);
+}
+
+// Helper: draw a colored header bar with title
+function _drawHeader(pdf, title, y, color) {
+  const c = color || '#6B1B2A';
+  pdf.setFillColor(c);
+  pdf.rect(10, y, 190, 12, 'F');
+  // Render title as Arabic text image
+  const { dataUrl } = _arabicTextCanvas(title, {
+    fontSize: 14, fontWeight: 900, color: '#FFFFFF',
+    width: 800, padding: 0, align: 'right', bg: 'transparent'
+  });
+  pdf.addImage(dataUrl, 'PNG', 12, y + 2, 186, 8);
+  return y + 14;
+}
+
+// Helper: stat box (label + value)
+function _drawStatBox(pdf, label, value, color, x, y, width, height) {
+  pdf.setFillColor(color || '#C9A84C');
+  pdf.roundedRect(x, y, width, height, 2, 2, 'F');
+  
+  // Value (big)
+  const val = _arabicTextCanvas(String(value), {
+    fontSize: 22, fontWeight: 900, color: '#FFFFFF',
+    width: 400, padding: 0, align: 'center'
+  });
+  pdf.addImage(val.dataUrl, 'PNG', x, y + 3, width, height * 0.5);
+  
+  // Label (small)
+  const lbl = _arabicTextCanvas(label, {
+    fontSize: 9, fontWeight: 700, color: '#FFFFFF',
+    width: 400, padding: 0, align: 'center'
+  });
+  pdf.addImage(lbl.dataUrl, 'PNG', x, y + height - 7, width, 5);
+}
+
+// Helper: gold cover page
+function _drawCover(pdf, title, subtitle) {
+  // Maroon background
+  pdf.setFillColor('#4A0F1A');
+  pdf.rect(0, 0, 210, 297, 'F');
+  
+  // Gold top stripe
+  pdf.setFillColor('#C9A84C');
+  pdf.rect(0, 0, 210, 20, 'F');
+  
+  // Gold bottom stripe
+  pdf.setFillColor('#C9A84C');
+  pdf.rect(0, 277, 210, 20, 'F');
+  
+  // Title
+  const titleImg = _arabicTextCanvas(title, {
+    fontSize: 36, fontWeight: 900, color: '#C9A84C',
+    width: 1000, padding: 20, align: 'center'
+  });
+  pdf.addImage(titleImg.dataUrl, 'PNG', 10, 100, 190, 50);
+  
+  // Brand
+  const brand = _arabicTextCanvas('🥛 ب لبن قطر', {
+    fontSize: 20, fontWeight: 700, color: '#E8C96A',
+    width: 1000, padding: 5, align: 'center'
+  });
+  pdf.addImage(brand.dataUrl, 'PNG', 10, 160, 190, 18);
+  
+  // Subtitle
+  if (subtitle) {
+    const sub = _arabicTextCanvas(subtitle, {
+      fontSize: 14, fontWeight: 700, color: '#F0E6D3',
+      width: 1000, padding: 5, align: 'center'
+    });
+    pdf.addImage(sub.dataUrl, 'PNG', 10, 185, 190, 12);
+  }
+  
+  // Date
+  const date = _arabicTextCanvas('التاريخ: ' + new Date().toLocaleString('ar-EG'), {
+    fontSize: 11, fontWeight: 600, color: '#F0E6D3',
+    width: 1000, padding: 5, align: 'center'
+  });
+  pdf.addImage(date.dataUrl, 'PNG', 10, 220, 190, 10);
+  
+  // Operations manager
+  const ops = _arabicTextCanvas('مدير التشغيل: بلال الأنصاري', {
+    fontSize: 12, fontWeight: 700, color: '#E8C96A',
+    width: 1000, padding: 5, align: 'center'
+  });
+  pdf.addImage(ops.dataUrl, 'PNG', 10, 240, 190, 12);
+}
+
+// ============================================================
+// SECTION: ANALYTICS PDF (full charts + analysis)
+// ============================================================
+async function pdfExportAnalysis(branch) {
+  _showPdfLoading('جاري إنشاء PDF التحليلات...');
+  _updatePdfProgress(10, 'تجميع البيانات...');
   
   try {
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pdf = _newPdf();
+    _drawCover(pdf, '📊 التحليلات والإحصائيات', branch ? 'فرع ' + (BRANCH_NAMES[branch] || branch) : 'جميع الفروع');
     
-    // Cover page
-    _updatePdfProgress(8, 'إنشاء صفحة الغلاف...');
-    const cover = _buildCoverCanvas(branch, '📑 التقرير الشامل');
-    _addCanvasToPdf(pdf, cover, true);
+    pdf.addPage();
+    let y = 15;
     
-    // Capture each section
-    let progressStep = 90 / sections.length;
-    let currentProgress = 10;
+    _updatePdfProgress(30, 'حساب متوسطات الفروع...');
     
-    for (let i = 0; i < sections.length; i++) {
-      const section = sections[i];
-      _updatePdfProgress(currentProgress, `${i+1}/${sections.length}: ${section.title}`);
-      
-      try {
-        const canvas = await _capturePageAsImage(section.id);
-        if (canvas) {
-          _addCanvasToPdf(pdf, canvas, false);
+    // SECTION 1: Branch averages
+    y = _drawHeader(pdf, '📈 متوسط أداء الفروع', y);
+    y += 4;
+    
+    const branchAverages = [];
+    BRANCHES.forEach(b => {
+      const scores = [];
+      for (let m = 0; m < 12; m++) {
+        for (let d = 1; d <= MONTH_DAYS[m]; d++) {
+          const key = getKey(b, m, d);
+          if (!appData[key]) continue;
+          const v = appData[key];
+          if (!v.results || Object.keys(v.results).length === 0) continue;
+          try {
+            const s = calcSmartScore(b, m, d);
+            scores.push(s.percent || 0);
+          } catch(e) {}
         }
-      } catch(e) {
-        console.warn(`Failed to capture ${section.id}:`, e);
       }
-      
-      currentProgress += progressStep;
+      if (scores.length > 0) {
+        const avg = Math.round(scores.reduce((a,c)=>a+c,0) / scores.length);
+        branchAverages.push({
+          label: BRANCH_NAMES[b] || b,
+          value: avg,
+          color: avg >= 80 ? '#27AE60' : avg >= 60 ? '#F39C12' : '#E74C3C',
+          valueText: avg + '%'
+        });
+      } else {
+        branchAverages.push({
+          label: BRANCH_NAMES[b] || b,
+          value: 0,
+          color: '#95A5A6',
+          valueText: 'لا توجد بيانات'
+        });
+      }
+    });
+    
+    _drawBarChart(pdf, branchAverages, 12, y, 186, 60, {
+      title: 'متوسط نسبة المطابقة لكل فرع',
+      maxValue: 100, unit: '%'
+    });
+    y += 64;
+    
+    // SECTION 2: Most failed items
+    _updatePdfProgress(50, 'تحليل البنود الفاشلة...');
+    
+    y = _ensureRoom(pdf, y, 70);
+    y = _drawHeader(pdf, '🔴 أكثر 10 بنود فشلاً', y);
+    y += 4;
+    
+    const failCounts = {};
+    BRANCHES.forEach(b => {
+      for (let m = 0; m < 12; m++) {
+        for (let d = 1; d <= MONTH_DAYS[m]; d++) {
+          const key = getKey(b, m, d);
+          if (!appData[key]) continue;
+          Object.entries(appData[key].results || {}).forEach(([id, val]) => {
+            if (val === 'fail') failCounts[id] = (failCounts[id] || 0) + 1;
+          });
+        }
+      }
+    });
+    const top10 = Object.entries(failCounts).sort((a,b)=>b[1]-a[1]).slice(0, 10);
+    const allItemsLib = CHECKLIST.flatMap(s => s.items);
+    const top10Data = top10.map(([id, cnt]) => {
+      const item = allItemsLib.find(i => i.id === id);
+      return {
+        label: (item?.text || id).substring(0, 30),
+        value: cnt,
+        color: '#E74C3C',
+        valueText: cnt + 'مرة'
+      };
+    });
+    
+    if (top10Data.length > 0) {
+      _drawBarChart(pdf, top10Data, 12, y, 186, 70, {
+        title: 'تكرار البنود الفاشلة',
+        maxValue: Math.max(...top10Data.map(d => d.value)) + 1
+      });
+      y += 74;
+    } else {
+      y = _pdfText(pdf, '✅ لا توجد بنود فاشلة', 12, y, { fontSize: 12, color: '#27AE60', targetWidth: 186 });
     }
     
-    _updatePdfProgress(99, 'حفظ الملف...');
-    const fname = `تقرير_شامل_${branch ? BRANCH_NAMES[branch] : 'كامل'}_${new Date().toISOString().split('T')[0]}.pdf`;
-    pdf.save(fname);
+    // SECTION 3: Daily trend (last 30 days, all branches average)
+    _updatePdfProgress(70, 'حساب الاتجاه اليومي...');
     
-    showNotif('✅ تم تنزيل التقرير الشامل', 'success');
+    pdf.addPage();
+    y = 15;
+    y = _drawHeader(pdf, '📅 الاتجاه اليومي (آخر 30 يوم)', y);
+    y += 4;
+    
+    const today = new Date();
+    const trendPoints = [];
+    for (let i = 29; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(today.getDate() - i);
+      const m = date.getMonth();
+      const d = date.getDate();
+      
+      let totalScore = 0, count = 0;
+      BRANCHES.forEach(b => {
+        const key = getKey(b, m, d);
+        if (!appData[key]) return;
+        const visit = appData[key];
+        if (!visit.results || Object.keys(visit.results).length === 0) return;
+        try {
+          const s = calcSmartScore(b, m, d);
+          totalScore += s.percent || 0;
+          count++;
+        } catch(e) {}
+      });
+      
+      if (count > 0) {
+        trendPoints.push({
+          label: d + '/' + (m + 1),
+          value: Math.round(totalScore / count)
+        });
+      }
+    }
+    
+    if (trendPoints.length > 0) {
+      _drawLineChart(pdf, trendPoints, 12, y, 186, 70, {
+        title: 'متوسط الأداء اليومي للجميع',
+        minY: 0, maxY: 100, color: '#C9A84C'
+      });
+      y += 74;
+    } else {
+      y = _pdfText(pdf, 'لا توجد بيانات كافية للاتجاه', 12, y, { fontSize: 12, color: '#888', targetWidth: 186 });
+    }
+    
+    // SECTION 4: Department distribution
+    _updatePdfProgress(85, 'توزيع الإدارات...');
+    
+    y = _ensureRoom(pdf, y, 70);
+    y = _drawHeader(pdf, '🏢 توزيع البنود الفاشلة حسب الإدارة', y);
+    y += 4;
+    
+    const deptCounts = {};
+    BRANCHES.forEach(b => {
+      for (let m = 0; m < 12; m++) {
+        for (let d = 1; d <= MONTH_DAYS[m]; d++) {
+          const key = getKey(b, m, d);
+          if (!appData[key]) continue;
+          const v = appData[key];
+          Object.entries(v.results || {}).forEach(([id, val]) => {
+            if (val !== 'fail') return;
+            const dept = v.deptAssign?.[id] || 'الفرع';
+            deptCounts[dept] = (deptCounts[dept] || 0) + 1;
+          });
+        }
+      }
+    });
+    const deptData = Object.entries(deptCounts).sort((a,b)=>b[1]-a[1]).map(([dept, cnt]) => ({
+      label: dept,
+      value: cnt,
+      color: '#8E44AD',
+      valueText: cnt + ''
+    }));
+    
+    if (deptData.length > 0) {
+      _drawBarChart(pdf, deptData, 12, y, 186, 50, {
+        title: 'عدد البنود الفاشلة لكل إدارة'
+      });
+      y += 54;
+    }
+    
+    // SECTION 5: Numeric summary
+    _updatePdfProgress(95, 'إنهاء...');
+    
+    pdf.addPage();
+    y = 15;
+    y = _drawHeader(pdf, '📋 ملخص رقمي شامل', y);
+    y += 6;
+    
+    let totalVisits = 0, totalFails = 0, totalOk = 0, totalCritical = 0;
+    BRANCHES.forEach(b => {
+      for (let m = 0; m < 12; m++) {
+        for (let d = 1; d <= MONTH_DAYS[m]; d++) {
+          const key = getKey(b, m, d);
+          if (!appData[key]) continue;
+          const v = appData[key];
+          if (!v.results || Object.keys(v.results).length === 0) continue;
+          totalVisits++;
+          Object.entries(v.results).forEach(([id, val]) => {
+            if (val === 'ok') totalOk++;
+            else if (val === 'fail') {
+              totalFails++;
+              const item = allItemsLib.find(i => i.id === id);
+              if (item?.critical) totalCritical++;
+            }
+          });
+        }
+      }
+    });
+    
+    const overallPct = (totalOk + totalFails) > 0 ? Math.round((totalOk / (totalOk + totalFails)) * 100) : 0;
+    
+    // 4 stat boxes (2x2 grid)
+    _drawStatBox(pdf, 'إجمالي الزيارات', String(totalVisits), '#3498DB', 12, y, 90, 22);
+    _drawStatBox(pdf, 'متوسط المطابقة', overallPct + '%', overallPct >= 80 ? '#27AE60' : overallPct >= 60 ? '#F39C12' : '#E74C3C', 108, y, 90, 22);
+    y += 26;
+    _drawStatBox(pdf, 'بنود مطابقة', String(totalOk), '#27AE60', 12, y, 90, 22);
+    _drawStatBox(pdf, 'بنود غير مطابقة', String(totalFails), '#E74C3C', 108, y, 90, 22);
+    y += 26;
+    _drawStatBox(pdf, 'بنود حرجة فاشلة', String(totalCritical), '#C0392B', 12, y, 90, 22);
+    _drawStatBox(pdf, 'الفروع المُقيَّمة', String(branchAverages.filter(b => b.value > 0).length), '#9B59B6', 108, y, 90, 22);
+    y += 30;
+    
+    // Footer
+    y = _pdfText(pdf, 'تم التوليد بواسطة نظام إدارة تشغيل ب لبن قطر • ' + new Date().toLocaleString('ar-EG'),
+      12, 280, { fontSize: 8, color: '#888', align: 'center', targetWidth: 186 });
+    
+    pdf.save(`تحليلات_ب_لبن_${new Date().toISOString().split('T')[0]}.pdf`);
+    if (typeof showNotif === 'function') showNotif('✅ تم تنزيل التحليلات', 'success');
   } catch(err) {
-    console.error('PDF Error:', err);
-    showNotif('❌ ' + (err.message || err), 'error');
+    console.error('PDF Analytics error:', err);
+    if (typeof showNotif === 'function') showNotif('❌ ' + (err.message || err), 'error');
   } finally {
     _hidePdfLoading();
-    // Return to branch view
-    if (typeof showPage === 'function') {
-      try { showPage('branch-view'); } catch(e) {}
-    }
   }
 }
 
-// Wrappers for each section
-function pdfExportEvaluation(branch) { 
-  if (branch && typeof selectedBranch !== 'undefined') selectedBranch = branch;
-  return pdfExportSection('branch-view', 'التقييم التفصيلي', branch); 
+// ============================================================
+// SECTION: RECOMMENDATIONS PDF
+// ============================================================
+async function pdfExportRecommendations(branch) {
+  _showPdfLoading('جاري إنشاء PDF التوصيات...');
+  _updatePdfProgress(10, 'تحليل البيانات...');
+  
+  try {
+    const pdf = _newPdf();
+    _drawCover(pdf, '💡 التوصيات', branch ? 'فرع ' + (BRANCH_NAMES[branch] || branch) : 'كل الفروع');
+    
+    pdf.addPage();
+    let y = 15;
+    
+    _updatePdfProgress(30, 'إعداد التوصيات...');
+    
+    // Compute fail counts
+    const failCounts = {};
+    BRANCHES.forEach(b => {
+      for (let m = 0; m < 12; m++) {
+        for (let d = 1; d <= MONTH_DAYS[m]; d++) {
+          const key = getKey(b, m, d);
+          if (!appData[key]) continue;
+          Object.entries(appData[key].results || {}).forEach(([id, val]) => {
+            if (val === 'fail') failCounts[id] = (failCounts[id] || 0) + 1;
+          });
+        }
+      }
+    });
+    const allItemsLib = CHECKLIST.flatMap(s => s.items);
+    const topFails = Object.entries(failCounts).sort((a,b)=>b[1]-a[1]);
+    
+    // SECTION 1: Critical recommendations
+    y = _drawHeader(pdf, '🚨 توصيات عاجلة (أكثر البنود فشلاً)', y, '#E74C3C');
+    y += 4;
+    
+    const criticalRecos = topFails.slice(0, 10);
+    if (criticalRecos.length === 0) {
+      y = _pdfText(pdf, '✅ لا توجد بنود فاشلة — أداء ممتاز!', 12, y,
+        { fontSize: 14, color: '#27AE60', targetWidth: 186, align: 'center' });
+    } else {
+      criticalRecos.forEach(([id, cnt], idx) => {
+        const item = allItemsLib.find(i => i.id === id);
+        if (!item) return;
+        const priority = cnt >= 5 ? '🔴 عالية جداً' : cnt >= 3 ? '🟡 متوسطة' : '🟢 منخفضة';
+        const priorityColor = cnt >= 5 ? '#E74C3C' : cnt >= 3 ? '#F39C12' : '#27AE60';
+        
+        y = _ensureRoom(pdf, y, 28);
+        
+        // Box bg
+        pdf.setFillColor('#FAF6E8');
+        pdf.setDrawColor(priorityColor);
+        pdf.setLineWidth(0.4);
+        pdf.roundedRect(10, y, 190, 24, 2, 2, 'FD');
+        
+        // Priority badge
+        pdf.setFillColor(priorityColor);
+        pdf.roundedRect(12, y + 2, 28, 6, 1, 1, 'F');
+        const prioImg = _arabicTextCanvas(priority, { fontSize: 8, color: '#fff', fontWeight: 800, width: 200, padding: 0, align: 'center' });
+        pdf.addImage(prioImg.dataUrl, 'PNG', 12, y + 2.5, 28, 5);
+        
+        // Title
+        const txt = (idx + 1) + '. ' + item.text + (item.critical ? ' [بند حرج]' : '');
+        y = _pdfText(pdf, txt, 12, y + 9, { fontSize: 10, fontWeight: 800, color: '#000', targetWidth: 186, spacing: 1 });
+        
+        // Recommendation text
+        const recoText = 'تكرر ' + cnt + ' مرة — يُوصى بإجراء مراجعة فورية وتدريب المديرين على هذا البند.';
+        y = _pdfText(pdf, recoText, 12, y, { fontSize: 9, color: '#555', targetWidth: 186, spacing: 4 });
+      });
+    }
+    
+    // SECTION 2: General recommendations
+    _updatePdfProgress(70, 'التوصيات العامة...');
+    
+    pdf.addPage();
+    y = 15;
+    y = _drawHeader(pdf, '📌 توصيات عامة لرفع كفاءة التشغيل', y, '#16A085');
+    y += 4;
+    
+    const generalRecos = [
+      { title: '📊 جدولة زيارات متوازنة', text: 'تأكد من توزيع زيارات التقييم على الشيفت الصباحي والمسائي بالتساوي للحصول على صورة شاملة.' },
+      { title: '👥 اجتماع أسبوعي مع المديرين', text: 'عقد اجتماع كل بداية أسبوع لمراجعة نتائج الأسبوع الماضي والاتفاق على الأولويات.' },
+      { title: '🏆 برنامج المكافآت', text: 'تفعيل نظام مكافآت للمديرين الذين يحققون نسبة ≥ 90% لمدة 3 أشهر متتالية.' },
+      { title: '📚 تدريب البنود الحرجة', text: 'تخصيص جلسة تدريب شهرية للبنود الحرجة الأكثر فشلاً.' },
+      { title: '🔄 مشاركة أفضل الممارسات', text: 'الفروع المتميزة تشارك تجاربها مع باقي الفروع في WhatsApp Group أو اجتماع شهري.' },
+      { title: '🎯 أكشن بلان متابع', text: 'كل بند فاشل لازم يكون له action plan محدد بميعاد + مسؤول، ويتم متابعته أسبوعياً.' },
+      { title: '📱 استخدام النظام الإلكتروني', text: 'تشجيع المديرين على التقييم الفوري في النظام بدلاً من التأجيل لنهاية اليوم.' },
+      { title: '🚨 معالجة البنود الحرجة فوراً', text: 'أي بند حرج فاشل يجب معالجته في نفس اليوم وقبل إغلاق الفرع.' }
+    ];
+    
+    generalRecos.forEach((r, i) => {
+      y = _ensureRoom(pdf, y, 22);
+      
+      pdf.setFillColor('#E8F8F5');
+      pdf.setDrawColor('#16A085');
+      pdf.setLineWidth(0.3);
+      pdf.roundedRect(10, y, 190, 18, 2, 2, 'FD');
+      
+      y = _pdfText(pdf, r.title, 12, y + 2, { fontSize: 11, fontWeight: 900, color: '#0E6B57', targetWidth: 186, spacing: 1 });
+      y = _pdfText(pdf, r.text, 12, y, { fontSize: 9, color: '#333', targetWidth: 186, spacing: 3 });
+    });
+    
+    // SECTION 3: Branch-specific recommendations
+    _updatePdfProgress(90, 'توصيات لكل فرع...');
+    
+    pdf.addPage();
+    y = 15;
+    y = _drawHeader(pdf, '🏪 توصيات خاصة لكل فرع', y, '#9B59B6');
+    y += 4;
+    
+    BRANCHES.forEach(b => {
+      const scores = [];
+      for (let m = 0; m < 12; m++) {
+        for (let d = 1; d <= MONTH_DAYS[m]; d++) {
+          const key = getKey(b, m, d);
+          if (!appData[key]) continue;
+          const v = appData[key];
+          if (!v.results || Object.keys(v.results).length === 0) continue;
+          try {
+            const s = calcSmartScore(b, m, d);
+            scores.push(s.percent || 0);
+          } catch(e) {}
+        }
+      }
+      const avg = scores.length > 0 ? Math.round(scores.reduce((a,c)=>a+c,0) / scores.length) : 0;
+      
+      let verdict, color;
+      if (scores.length === 0) {
+        verdict = '📝 لا توجد تقييمات — يُوصى ببدء التقييمات فوراً.';
+        color = '#95A5A6';
+      } else if (avg < 60) {
+        verdict = '🔴 إنذار رسمي + خطة تصحيحية فورية + متابعة يومية.';
+        color = '#E74C3C';
+      } else if (avg < 80) {
+        verdict = '🟡 متابعة مكثفة + برنامج تطوير أسبوعي + مكافأة مشروطة بالتحسن.';
+        color = '#F39C12';
+      } else {
+        verdict = '🟢 أداء ممتاز — تقدير رسمي + ترشيح للمكافأة + ضمه لمشاركة الخبرات.';
+        color = '#27AE60';
+      }
+      
+      y = _ensureRoom(pdf, y, 28);
+      
+      pdf.setFillColor('#FAF5FF');
+      pdf.setDrawColor(color);
+      pdf.setLineWidth(0.4);
+      pdf.roundedRect(10, y, 190, 24, 2, 2, 'FD');
+      
+      const branchTitle = '🏪 ' + (BRANCH_NAMES[b] || b) + (scores.length > 0 ? ' — متوسط: ' + avg + '%  |  ' + scores.length + ' زيارة' : '');
+      y = _pdfText(pdf, branchTitle, 12, y + 2, { fontSize: 11, fontWeight: 900, color: '#6C3483', targetWidth: 186, spacing: 1 });
+      y = _pdfText(pdf, verdict, 12, y, { fontSize: 10, color: '#000', targetWidth: 186, spacing: 4 });
+    });
+    
+    pdf.save(`توصيات_ب_لبن_${new Date().toISOString().split('T')[0]}.pdf`);
+    if (typeof showNotif === 'function') showNotif('✅ تم تنزيل التوصيات', 'success');
+  } catch(err) {
+    console.error('PDF Recommendations error:', err);
+    if (typeof showNotif === 'function') showNotif('❌ ' + (err.message || err), 'error');
+  } finally {
+    _hidePdfLoading();
+  }
 }
+
+// ============================================================
+// SECTION: OVERVIEW PDF (Ops manager view)
+// ============================================================
+async function pdfExportOverview() {
+  _showPdfLoading('جاري إنشاء PDF نظرة عامة...');
+  _updatePdfProgress(10, 'تجميع البيانات...');
+  
+  try {
+    const pdf = _newPdf();
+    _drawCover(pdf, '🌐 النظرة العامة', 'تقرير شامل لكل الفروع');
+    
+    pdf.addPage();
+    let y = 15;
+    
+    // SECTION 1: System statistics
+    _updatePdfProgress(30, 'إحصائيات النظام...');
+    y = _drawHeader(pdf, '📊 إحصائيات النظام', y, '#3498DB');
+    y += 6;
+    
+    let totalVisits = 0, totalFails = 0, totalOk = 0;
+    BRANCHES.forEach(b => {
+      for (let m = 0; m < 12; m++) {
+        for (let d = 1; d <= MONTH_DAYS[m]; d++) {
+          const key = getKey(b, m, d);
+          if (!appData[key]) continue;
+          const v = appData[key];
+          if (!v.results || Object.keys(v.results).length === 0) continue;
+          totalVisits++;
+          Object.entries(v.results).forEach(([id, val]) => {
+            if (val === 'ok') totalOk++;
+            else if (val === 'fail') totalFails++;
+          });
+        }
+      }
+    });
+    const overallPct = (totalOk + totalFails) > 0 ? Math.round((totalOk / (totalOk + totalFails)) * 100) : 0;
+    const tasks = (typeof tasksData !== 'undefined' && Array.isArray(tasksData)) ? tasksData : [];
+    
+    _drawStatBox(pdf, 'الفروع', String(BRANCHES.length), '#3498DB', 12, y, 60, 22);
+    _drawStatBox(pdf, 'إجمالي الزيارات', String(totalVisits), '#9B59B6', 75, y, 60, 22);
+    _drawStatBox(pdf, 'متوسط الأداء', overallPct + '%', overallPct >= 80 ? '#27AE60' : '#F39C12', 138, y, 60, 22);
+    y += 28;
+    _drawStatBox(pdf, 'إجمالي المهام', String(tasks.length), '#16A085', 12, y, 60, 22);
+    _drawStatBox(pdf, 'المهام المنتهية', String(tasks.filter(t => t.status === 'completed' || t.done).length), '#27AE60', 75, y, 60, 22);
+    _drawStatBox(pdf, 'المهام المعلقة', String(tasks.filter(t => !t.done && t.status !== 'completed').length), '#E74C3C', 138, y, 60, 22);
+    y += 30;
+    
+    // SECTION 2: Per-branch quick view
+    _updatePdfProgress(60, 'نظرة على الفروع...');
+    
+    y = _drawHeader(pdf, '🏪 لمحة عن كل فرع', y, '#16A085');
+    y += 4;
+    
+    BRANCHES.forEach(b => {
+      const scores = [];
+      let lastEval = null;
+      for (let m = 0; m < 12; m++) {
+        for (let d = 1; d <= MONTH_DAYS[m]; d++) {
+          const key = getKey(b, m, d);
+          if (!appData[key]) continue;
+          const v = appData[key];
+          if (!v.results || Object.keys(v.results).length === 0) continue;
+          try {
+            const s = calcSmartScore(b, m, d);
+            scores.push(s.percent || 0);
+            lastEval = { m, d, score: s.percent, manager: v.manager || (v.managers||[])[0] || '-' };
+          } catch(e) {}
+        }
+      }
+      const avg = scores.length > 0 ? Math.round(scores.reduce((a,c)=>a+c,0) / scores.length) : 0;
+      const branchTasks = tasks.filter(t => {
+        const tBranches = (typeof getTaskBranches === 'function') ? getTaskBranches(t) : (t.branch ? [t.branch] : []);
+        return tBranches.includes(b);
+      });
+      const pendingBT = branchTasks.filter(t => !t.done && t.status !== 'completed').length;
+      
+      const color = avg >= 80 ? '#27AE60' : avg >= 60 ? '#F39C12' : avg > 0 ? '#E74C3C' : '#95A5A6';
+      
+      y = _ensureRoom(pdf, y, 24);
+      
+      pdf.setFillColor('#F5F7FA');
+      pdf.setDrawColor(color);
+      pdf.setLineWidth(0.5);
+      pdf.roundedRect(10, y, 190, 20, 2, 2, 'FD');
+      
+      // Branch name
+      y = _pdfText(pdf, '🏪 ' + (BRANCH_NAMES[b] || b), 12, y + 1.5, 
+        { fontSize: 12, fontWeight: 900, color: '#0E6B57', targetWidth: 186, spacing: 0.5 });
+      
+      // Stats row
+      const stats = 'الزيارات: ' + scores.length + '  |  المتوسط: ' + (scores.length > 0 ? avg + '%' : 'لا توجد') 
+                  + '  |  المهام المعلقة: ' + pendingBT 
+                  + (lastEval ? '  |  آخر تقييم: ' + lastEval.score + '%' : '');
+      y = _pdfText(pdf, stats, 12, y, { fontSize: 9, color: '#333', targetWidth: 186, spacing: 4 });
+    });
+    
+    // SECTION 3: Recent activity (last 10 evaluations)
+    _updatePdfProgress(85, 'النشاط الأخير...');
+    
+    pdf.addPage();
+    y = 15;
+    y = _drawHeader(pdf, '📅 آخر 15 تقييم', y, '#9B59B6');
+    y += 4;
+    
+    const recentEvals = [];
+    BRANCHES.forEach(b => {
+      for (let m = 0; m < 12; m++) {
+        for (let d = 1; d <= MONTH_DAYS[m]; d++) {
+          const key = getKey(b, m, d);
+          if (!appData[key]) continue;
+          const v = appData[key];
+          if (!v.results || Object.keys(v.results).length === 0) continue;
+          try {
+            const s = calcSmartScore(b, m, d);
+            recentEvals.push({
+              branch: b, m, d, manager: v.manager || (v.managers||[])[0] || '-', 
+              shift: v.shift || '-', score: s.percent || 0,
+              sortKey: m * 31 + d
+            });
+          } catch(e) {}
+        }
+      }
+    });
+    recentEvals.sort((a,b) => b.sortKey - a.sortKey);
+    
+    const MONTHS_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+    
+    recentEvals.slice(0, 15).forEach(e => {
+      const color = e.score >= 80 ? '#27AE60' : e.score >= 60 ? '#F39C12' : '#E74C3C';
+      y = _ensureRoom(pdf, y, 14);
+      
+      pdf.setFillColor('#FAFAFA');
+      pdf.setDrawColor(color);
+      pdf.setLineWidth(0.3);
+      pdf.roundedRect(10, y, 190, 11, 1.5, 1.5, 'FD');
+      
+      // Score badge on right
+      pdf.setFillColor(color);
+      pdf.roundedRect(180, y + 1, 18, 9, 1, 1, 'F');
+      const scoreImg = _arabicTextCanvas(e.score + '%', { fontSize: 11, color: '#fff', fontWeight: 900, width: 200, padding: 0, align: 'center' });
+      pdf.addImage(scoreImg.dataUrl, 'PNG', 180, y + 2.5, 18, 6);
+      
+      // Info
+      const info = '🏪 ' + (BRANCH_NAMES[e.branch] || e.branch) + ' • 📅 ' + e.d + ' ' + MONTHS_AR[e.m] + ' • 👤 ' + e.manager + ' (' + e.shift + ')';
+      y = _pdfText(pdf, info, 12, y + 1.5, { fontSize: 9, color: '#333', targetWidth: 165, spacing: 3 });
+    });
+    
+    pdf.save(`نظرة_عامة_ب_لبن_${new Date().toISOString().split('T')[0]}.pdf`);
+    if (typeof showNotif === 'function') showNotif('✅ تم تنزيل النظرة العامة', 'success');
+  } catch(err) {
+    console.error('PDF Overview error:', err);
+    if (typeof showNotif === 'function') showNotif('❌ ' + (err.message || err), 'error');
+  } finally {
+    _hidePdfLoading();
+  }
+}
+
+// ============================================================
+// SECTION: MANAGERS PDF (full performance report)
+// ============================================================
+async function pdfExportManagers() {
+  _showPdfLoading('جاري إنشاء PDF المديرين...');
+  _updatePdfProgress(10, 'تجميع بيانات المديرين...');
+  
+  try {
+    const pdf = _newPdf();
+    _drawCover(pdf, '👔 تقييم أداء المديرين', 'تراكمي وتحليلي');
+    
+    const managerStats = (typeof buildManagerStats === 'function') ? buildManagerStats() : {};
+    const allItemsLib = CHECKLIST.flatMap(s => s.items);
+    
+    if (Object.keys(managerStats).length === 0) {
+      pdf.addPage();
+      _pdfText(pdf, '⚠️ لا توجد بيانات مديرين بعد. يجب إدخال أسماء المديرين في صفحات الفروع أولاً.',
+        12, 30, { fontSize: 14, color: '#888', targetWidth: 186, align: 'center' });
+      pdf.save(`مديرون_ب_لبن_${new Date().toISOString().split('T')[0]}.pdf`);
+      if (typeof showNotif === 'function') showNotif('⚠️ لا توجد بيانات', 'error');
+      _hidePdfLoading();
+      return;
+    }
+    
+    const sorted = Object.entries(managerStats).sort((a,b) => {
+      const avgA = a[1].visits.reduce((s,v)=>s+v.pct,0)/a[1].visits.length;
+      const avgB = b[1].visits.reduce((s,v)=>s+v.pct,0)/b[1].visits.length;
+      return avgB - avgA;
+    });
+    
+    _updatePdfProgress(30, 'بناء جدول المقارنة...');
+    
+    pdf.addPage();
+    let y = 15;
+    
+    // SECTION 1: Comparison bar chart
+    y = _drawHeader(pdf, '📊 مقارنة متوسط الأداء', y, '#3498DB');
+    y += 4;
+    
+    const compareData = sorted.map(([name, stats]) => {
+      const avg = Math.round(stats.visits.reduce((s,v)=>s+v.pct,0) / stats.visits.length);
+      return {
+        label: name,
+        value: avg,
+        color: avg >= 80 ? '#27AE60' : avg >= 60 ? '#F39C12' : '#E74C3C',
+        valueText: avg + '%'
+      };
+    });
+    
+    const chartH = Math.min(150, 8 + sorted.length * 7);
+    _drawBarChart(pdf, compareData, 12, y, 186, chartH, {
+      title: 'متوسط نسبة المطابقة لكل مدير',
+      maxValue: 100, unit: '%'
+    });
+    y += chartH + 4;
+    
+    // SECTION 2: Detailed card for each manager
+    _updatePdfProgress(50, 'بطاقة كل مدير...');
+    
+    sorted.forEach(([name, stats], idx) => {
+      _updatePdfProgress(50 + (40 * idx / sorted.length), 'مدير: ' + name);
+      
+      const visits = [...stats.visits].sort((a,b) => a.m*31+a.d - (b.m*31+b.d));
+      const avg = Math.round(visits.reduce((s,v)=>s+v.pct,0) / visits.length);
+      const maxScore = Math.max(...visits.map(v=>v.pct));
+      const minScore = Math.min(...visits.map(v=>v.pct));
+      const color = avg >= 80 ? '#27AE60' : avg >= 60 ? '#F39C12' : '#E74C3C';
+      
+      // Trend analysis
+      const trend = (typeof analyzeManagerTrend === 'function') ? analyzeManagerTrend(visits) : { trend: 'stable', delta: 0 };
+      const trendTxt = trend.trend === 'up' ? '📈 تحسّن +' + trend.delta + '%' : trend.trend === 'down' ? '📉 تراجع ' + trend.delta + '%' : '➡️ مستقر';
+      
+      // Verdict
+      const verdict = avg < 70 ? '🔴 إنذار رسمي + خطة تصحيحية فورية' 
+                    : avg < 90 ? '🟡 متابعة مكثفة + برنامج تطوير أسبوعي' 
+                    : '🟢 تقدير رسمي + ترشيح للمكافأة';
+      
+      // Branches
+      const branchesTxt = [...stats.branches].map(b => BRANCH_NAMES[b] || b).join('، ');
+      
+      // Top failed items
+      const failList = Object.entries(stats.failItems || {}).sort((a,b)=>b[1]-a[1]).slice(0, 3);
+      const failTxt = failList.length > 0
+        ? failList.map(([id,cnt]) => {
+            const it = allItemsLib.find(i => i.id === id);
+            return (it?.text || id).substring(0, 35) + ' (' + cnt + '×)';
+          }).join(' | ')
+        : '✅ لا توجد بنود فاشلة متكررة';
+      
+      // Action plan
+      let totalAP = 0, doneAP = 0;
+      visits.forEach(v => {
+        const visit = getVisitData(v.branch, v.m, v.d);
+        allItemsLib.forEach(item => {
+          if (visit.results?.[item.id] === 'fail') {
+            totalAP++;
+            if (visit.actionStatus?.[item.id]?.status === 'done') doneAP++;
+          }
+        });
+      });
+      const apPct = totalAP > 0 ? Math.round((doneAP/totalAP)*100) : null;
+      
+      // New page for each manager (clean layout)
+      pdf.addPage();
+      y = 15;
+      
+      // Header bar
+      pdf.setFillColor(color);
+      pdf.rect(10, y, 190, 14, 'F');
+      const headerImg = _arabicTextCanvas('#' + (idx+1) + '  👤 ' + name + '  —  ' + avg + '%', 
+        { fontSize: 16, color: '#fff', fontWeight: 900, width: 1000, padding: 0, align: 'right' });
+      pdf.addImage(headerImg.dataUrl, 'PNG', 12, y + 3, 186, 9);
+      y += 18;
+      
+      // Stats row
+      _drawStatBox(pdf, 'الزيارات', String(visits.length), '#3498DB', 12, y, 45, 20);
+      _drawStatBox(pdf, 'أعلى', maxScore + '%', '#27AE60', 60, y, 45, 20);
+      _drawStatBox(pdf, 'أدنى', minScore + '%', '#E74C3C', 108, y, 45, 20);
+      _drawStatBox(pdf, 'الاتجاه', trendTxt.split(' ')[1] || '-', trend.trend==='up'?'#27AE60':trend.trend==='down'?'#E74C3C':'#95A5A6', 156, y, 42, 20);
+      y += 24;
+      
+      // Branches
+      y = _pdfText(pdf, '🏪 الفروع: ' + branchesTxt, 12, y, { fontSize: 10, color: '#333', targetWidth: 186, spacing: 2 });
+      
+      // Action plan progress
+      if (apPct !== null) {
+        const apColor = apPct >= 80 ? '#27AE60' : apPct >= 50 ? '#F39C12' : '#E74C3C';
+        pdf.setFillColor('#F5F5F5');
+        pdf.roundedRect(12, y, 186, 7, 1, 1, 'F');
+        pdf.setFillColor(apColor);
+        pdf.roundedRect(12, y, 186 * (apPct/100), 7, 1, 1, 'F');
+        const apImg = _arabicTextCanvas('🎯 الأكشن بلان: ' + doneAP + ' / ' + totalAP + ' منجز  (' + apPct + '%)',
+          { fontSize: 9, color: '#000', fontWeight: 800, width: 1000, padding: 0, align: 'right' });
+        pdf.addImage(apImg.dataUrl, 'PNG', 12, y + 0.5, 186, 6);
+        y += 10;
+      }
+      
+      // Top failed items
+      y = _pdfText(pdf, '🔴 أكثر البنود فشلاً: ' + failTxt, 12, y, 
+        { fontSize: 9, color: '#C0392B', targetWidth: 186, spacing: 3 });
+      
+      // Verdict
+      pdf.setFillColor(color);
+      pdf.roundedRect(12, y, 186, 10, 2, 2, 'F');
+      const vImg = _arabicTextCanvas(verdict, { fontSize: 11, color: '#fff', fontWeight: 800, width: 1000, padding: 0, align: 'center' });
+      pdf.addImage(vImg.dataUrl, 'PNG', 12, y + 1.5, 186, 7);
+      y += 14;
+      
+      // Sparkline chart of visits
+      if (visits.length > 1) {
+        const trendPoints = visits.map(v => ({ label: v.d + '/' + (v.m+1), value: v.pct }));
+        _drawLineChart(pdf, trendPoints, 12, y, 186, 50, {
+          title: '📈 اتجاه الأداء عبر الزيارات',
+          minY: 0, maxY: 100, color: color
+        });
+        y += 54;
+      }
+      
+      // Visit details table
+      y = _ensureRoom(pdf, y, 30);
+      y = _drawHeader(pdf, '📋 تفاصيل الزيارات', y, '#9B59B6');
+      y += 3;
+      
+      // Table header
+      pdf.setFillColor('#9B59B6');
+      pdf.rect(12, y, 186, 7, 'F');
+      const hdrTxt = _arabicTextCanvas('التاريخ              |              الفرع              |              الشيفت              |              النسبة', 
+        { fontSize: 9, color: '#fff', fontWeight: 800, width: 1000, padding: 0, align: 'center' });
+      pdf.addImage(hdrTxt.dataUrl, 'PNG', 12, y + 1, 186, 5);
+      y += 8;
+      
+      visits.slice(-10).forEach((v, vi) => {
+        y = _ensureRoom(pdf, y, 8);
+        if (vi % 2 === 0) {
+          pdf.setFillColor('#F8F9FA');
+          pdf.rect(12, y, 186, 6, 'F');
+        }
+        const rowTxt = (v.d + ' ' + MONTHS_AR[v.m]) + '   |   ' + (BRANCH_NAMES[v.branch] || v.branch) + '   |   ' + (v.shift || '-') + '   |   ' + v.pct + '%';
+        const rImg = _arabicTextCanvas(rowTxt, { fontSize: 8, color: '#333', fontWeight: 600, width: 1000, padding: 0, align: 'center' });
+        pdf.addImage(rImg.dataUrl, 'PNG', 12, y + 0.8, 186, 4.5);
+        y += 6;
+      });
+    });
+    
+    const MONTHS_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+    
+    pdf.save(`مديرون_ب_لبن_${new Date().toISOString().split('T')[0]}.pdf`);
+    if (typeof showNotif === 'function') showNotif('✅ تم تنزيل PDF المديرين', 'success');
+  } catch(err) {
+    console.error('PDF Managers error:', err);
+    if (typeof showNotif === 'function') showNotif('❌ ' + (err.message || err), 'error');
+  } finally {
+    _hidePdfLoading();
+  }
+}
+
+// ============================================================
+// COMPREHENSIVE PDF (combines everything)
+// ============================================================
+async function pdfExportComprehensive(branch) {
+  _showPdfLoading('جاري إنشاء التقرير الشامل...');
+  _updatePdfProgress(5, 'بدء التجميع...');
+  
+  try {
+    const pdf = _newPdf();
+    _drawCover(pdf, '📑 التقرير الشامل', branch ? 'فرع ' + (BRANCH_NAMES[branch] || branch) : 'جميع الفروع');
+    
+    // === Section 1: Overview stats ===
+    _updatePdfProgress(15, 'إحصائيات عامة...');
+    pdf.addPage();
+    let y = 15;
+    y = _drawHeader(pdf, '📊 ملخص النظام', y, '#3498DB');
+    y += 6;
+    
+    let totalVisits = 0, totalFails = 0, totalOk = 0, totalCritical = 0;
+    const allItemsLib = CHECKLIST.flatMap(s => s.items);
+    BRANCHES.forEach(b => {
+      for (let m = 0; m < 12; m++) {
+        for (let d = 1; d <= MONTH_DAYS[m]; d++) {
+          const key = getKey(b, m, d);
+          if (!appData[key]) continue;
+          const v = appData[key];
+          if (!v.results || Object.keys(v.results).length === 0) continue;
+          totalVisits++;
+          Object.entries(v.results).forEach(([id, val]) => {
+            if (val === 'ok') totalOk++;
+            else if (val === 'fail') {
+              totalFails++;
+              const item = allItemsLib.find(i => i.id === id);
+              if (item?.critical) totalCritical++;
+            }
+          });
+        }
+      }
+    });
+    const overallPct = (totalOk + totalFails) > 0 ? Math.round((totalOk / (totalOk + totalFails)) * 100) : 0;
+    
+    _drawStatBox(pdf, 'الزيارات', String(totalVisits), '#3498DB', 12, y, 90, 22);
+    _drawStatBox(pdf, 'الأداء', overallPct + '%', overallPct >= 80 ? '#27AE60' : '#F39C12', 108, y, 90, 22);
+    y += 26;
+    _drawStatBox(pdf, 'بنود مطابقة', String(totalOk), '#27AE60', 12, y, 90, 22);
+    _drawStatBox(pdf, 'بنود غير مطابقة', String(totalFails), '#E74C3C', 108, y, 90, 22);
+    y += 30;
+    
+    // === Section 2: Branch averages chart ===
+    _updatePdfProgress(30, 'مقارنة الفروع...');
+    y = _drawHeader(pdf, '📈 مقارنة الفروع', y, '#16A085');
+    y += 4;
+    
+    const branchData = BRANCHES.map(b => {
+      const scores = [];
+      for (let m = 0; m < 12; m++) {
+        for (let d = 1; d <= MONTH_DAYS[m]; d++) {
+          const key = getKey(b, m, d);
+          if (!appData[key]) continue;
+          const v = appData[key];
+          if (!v.results || Object.keys(v.results).length === 0) continue;
+          try { scores.push(calcSmartScore(b, m, d).percent || 0); } catch(e) {}
+        }
+      }
+      const avg = scores.length > 0 ? Math.round(scores.reduce((a,c)=>a+c,0)/scores.length) : 0;
+      return { label: BRANCH_NAMES[b] || b, value: avg, color: avg >= 80 ? '#27AE60' : avg >= 60 ? '#F39C12' : '#E74C3C', valueText: avg + '%' };
+    });
+    _drawBarChart(pdf, branchData, 12, y, 186, 60, { title: '', maxValue: 100 });
+    y += 64;
+    
+    // === Section 3: Top failed items ===
+    _updatePdfProgress(45, 'البنود الأكثر فشلاً...');
+    pdf.addPage();
+    y = 15;
+    y = _drawHeader(pdf, '🔴 أكثر البنود فشلاً', y, '#E74C3C');
+    y += 4;
+    
+    const failCounts = {};
+    BRANCHES.forEach(b => {
+      for (let m = 0; m < 12; m++) {
+        for (let d = 1; d <= MONTH_DAYS[m]; d++) {
+          const key = getKey(b, m, d);
+          if (!appData[key]) continue;
+          Object.entries(appData[key].results || {}).forEach(([id, val]) => {
+            if (val === 'fail') failCounts[id] = (failCounts[id] || 0) + 1;
+          });
+        }
+      }
+    });
+    const top10 = Object.entries(failCounts).sort((a,b)=>b[1]-a[1]).slice(0, 10).map(([id, cnt]) => {
+      const item = allItemsLib.find(i => i.id === id);
+      return { label: (item?.text || id).substring(0, 28), value: cnt, color: '#E74C3C', valueText: cnt + 'مرة' };
+    });
+    if (top10.length > 0) {
+      _drawBarChart(pdf, top10, 12, y, 186, 70, { title: '' });
+      y += 74;
+    } else {
+      y = _pdfText(pdf, '✅ لا توجد بنود فاشلة', 12, y, { fontSize: 14, color: '#27AE60', targetWidth: 186, align: 'center' });
+    }
+    
+    // === Section 4: Top managers ===
+    _updatePdfProgress(60, 'أداء المديرين...');
+    pdf.addPage();
+    y = 15;
+    y = _drawHeader(pdf, '👔 ترتيب المديرين', y, '#9B59B6');
+    y += 4;
+    
+    const managerStats = (typeof buildManagerStats === 'function') ? buildManagerStats() : {};
+    const mgrSorted = Object.entries(managerStats).sort((a,b) => {
+      const avgA = a[1].visits.reduce((s,v)=>s+v.pct,0)/a[1].visits.length;
+      const avgB = b[1].visits.reduce((s,v)=>s+v.pct,0)/b[1].visits.length;
+      return avgB - avgA;
+    });
+    
+    const mgrData = mgrSorted.map(([name, s]) => {
+      const avg = Math.round(s.visits.reduce((sum,v)=>sum+v.pct,0) / s.visits.length);
+      return { label: name, value: avg, color: avg >= 80 ? '#27AE60' : avg >= 60 ? '#F39C12' : '#E74C3C', valueText: avg + '%' };
+    });
+    if (mgrData.length > 0) {
+      const mgrChartH = Math.min(150, 8 + mgrData.length * 7);
+      _drawBarChart(pdf, mgrData, 12, y, 186, mgrChartH, { title: '', maxValue: 100 });
+      y += mgrChartH + 4;
+    } else {
+      y = _pdfText(pdf, '⚠️ لا توجد بيانات مديرين', 12, y, { fontSize: 14, color: '#888', targetWidth: 186, align: 'center' });
+    }
+    
+    // === Section 5: Tasks summary ===
+    _updatePdfProgress(75, 'المهام...');
+    pdf.addPage();
+    y = 15;
+    y = _drawHeader(pdf, '📋 المهام', y, '#16A085');
+    y += 6;
+    
+    const tasks = (typeof tasksData !== 'undefined' && Array.isArray(tasksData)) ? tasksData : [];
+    const completed = tasks.filter(t => t.status === 'completed' || t.done).length;
+    const inProg = tasks.filter(t => t.status === 'in-progress').length;
+    const pending = tasks.length - completed - inProg;
+    const urgent = tasks.filter(t => (t.priority === 'عاجلة' || t.priority === 'urgent') && !t.done && t.status !== 'completed').length;
+    
+    _drawStatBox(pdf, 'إجمالي', String(tasks.length), '#3498DB', 12, y, 45, 22);
+    _drawStatBox(pdf, 'منتهية', String(completed), '#27AE60', 60, y, 45, 22);
+    _drawStatBox(pdf, 'قيد التنفيذ', String(inProg), '#F39C12', 108, y, 45, 22);
+    _drawStatBox(pdf, 'عاجلة معلقة', String(urgent), '#E74C3C', 156, y, 42, 22);
+    y += 28;
+    
+    // Completion rate
+    const completionRate = tasks.length > 0 ? Math.round((completed / tasks.length) * 100) : 0;
+    pdf.setFillColor('#F5F5F5');
+    pdf.roundedRect(12, y, 186, 9, 1.5, 1.5, 'F');
+    pdf.setFillColor(completionRate >= 80 ? '#27AE60' : completionRate >= 50 ? '#F39C12' : '#E74C3C');
+    pdf.roundedRect(12, y, 186 * (completionRate/100), 9, 1.5, 1.5, 'F');
+    const crImg = _arabicTextCanvas('📊 معدل الإنجاز الكلي: ' + completionRate + '%', 
+      { fontSize: 10, color: '#000', fontWeight: 800, width: 1000, padding: 0, align: 'center' });
+    pdf.addImage(crImg.dataUrl, 'PNG', 12, y + 1, 186, 7);
+    y += 14;
+    
+    // Tasks by branch
+    y = _drawHeader(pdf, '📈 توزيع المهام حسب الفرع', y, '#16A085');
+    y += 4;
+    
+    const byBranchData = BRANCHES.map(b => {
+      const branchTasks = tasks.filter(t => {
+        const tBranches = (typeof getTaskBranches === 'function') ? getTaskBranches(t) : (t.branch ? [t.branch] : []);
+        return tBranches.includes(b);
+      });
+      const bDone = branchTasks.filter(t => {
+        const bs = t.branchStatus?.[b];
+        return bs?.status === 'completed' || (t.status === 'completed' && !t.branchStatus);
+      }).length;
+      return {
+        label: BRANCH_NAMES[b] || b,
+        value: branchTasks.length,
+        color: '#16A085',
+        valueText: bDone + '/' + branchTasks.length + ' منجز'
+      };
+    });
+    _drawBarChart(pdf, byBranchData, 12, y, 186, 45, { title: '', maxValue: Math.max(...byBranchData.map(d=>d.value), 1) });
+    y += 49;
+    
+    // All tasks list (paginated)
+    pdf.addPage();
+    y = 15;
+    y = _drawHeader(pdf, '📋 قائمة كل المهام (' + tasks.length + ')', y, '#9B59B6');
+    y += 4;
+    
+    if (tasks.length === 0) {
+      y = _pdfText(pdf, '⚠️ لا توجد مهام', 12, y, { fontSize: 14, color: '#888', align: 'center', targetWidth: 186 });
+    } else {
+      // Sort: urgent first, then by date
+      const sortedTasks = [...tasks].sort((a, b) => {
+        const aDone = a.done || a.status === 'completed';
+        const bDone = b.done || b.status === 'completed';
+        if (aDone !== bDone) return aDone ? 1 : -1;
+        const aUrg = (a.priority === 'عاجلة' || a.priority === 'urgent') ? 0 : 1;
+        const bUrg = (b.priority === 'عاجلة' || b.priority === 'urgent') ? 0 : 1;
+        if (aUrg !== bUrg) return aUrg - bUrg;
+        return (new Date(b.createdAt || 0).getTime()) - (new Date(a.createdAt || 0).getTime());
+      });
+      
+      sortedTasks.forEach((t, i) => {
+        const isDone = t.done || t.status === 'completed';
+        const stIcon = isDone ? '✅' : t.status === 'in-progress' ? '🔄' : '⬜';
+        const isUrgent = t.priority === 'عاجلة' || t.priority === 'urgent';
+        const tBranches = (typeof getTaskBranches === 'function') ? getTaskBranches(t) : (t.branch ? [t.branch] : []);
+        const bLabel = (!tBranches || tBranches.length === 0) ? 'جميع الفروع' : tBranches.map(b => BRANCH_NAMES[b] || b).join('، ');
+        
+        const bgColor = isDone ? '#E8F8F0' : isUrgent ? '#FDECEA' : '#FAFAFA';
+        const borderColor = isDone ? '#27AE60' : isUrgent ? '#E74C3C' : '#9B59B6';
+        
+        y = _ensureRoom(pdf, y, 22);
+        pdf.setFillColor(bgColor);
+        pdf.setDrawColor(borderColor);
+        pdf.setLineWidth(0.3);
+        pdf.roundedRect(10, y, 190, 18, 1.5, 1.5, 'FD');
+        
+        // Title line
+        const titleTxt = stIcon + ' ' + (isUrgent ? '🔴 ' : '') + (i + 1) + '. ' + (t.title || '');
+        y = _pdfText(pdf, titleTxt, 12, y + 1, { fontSize: 10, fontWeight: 800, color: '#000', targetWidth: 186, spacing: 0.5 });
+        
+        // Meta line
+        const metaTxt = '🏪 ' + bLabel
+          + (t.assignee ? '  •  👤 ' + t.assignee : '')
+          + (t.deadline ? '  •  📅 ' + t.deadline : '')
+          + (t.completedBy ? '  •  ✓ ' + t.completedBy : '');
+        y = _pdfText(pdf, metaTxt, 12, y, { fontSize: 8, color: '#555', targetWidth: 186, spacing: 0.5 });
+        
+        // Description (if exists)
+        if (t.desc && t.desc.length > 0) {
+          y = _pdfText(pdf, '📝 ' + t.desc.substring(0, 120) + (t.desc.length > 120 ? '...' : ''), 
+            12, y, { fontSize: 8, color: '#444', targetWidth: 186, spacing: 4 });
+        } else {
+          y += 4;
+        }
+      });
+    }
+    
+    // === Section 6: Recommendations ===
+    _updatePdfProgress(90, 'التوصيات...');
+    pdf.addPage();
+    y = 15;
+    y = _drawHeader(pdf, '💡 أهم التوصيات', y, '#F39C12');
+    y += 4;
+    
+    const topRecos = Object.entries(failCounts).sort((a,b)=>b[1]-a[1]).slice(0, 5);
+    if (topRecos.length > 0) {
+      topRecos.forEach(([id, cnt], i) => {
+        const item = allItemsLib.find(i => i.id === id);
+        if (!item) return;
+        y = _ensureRoom(pdf, y, 18);
+        pdf.setFillColor('#FEF9E7');
+        pdf.setDrawColor('#F39C12');
+        pdf.setLineWidth(0.3);
+        pdf.roundedRect(10, y, 190, 14, 2, 2, 'FD');
+        y = _pdfText(pdf, (i+1) + '. ' + item.text + '  (تكرر ' + cnt + ' مرة)', 12, y + 1.5,
+          { fontSize: 10, fontWeight: 800, color: '#D35400', targetWidth: 186, spacing: 0.5 });
+        y = _pdfText(pdf, 'يُوصى بإجراء مراجعة فورية وتدريب المديرين', 12, y, 
+          { fontSize: 8, color: '#555', targetWidth: 186, spacing: 5 });
+      });
+    } else {
+      y = _pdfText(pdf, '✅ لا توجد توصيات حرجة — الأداء جيد', 12, y, { fontSize: 14, color: '#27AE60', align: 'center', targetWidth: 186 });
+    }
+    
+    pdf.save(`تقرير_شامل_${branch ? BRANCH_NAMES[branch] : 'كامل'}_${new Date().toISOString().split('T')[0]}.pdf`);
+    if (typeof showNotif === 'function') showNotif('✅ تم تنزيل التقرير الشامل', 'success');
+  } catch(err) {
+    console.error('PDF Comprehensive error:', err);
+    if (typeof showNotif === 'function') showNotif('❌ ' + (err.message || err), 'error');
+  } finally {
+    _hidePdfLoading();
+  }
+}
+
+// ============================================================
+// EVALUATION PDF (current eval — uses html2canvas for visual fidelity)
+// ============================================================
+async function pdfExportEvaluation(branch) {
+  if (branch && typeof selectedBranch !== 'undefined') selectedBranch = branch;
+  return pdfExportSection('branch-view', 'التقييم التفصيلي', branch);
+}
+
+// Wrappers for other-depts and summary (still use page capture)
 function pdfExportSummary(branch) { return pdfExportSection('dashboard', 'لوحة المعلومات', branch); }
-function pdfExportAnalysis(branch) { return pdfExportSection('analytics', 'التحليل', branch); }
-function pdfExportRecommendations(branch) { return pdfExportSection('recommendations', 'التوصيات', branch); }
 function pdfExportMaintenance(branch) { return pdfExportSection('other-depts', 'الإدارات الأخرى', branch); }
 function pdfExportOtherDepts(branch) { return pdfExportSection('other-depts', 'الإدارات الأخرى', branch); }
-function pdfExportOverview() { return pdfExportSection('ops-manager', 'نظرة عامة'); }
-function pdfExportManagers() { return pdfExportSection('managers', 'المديرون'); }
 
 window.pdfExportEvaluation = pdfExportEvaluation;
 window.pdfExportSummary = pdfExportSummary;
@@ -12626,6 +14076,26 @@ function renderItemsManager(modal) {
           <input type="checkbox" id="newItemCritical" style="cursor:pointer;width:18px;height:18px;accent-color:var(--red);">
           🚨 بند حرج (CRITICAL) — تنبيه شديد عند الإخفاق
         </label>
+        
+        <!-- Item type: permanent vs one-shot -->
+        <div style="background:rgba(0,0,0,0.2);border:1px solid var(--gold);border-radius:10px;padding:10px;margin-top:10px;">
+          <div style="font-weight:800;color:var(--gold-light);margin-bottom:8px;font-size:var(--fs-sm);">🎯 نوع البند:</div>
+          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;padding:6px;border-radius:6px;margin-bottom:4px;">
+            <input type="radio" name="newItemType" value="permanent" checked style="margin-top:4px;cursor:pointer;accent-color:var(--gold);">
+            <div>
+              <div style="font-weight:800;color:var(--gold-light);">⭐ بند دائم</div>
+              <div style="font-size:var(--fs-xs);color:var(--text-muted);">يظهر في كل التقييمات <strong style="color:#27AE60;">القادمة فقط</strong> (لا يؤثر على التقييمات السابقة)</div>
+            </div>
+          </label>
+          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;padding:6px;border-radius:6px;">
+            <input type="radio" name="newItemType" value="oneshot" style="margin-top:4px;cursor:pointer;accent-color:var(--gold);">
+            <div>
+              <div style="font-weight:800;color:#16A085;">✨ بند خاص بالتقييم الحالي</div>
+              <div style="font-size:var(--fs-xs);color:var(--text-muted);">يظهر فقط في تقييم اليوم الحالي للفرع المحدد (لمرة واحدة)</div>
+            </div>
+          </label>
+        </div>
+        
         <div style="text-align:center;margin-top:10px;">
           <button class="btn btn-green" onclick="submitNewItem()" style="font-weight:800;padding:10px 24px;">✅ إضافة البند</button>
         </div>
@@ -12684,18 +14154,47 @@ function submitNewItem() {
   const icon = document.getElementById('newItemIcon').value.trim() || '📌';
   const text = document.getElementById('newItemText').value.trim();
   const critical = document.getElementById('newItemCritical').checked;
+  const typeRadio = document.querySelector('input[name="newItemType"]:checked');
+  const itemType = typeRadio ? typeRadio.value : 'permanent';
   
   if (!text) {
     showNotif('⚠️ اكتب نص البند', 'error');
     return;
   }
   const finalSection = (sec === '__new__') ? (newSecName || '📌 قسم جديد') : sec;
-  addCustomItem(finalSection, text, icon, critical);
-  showNotif('✅ تم إضافة البند', 'success');
+  
+  if (itemType === 'oneshot') {
+    // Add to CURRENT evaluation only (oneShotItems)
+    if (typeof selectedBranch === 'undefined' || !selectedBranch) {
+      showNotif('⚠️ افتح فرعاً أولاً لإضافة بند خاص بتقييمه', 'error');
+      return;
+    }
+    const month = (typeof getSelMonth === 'function') ? getSelMonth(selectedBranch) : new Date().getMonth();
+    const day = (typeof getSelDay === 'function') ? getSelDay(selectedBranch) : new Date().getDate();
+    
+    const itemId = 'oneshot_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    const visit = getVisitData(selectedBranch, month, day);
+    if (!visit.oneShotItems) visit.oneShotItems = [];
+    visit.oneShotItems.push({
+      id: itemId,
+      text: text,
+      icon: icon,
+      critical: critical,
+      section: finalSection,
+      addedAt: new Date().toISOString()
+    });
+    window._lastEditedKey = getKey(selectedBranch, month, day);
+    saveData();
+    showNotif('✨ تم إضافة بند للتقييم الحالي فقط', 'success');
+  } else {
+    // Permanent: add to system-wide, but only for FUTURE evals (date filter)
+    addCustomItem(finalSection, text, icon, critical);
+    showNotif('⭐ تم إضافة بند دائم (يظهر في التقييمات القادمة فقط)', 'success');
+  }
+  
   // Refresh UI
   renderItemsManager(document.getElementById('itemsManagerModal'));
-  // Re-render current branch if open
-  if (typeof renderBranch === 'function' && typeof selectedBranch !== 'undefined') {
+  if (typeof renderBranch === 'function' && typeof selectedBranch !== 'undefined' && selectedBranch) {
     renderBranch(selectedBranch);
   }
 }
@@ -14742,15 +16241,24 @@ function setupPresenceChannel() {
 window.setupPresenceChannel = setupPresenceChannel;
 
 function updatePresenceUI() {
-  const counter = document.getElementById('presenceCounter');
-  if (counter) {
-    const count = Object.keys(window.onlineUsers || {}).length;
-    counter.textContent = String(count);
-    counter.style.display = count > 0 ? 'inline-flex' : 'none';
+  const dot = document.getElementById('presenceCounter');
+  const count = Object.keys(window.onlineUsers || {}).length;
+  if (dot) {
+    // Show the green dots only when at least 1 other user is online (excluding self)
+    const others = count > 1 ? count - 1 : (count === 1 && Object.keys(window.onlineUsers)[0] !== currentUser?.id ? 1 : 0);
+    dot.style.display = others > 0 ? 'inline-block' : 'none';
+    
+    // Update tooltip on chat button
+    const chatBtn = document.getElementById('chatBtn');
+    if (chatBtn) {
+      chatBtn.title = others > 0 
+        ? '💬 الدردشة — ' + others + ' متصل الآن'
+        : '💬 الدردشة';
+    }
   }
-  // Refresh list if open
-  if (document.getElementById('presenceListModal') && !document.getElementById('presenceListModal').classList.contains('hidden')) {
-    renderPresenceList();
+  // Refresh list inside chat panel if open
+  if (document.getElementById('chatPanel') && !document.getElementById('chatPanel').classList.contains('hidden')) {
+    if (typeof renderChatPanel === 'function') renderChatPanel();
   }
 }
 window.updatePresenceUI = updatePresenceUI;
@@ -14980,33 +16488,59 @@ function renderChatPanel() {
   // Filter messages relevant to this conversation
   const filtered = window.chatMessages.filter(m => {
     if (toUserId) {
-      // 1-on-1: messages between me and toUserId
       return (m.from_id === currentUser?.id && m.to_id === toUserId) ||
              (m.from_id === toUserId && m.to_id === currentUser?.id);
     } else {
-      // Broadcast: messages with no to_id
       return !m.to_id;
     }
   });
   
+  // Build presence bar (online users)
+  const others = Object.values(window.onlineUsers || {}).filter(u => u.user_id !== currentUser?.id);
+  let presenceBarHtml = '';
+  if (others.length > 0) {
+    presenceBarHtml = `
+      <div style="display:flex;align-items:center;gap:6px;padding:8px 10px;background:rgba(46,204,113,0.1);border:1px solid #2ECC71;border-radius:10px;margin-bottom:10px;overflow-x:auto;">
+        <span style="font-size:11px;font-weight:800;color:#2ECC71;white-space:nowrap;">🟢 المتصلون (${others.length}):</span>
+        ${others.map(u => `
+          <button onclick="document.getElementById('chatPanel')._toUserId='${u.user_id}';document.getElementById('chatPanel')._toEmail='${(u.email||'').replace(/'/g,'')}';renderChatPanel();" 
+            class="presence-chip" 
+            title="بدء محادثة خاصة"
+            style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:rgba(46,204,113,0.2);border:1px solid #2ECC71;border-radius:14px;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;transition:all 0.15s;">
+            <span style="width:7px;height:7px;border-radius:50%;background:#2ECC71;box-shadow:0 0 6px #2ECC71;"></span>
+            ${String(u.email || 'مستخدم').replace(/[<>&"']/g, '').split('@')[0]}
+          </button>
+        `).join('')}
+      </div>
+    `;
+  } else {
+    presenceBarHtml = `
+      <div style="padding:6px 10px;background:rgba(255,255,255,0.05);border-radius:8px;margin-bottom:10px;font-size:11px;color:var(--text-muted);text-align:center;">
+        لا يوجد مستخدمون آخرون متصلون حالياً
+      </div>
+    `;
+  }
+  
   let html = `
-    <div class="modal-box" style="max-width:560px;height:80vh;display:flex;flex-direction:column;">
+    <div class="modal-box" style="max-width:620px;height:85vh;display:flex;flex-direction:column;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;">
         <h3 style="margin:0;color:var(--gold-light);font-size:15px;flex:1;">${title}</h3>
-        ${toUserId ? `<button class="btn btn-sm" onclick="openChatPanel(); document.getElementById('chatPanel')._toUserId=null; document.getElementById('chatPanel')._toEmail=null; renderChatPanel();" title="رجوع للعام">🌐</button>` : ''}
+        ${toUserId ? `<button class="btn btn-sm" onclick="document.getElementById('chatPanel')._toUserId=null;document.getElementById('chatPanel')._toEmail=null;renderChatPanel();" title="رجوع للدردشة العامة" style="background:linear-gradient(135deg,#3498DB,#2980B9);color:#fff;">🌐 العامة</button>` : ''}
         <button class="btn btn-icon" onclick="closeChatPanel()" style="font-size:22px;">×</button>
       </div>
       
+      ${presenceBarHtml}
+      
       <div id="chatMessagesArea" style="flex:1;overflow-y:auto;padding:8px;background:var(--bg-card);border-radius:10px;border:1px solid var(--border);display:flex;flex-direction:column;gap:8px;">
         ${filtered.length === 0 
-          ? '<div style="text-align:center;color:var(--text-muted);padding:30px 10px;font-size:13px;">لا توجد رسائل بعد. ابدأ المحادثة!</div>' 
+          ? '<div style="text-align:center;color:var(--text-muted);padding:30px 10px;font-size:13px;">لا توجد رسائل بعد.<br>' + (toUserId ? 'ابدأ المحادثة مع ' + (toEmail||'').split('@')[0] : 'اكتب رسالة لكل المتصلين') + '!</div>' 
           : filtered.map(m => {
               const isMe = m.from_id === currentUser?.id;
               const time = new Date(m.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
               const escText = String(m.text || '').replace(/[<>&"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])).replace(/\n/g,'<br>');
               return `
                 <div style="align-self:${isMe ? 'flex-end' : 'flex-start'};max-width:75%;background:${isMe ? 'linear-gradient(135deg,var(--gold),var(--gold-light))' : 'var(--bg-card2)'};color:${isMe ? 'var(--maroon-dark)' : 'var(--text-light)'};padding:8px 12px;border-radius:12px;border:1px solid var(--border);font-size:13px;">
-                  ${!isMe ? `<div style="font-size:10px;font-weight:800;opacity:0.7;margin-bottom:2px;">${String(m.from_email || 'مستخدم').replace(/[<>&"']/g, '')}</div>` : ''}
+                  ${!isMe ? `<div style="font-size:10px;font-weight:800;opacity:0.7;margin-bottom:2px;">${String(m.from_email || 'مستخدم').replace(/[<>&"']/g, '').split('@')[0]}</div>` : ''}
                   <div style="word-wrap:break-word;">${escText}</div>
                   <div style="font-size:9px;opacity:0.6;margin-top:3px;text-align:end;">${time}</div>
                 </div>
@@ -15015,7 +16549,7 @@ function renderChatPanel() {
       </div>
       
       <div style="display:flex;gap:6px;margin-top:10px;">
-        <input type="text" id="chatInputField" placeholder="اكتب رسالتك..." onkeydown="if(event.key==='Enter')window.sendChatFromInput()"
+        <input type="text" id="chatInputField" placeholder="${toUserId ? 'رسالة خاصة...' : 'رسالة لكل المتصلين...'}" onkeydown="if(event.key==='Enter')window.sendChatFromInput()"
           style="flex:1;padding:10px 14px;font-size:14px;border-radius:10px;border:2px solid var(--gold);background:rgba(0,0,0,0.3);color:var(--text-light);font-family:Tajawal,sans-serif;">
         <button class="btn btn-gold" onclick="window.sendChatFromInput()">إرسال</button>
       </div>
@@ -16288,8 +17822,108 @@ async function applyRotationLock(locked) {
 window.toggleRotationLock = toggleRotationLock;
 window.applyRotationLock = applyRotationLock;
 
-// Clean up old rotation lock preference (feature removed)
-try { localStorage.removeItem('blaban_rotation_lock'); document.body.classList.remove('rotation-locked'); } catch(e) {}
+// ============ SCREEN ORIENTATION LOCK (Samsung-style) ============
+// Behavior: When ON, the app content stays in its current orientation
+// even if you physically rotate the device — no rotation, no flip, no freeze.
+// Uses CSS transform with no animation, very lightweight.
+let _screenLockState = {
+  enabled: false,
+  lockedOrientation: 'portrait' // 'portrait' or 'landscape'
+};
+
+function toggleScreenLock() {
+  _screenLockState.enabled = !_screenLockState.enabled;
+  if (_screenLockState.enabled) {
+    // Capture the CURRENT orientation as the locked one
+    _screenLockState.lockedOrientation = (window.innerWidth > window.innerHeight) ? 'landscape' : 'portrait';
+  }
+  localStorage.setItem('blaban_screen_lock', _screenLockState.enabled ? '1' : '0');
+  localStorage.setItem('blaban_screen_lock_orient', _screenLockState.lockedOrientation);
+  applyScreenLock();
+  
+  if (typeof showNotif === 'function') {
+    showNotif(_screenLockState.enabled 
+      ? '🔒 تم تثبيت الشاشة على وضعها — لن تدور مع الجهاز' 
+      : '🔓 تم تحرير الشاشة — تدور بشكل طبيعي', 'success');
+  }
+}
+window.toggleScreenLock = toggleScreenLock;
+
+function applyScreenLock() {
+  const btn = document.getElementById('screenLockBtn');
+  
+  if (!_screenLockState.enabled) {
+    // Unlock — remove all overrides
+    document.body.classList.remove('screen-locked-portrait', 'screen-locked-landscape');
+    document.documentElement.style.removeProperty('--lock-rotation');
+    // Try to unlock native API
+    try {
+      if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
+    } catch(e) {}
+    if (btn) {
+      btn.textContent = '🔓';
+      btn.title = 'منع تدوير الشاشة';
+      btn.style.background = '';
+      btn.style.color = '';
+    }
+    return;
+  }
+  
+  // Locked — apply
+  const lockOrient = _screenLockState.lockedOrientation;
+  const currentIsLandscape = window.innerWidth > window.innerHeight;
+  const targetIsLandscape = lockOrient === 'landscape';
+  
+  // Remove old classes
+  document.body.classList.remove('screen-locked-portrait', 'screen-locked-landscape');
+  
+  if (currentIsLandscape === targetIsLandscape) {
+    // Already in the right orientation — just add a "locked" class for visual feedback
+    document.body.classList.add(targetIsLandscape ? 'screen-locked-landscape' : 'screen-locked-portrait');
+  } else {
+    // Physical rotation happened — flip the UI back by rotating 90deg
+    document.body.classList.add(targetIsLandscape ? 'screen-locked-landscape' : 'screen-locked-portrait');
+  }
+  
+  // Try native lock too (works in PWA/fullscreen on Android)
+  try {
+    if (screen.orientation && screen.orientation.lock) {
+      const orientName = targetIsLandscape ? 'landscape-primary' : 'portrait-primary';
+      screen.orientation.lock(orientName).catch(()=>{}); // silent fail (needs fullscreen on some)
+    }
+  } catch(e) {}
+  
+  if (btn) {
+    btn.textContent = '🔒';
+    btn.title = 'الشاشة مقفولة على ' + (targetIsLandscape ? 'العرضي' : 'العمودي') + ' — اضغط للتحرير';
+    btn.style.background = 'linear-gradient(135deg, #27AE60, #2ECC71)';
+    btn.style.color = '#fff';
+  }
+}
+window.applyScreenLock = applyScreenLock;
+
+// Listen for resize/orientation change to re-apply lock if needed
+window.addEventListener('resize', () => {
+  if (_screenLockState.enabled) {
+    requestAnimationFrame(applyScreenLock);
+  }
+});
+window.addEventListener('orientationchange', () => {
+  if (_screenLockState.enabled) {
+    setTimeout(applyScreenLock, 200);
+  }
+});
+
+// Restore on load
+(function restoreScreenLock() {
+  try {
+    if (localStorage.getItem('blaban_screen_lock') === '1') {
+      _screenLockState.enabled = true;
+      _screenLockState.lockedOrientation = localStorage.getItem('blaban_screen_lock_orient') || 'portrait';
+      setTimeout(applyScreenLock, 300);
+    }
+  } catch(e) {}
+})();
 
 // ============ DEVICE SUB-MENU ============
 function toggleDeviceSubMenu(e) {

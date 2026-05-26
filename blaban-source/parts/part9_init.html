@@ -360,8 +360,108 @@ async function applyRotationLock(locked) {
 window.toggleRotationLock = toggleRotationLock;
 window.applyRotationLock = applyRotationLock;
 
-// Clean up old rotation lock preference (feature removed)
-try { localStorage.removeItem('blaban_rotation_lock'); document.body.classList.remove('rotation-locked'); } catch(e) {}
+// ============ SCREEN ORIENTATION LOCK (Samsung-style) ============
+// Behavior: When ON, the app content stays in its current orientation
+// even if you physically rotate the device — no rotation, no flip, no freeze.
+// Uses CSS transform with no animation, very lightweight.
+let _screenLockState = {
+  enabled: false,
+  lockedOrientation: 'portrait' // 'portrait' or 'landscape'
+};
+
+function toggleScreenLock() {
+  _screenLockState.enabled = !_screenLockState.enabled;
+  if (_screenLockState.enabled) {
+    // Capture the CURRENT orientation as the locked one
+    _screenLockState.lockedOrientation = (window.innerWidth > window.innerHeight) ? 'landscape' : 'portrait';
+  }
+  localStorage.setItem('blaban_screen_lock', _screenLockState.enabled ? '1' : '0');
+  localStorage.setItem('blaban_screen_lock_orient', _screenLockState.lockedOrientation);
+  applyScreenLock();
+  
+  if (typeof showNotif === 'function') {
+    showNotif(_screenLockState.enabled 
+      ? '🔒 تم تثبيت الشاشة على وضعها — لن تدور مع الجهاز' 
+      : '🔓 تم تحرير الشاشة — تدور بشكل طبيعي', 'success');
+  }
+}
+window.toggleScreenLock = toggleScreenLock;
+
+function applyScreenLock() {
+  const btn = document.getElementById('screenLockBtn');
+  
+  if (!_screenLockState.enabled) {
+    // Unlock — remove all overrides
+    document.body.classList.remove('screen-locked-portrait', 'screen-locked-landscape');
+    document.documentElement.style.removeProperty('--lock-rotation');
+    // Try to unlock native API
+    try {
+      if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
+    } catch(e) {}
+    if (btn) {
+      btn.textContent = '🔓';
+      btn.title = 'منع تدوير الشاشة';
+      btn.style.background = '';
+      btn.style.color = '';
+    }
+    return;
+  }
+  
+  // Locked — apply
+  const lockOrient = _screenLockState.lockedOrientation;
+  const currentIsLandscape = window.innerWidth > window.innerHeight;
+  const targetIsLandscape = lockOrient === 'landscape';
+  
+  // Remove old classes
+  document.body.classList.remove('screen-locked-portrait', 'screen-locked-landscape');
+  
+  if (currentIsLandscape === targetIsLandscape) {
+    // Already in the right orientation — just add a "locked" class for visual feedback
+    document.body.classList.add(targetIsLandscape ? 'screen-locked-landscape' : 'screen-locked-portrait');
+  } else {
+    // Physical rotation happened — flip the UI back by rotating 90deg
+    document.body.classList.add(targetIsLandscape ? 'screen-locked-landscape' : 'screen-locked-portrait');
+  }
+  
+  // Try native lock too (works in PWA/fullscreen on Android)
+  try {
+    if (screen.orientation && screen.orientation.lock) {
+      const orientName = targetIsLandscape ? 'landscape-primary' : 'portrait-primary';
+      screen.orientation.lock(orientName).catch(()=>{}); // silent fail (needs fullscreen on some)
+    }
+  } catch(e) {}
+  
+  if (btn) {
+    btn.textContent = '🔒';
+    btn.title = 'الشاشة مقفولة على ' + (targetIsLandscape ? 'العرضي' : 'العمودي') + ' — اضغط للتحرير';
+    btn.style.background = 'linear-gradient(135deg, #27AE60, #2ECC71)';
+    btn.style.color = '#fff';
+  }
+}
+window.applyScreenLock = applyScreenLock;
+
+// Listen for resize/orientation change to re-apply lock if needed
+window.addEventListener('resize', () => {
+  if (_screenLockState.enabled) {
+    requestAnimationFrame(applyScreenLock);
+  }
+});
+window.addEventListener('orientationchange', () => {
+  if (_screenLockState.enabled) {
+    setTimeout(applyScreenLock, 200);
+  }
+});
+
+// Restore on load
+(function restoreScreenLock() {
+  try {
+    if (localStorage.getItem('blaban_screen_lock') === '1') {
+      _screenLockState.enabled = true;
+      _screenLockState.lockedOrientation = localStorage.getItem('blaban_screen_lock_orient') || 'portrait';
+      setTimeout(applyScreenLock, 300);
+    }
+  } catch(e) {}
+})();
 
 // ============ DEVICE SUB-MENU ============
 function toggleDeviceSubMenu(e) {

@@ -108,20 +108,18 @@ function renderChecklist(branch) {
     html += `<div class="alert alert-info" style="font-size:var(--fs-sm);margin-bottom:10px;">
       🔒 <strong>وضع القراءة فقط</strong> — أنت مدير فرع، يمكنك مشاهدة التقييم والعمل على الأكشن بلان أدناه فقط. التعديل على نتائج التقييم محصور بمدير التشغيل.
     </div>`;
-  } else {
-    // Add custom item buttons (only for ops manager)
-    html += `<div class="add-item-buttons" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
-      <button class="btn btn-sm" style="background:linear-gradient(135deg,#16A085,#0E6B57);color:#fff;font-weight:800;" onclick="openAddItemForThisEval('${branch}', ${month}, ${day})" title="بند يظهر فقط في هذا التقييم">
-        ➕ بند خاص بهذا التقييم
-      </button>
-      <button class="btn btn-sm" style="background:linear-gradient(135deg,#D35400,#E67E22);color:#fff;font-weight:800;" onclick="openAddPermanentItem()" title="بند يضاف لكل التقييمات القادمة">
-        ⭐ بند دائم في كل التقييمات
-      </button>
-    </div>`;
   }
   CHECKLIST.forEach(sec => {
+    // Filter out custom items added AFTER this evaluation date (don't pollute history)
+    const visibleItems = sec.items.filter(item => {
+      if (typeof isItemActiveForDate === 'function') {
+        return isItemActiveForDate(item, month, day);
+      }
+      return true;
+    });
+    if (visibleItems.length === 0) return; // skip empty sections
     html += `<div class="checklist-section${isReadonly?' readonly':''}"><div class="section-header">${sec.section}</div>`;
-    sec.items.forEach(item => {
+    visibleItems.forEach(item => {
       const result = visitData.results[item.id];
       const dept = visitData.deptAssign[item.id] || 'الفرع';
       const reported = visitData.reported24h[item.id] === true;

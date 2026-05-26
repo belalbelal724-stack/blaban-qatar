@@ -906,61 +906,60 @@ body {
   visibility: visible;
 }
 
-/* ============ UNIFORM METALLIC GOLD BUBBLES (all the same color, glowing) ============ */
-/* Override the base for a richer metallic look */
+/* ============ UNIFORM BEIGE BUBBLES with MAROON glowing border ============ */
 .bubble-item {
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  /* Metallic gold gradient (multi-stop for shine effect) */
-  background: linear-gradient(135deg, #E8C96A 0%, #C9A84C 40%, #8B6F2A 70%, #C9A84C 100%);
-  border: 2px solid #F4DC8A;
-  color: #2C1810;
+  /* Beige background */
+  background: linear-gradient(135deg, #F5E6CC 0%, #E8D4A8 50%, #D6BC85 100%);
+  /* Maroon glowing border */
+  border: 2.5px solid #6B1B2A;
+  /* Maroon text */
+  color: #4A0F1A;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 1px;
-  /* Strong gold glow */
+  /* Glowing maroon halo */
   box-shadow: 
-    0 0 14px rgba(232,201,106,0.7),
-    0 0 28px rgba(201,168,76,0.4),
-    0 6px 18px rgba(0,0,0,0.5),
-    inset 0 1px 2px rgba(255,255,255,0.5),
-    inset 0 -2px 4px rgba(0,0,0,0.2);
+    0 0 14px rgba(107,27,42,0.7),
+    0 0 28px rgba(107,27,42,0.4),
+    0 6px 18px rgba(0,0,0,0.4),
+    inset 0 1px 2px rgba(255,255,255,0.6),
+    inset 0 -2px 4px rgba(107,27,42,0.15);
   opacity: 0;
   transform: translateY(-30px) scale(0.3);
   transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
   font-family: 'Tajawal', sans-serif;
   position: relative;
-  /* Pulsing glow animation */
-  animation: bubbleGoldPulse 2.5s ease-in-out infinite;
+  /* Pulsing maroon glow */
+  animation: bubbleMaroonPulse 2.5s ease-in-out infinite;
 }
-@keyframes bubbleGoldPulse {
+@keyframes bubbleMaroonPulse {
   0%, 100% { 
     box-shadow: 
-      0 0 14px rgba(232,201,106,0.7),
-      0 0 28px rgba(201,168,76,0.4),
-      0 6px 18px rgba(0,0,0,0.5),
-      inset 0 1px 2px rgba(255,255,255,0.5),
-      inset 0 -2px 4px rgba(0,0,0,0.2);
+      0 0 14px rgba(107,27,42,0.7),
+      0 0 28px rgba(107,27,42,0.4),
+      0 6px 18px rgba(0,0,0,0.4),
+      inset 0 1px 2px rgba(255,255,255,0.6),
+      inset 0 -2px 4px rgba(107,27,42,0.15);
   }
   50% { 
     box-shadow: 
-      0 0 20px rgba(244,220,138,0.9),
-      0 0 40px rgba(232,201,106,0.6),
-      0 6px 18px rgba(0,0,0,0.5),
-      inset 0 1px 2px rgba(255,255,255,0.6),
-      inset 0 -2px 4px rgba(0,0,0,0.2);
+      0 0 20px rgba(140,40,60,1),
+      0 0 40px rgba(107,27,42,0.7),
+      0 6px 18px rgba(0,0,0,0.4),
+      inset 0 1px 2px rgba(255,255,255,0.7),
+      inset 0 -2px 4px rgba(107,27,42,0.15);
   }
 }
 .bubble-item .bubble-icon {
   font-size: 18px;
   line-height: 1;
-  /* Dark glow that pops against gold */
-  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.4))
-          drop-shadow(0 0 2px rgba(255,255,255,0.5));
+  filter: drop-shadow(0 1px 2px rgba(74,15,26,0.4));
 }
 .bubble-item .bubble-label {
   font-size: 8px;
@@ -968,30 +967,29 @@ body {
   letter-spacing: 0.3px;
   line-height: 1;
   margin-top: 2px;
-  color: #2C1810; /* Dark for contrast against gold */
-  text-shadow: 0 0 2px rgba(255,255,255,0.6), 0 1px 1px rgba(0,0,0,0.2);
+  color: #4A0F1A;
+  text-shadow: 0 1px 1px rgba(255,255,255,0.5);
 }
 .bubble-item:hover {
   transform: translateY(0) scale(1.15);
-  background: linear-gradient(135deg, #F8E190 0%, #E8C96A 40%, #C9A84C 70%, #E8C96A 100%);
-  border-color: #FFE9A0;
+  background: linear-gradient(135deg, #FFF0D6 0%, #F5E6CC 50%, #E8D4A8 100%);
+  border-color: #8B2336;
   box-shadow: 
-    0 0 28px rgba(255,233,160,1),
-    0 0 50px rgba(232,201,106,0.7),
-    0 10px 24px rgba(0,0,0,0.6),
-    inset 0 2px 3px rgba(255,255,255,0.7),
-    inset 0 -2px 4px rgba(0,0,0,0.2);
-  animation: none; /* freeze the pulse on hover */
+    0 0 28px rgba(140,40,60,1),
+    0 0 50px rgba(107,27,42,0.8),
+    0 10px 24px rgba(0,0,0,0.5),
+    inset 0 2px 3px rgba(255,255,255,0.8),
+    inset 0 -2px 4px rgba(107,27,42,0.15);
+  animation: none;
 }
 .bubble-item:hover .bubble-icon {
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5))
-          drop-shadow(0 0 3px rgba(255,255,255,0.8));
+  filter: drop-shadow(0 1px 2px rgba(74,15,26,0.6));
 }
 .bubble-item:hover .bubble-label {
-  color: #1A0E08;
+  color: #1A0508;
 }
 
-/* Open state — sequential reveal (one after another like beads dropping) */
+/* Open state — sequential reveal */
 .bubble-menu.is-open .bubble-item {
   opacity: 1;
   transform: translateY(0) scale(1);
@@ -1005,7 +1003,7 @@ body {
 .bubble-menu.is-open .bubble-item:nth-child(7) { transition-delay: 0.36s; }
 .bubble-menu.is-open .bubble-item:nth-child(8) { transition-delay: 0.42s; }
 
-/* ALERT bubble — only one that stays red with pulse (it's an alert!) */
+/* ALERT bubble — stays red with stronger pulse */
 .bubble-item.bubble-alert {
   background: linear-gradient(135deg, #FF6B5C 0%, #E74C3C 40%, #B23128 70%, #E74C3C 100%);
   border-color: #FFCDC3;
@@ -1494,12 +1492,92 @@ body { transition: transform 0.3s ease; }
   text-shadow: none !important;
 }
 
-/* Header presence + chat */
-.ctrl-presence, .ctrl-chat {
+/* ============ SCREEN ORIENTATION LOCK (Samsung-style) ============ */
+/* When locked to portrait but device is landscape, rotate the body 90deg */
+@media (orientation: landscape) {
+  body.screen-locked-portrait {
+    transform: rotate(-90deg);
+    transform-origin: left top;
+    width: 100vh;
+    height: 100vw;
+    overflow-x: hidden;
+    overflow-y: auto;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    transition: none;
+  }
+}
+@media (orientation: portrait) {
+  body.screen-locked-landscape {
+    transform: rotate(90deg);
+    transform-origin: left top;
+    width: 100vh;
+    height: 100vw;
+    overflow-x: hidden;
+    overflow-y: auto;
+    position: absolute;
+    top: 0;
+    left: 100%;
+    transition: none;
+  }
+}
+/* No animations during lock — prevents freeze */
+body.screen-locked-portrait *,
+body.screen-locked-landscape * {
+  animation-duration: 0.001ms !important;
+  animation-delay: 0s !important;
+}
+
+/* Header chat icon with embedded presence indicator */
+.ctrl-chat {
   position: relative;
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+.chat-icon-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+}
+/* The presence dot — 2 stacked dots showing "people online" */
+.presence-dot {
+  position: absolute;
+  top: -3px;
+  inset-inline-end: -5px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  /* Two side-by-side green pulses for "multiple people" feel */
+  background: 
+    radial-gradient(circle at 35% 50%, #2ECC71 0, #2ECC71 3.5px, transparent 4px),
+    radial-gradient(circle at 70% 50%, #2ECC71 0, #2ECC71 3.5px, transparent 4px),
+    rgba(0,0,0,0.4);
+  box-shadow: 
+    0 0 6px rgba(46,204,113,1),
+    0 0 12px rgba(46,204,113,0.6),
+    0 0 0 1.5px rgba(0,0,0,0.5);
+  animation: presenceDotPulse 1.5s ease-in-out infinite;
+}
+@keyframes presenceDotPulse {
+  0%, 100% {
+    box-shadow:
+      0 0 6px rgba(46,204,113,1),
+      0 0 12px rgba(46,204,113,0.6),
+      0 0 0 1.5px rgba(0,0,0,0.5);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow:
+      0 0 10px rgba(46,204,113,1),
+      0 0 20px rgba(46,204,113,0.8),
+      0 0 0 1.5px rgba(0,0,0,0.5);
+    transform: scale(1.12);
+  }
 }
 .ctrl-badge {
   display: inline-flex;

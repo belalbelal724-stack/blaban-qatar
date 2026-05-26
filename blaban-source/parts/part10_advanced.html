@@ -1569,6 +1569,26 @@ function renderItemsManager(modal) {
           <input type="checkbox" id="newItemCritical" style="cursor:pointer;width:18px;height:18px;accent-color:var(--red);">
           🚨 بند حرج (CRITICAL) — تنبيه شديد عند الإخفاق
         </label>
+        
+        <!-- Item type: permanent vs one-shot -->
+        <div style="background:rgba(0,0,0,0.2);border:1px solid var(--gold);border-radius:10px;padding:10px;margin-top:10px;">
+          <div style="font-weight:800;color:var(--gold-light);margin-bottom:8px;font-size:var(--fs-sm);">🎯 نوع البند:</div>
+          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;padding:6px;border-radius:6px;margin-bottom:4px;">
+            <input type="radio" name="newItemType" value="permanent" checked style="margin-top:4px;cursor:pointer;accent-color:var(--gold);">
+            <div>
+              <div style="font-weight:800;color:var(--gold-light);">⭐ بند دائم</div>
+              <div style="font-size:var(--fs-xs);color:var(--text-muted);">يظهر في كل التقييمات <strong style="color:#27AE60;">القادمة فقط</strong> (لا يؤثر على التقييمات السابقة)</div>
+            </div>
+          </label>
+          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;padding:6px;border-radius:6px;">
+            <input type="radio" name="newItemType" value="oneshot" style="margin-top:4px;cursor:pointer;accent-color:var(--gold);">
+            <div>
+              <div style="font-weight:800;color:#16A085;">✨ بند خاص بالتقييم الحالي</div>
+              <div style="font-size:var(--fs-xs);color:var(--text-muted);">يظهر فقط في تقييم اليوم الحالي للفرع المحدد (لمرة واحدة)</div>
+            </div>
+          </label>
+        </div>
+        
         <div style="text-align:center;margin-top:10px;">
           <button class="btn btn-green" onclick="submitNewItem()" style="font-weight:800;padding:10px 24px;">✅ إضافة البند</button>
         </div>
@@ -1627,18 +1647,47 @@ function submitNewItem() {
   const icon = document.getElementById('newItemIcon').value.trim() || '📌';
   const text = document.getElementById('newItemText').value.trim();
   const critical = document.getElementById('newItemCritical').checked;
+  const typeRadio = document.querySelector('input[name="newItemType"]:checked');
+  const itemType = typeRadio ? typeRadio.value : 'permanent';
   
   if (!text) {
     showNotif('⚠️ اكتب نص البند', 'error');
     return;
   }
   const finalSection = (sec === '__new__') ? (newSecName || '📌 قسم جديد') : sec;
-  addCustomItem(finalSection, text, icon, critical);
-  showNotif('✅ تم إضافة البند', 'success');
+  
+  if (itemType === 'oneshot') {
+    // Add to CURRENT evaluation only (oneShotItems)
+    if (typeof selectedBranch === 'undefined' || !selectedBranch) {
+      showNotif('⚠️ افتح فرعاً أولاً لإضافة بند خاص بتقييمه', 'error');
+      return;
+    }
+    const month = (typeof getSelMonth === 'function') ? getSelMonth(selectedBranch) : new Date().getMonth();
+    const day = (typeof getSelDay === 'function') ? getSelDay(selectedBranch) : new Date().getDate();
+    
+    const itemId = 'oneshot_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    const visit = getVisitData(selectedBranch, month, day);
+    if (!visit.oneShotItems) visit.oneShotItems = [];
+    visit.oneShotItems.push({
+      id: itemId,
+      text: text,
+      icon: icon,
+      critical: critical,
+      section: finalSection,
+      addedAt: new Date().toISOString()
+    });
+    window._lastEditedKey = getKey(selectedBranch, month, day);
+    saveData();
+    showNotif('✨ تم إضافة بند للتقييم الحالي فقط', 'success');
+  } else {
+    // Permanent: add to system-wide, but only for FUTURE evals (date filter)
+    addCustomItem(finalSection, text, icon, critical);
+    showNotif('⭐ تم إضافة بند دائم (يظهر في التقييمات القادمة فقط)', 'success');
+  }
+  
   // Refresh UI
   renderItemsManager(document.getElementById('itemsManagerModal'));
-  // Re-render current branch if open
-  if (typeof renderBranch === 'function' && typeof selectedBranch !== 'undefined') {
+  if (typeof renderBranch === 'function' && typeof selectedBranch !== 'undefined' && selectedBranch) {
     renderBranch(selectedBranch);
   }
 }

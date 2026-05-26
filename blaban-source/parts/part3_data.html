@@ -375,7 +375,17 @@ function getVisitData(branch, month, day) {
 // ===================== SMART SCORING =====================
 function calcSmartScore(branch, month, day) {
   const visit = getVisitData(branch, month, day);
-  const allItems = CHECKLIST.flatMap(s => s.items);
+  // Only include items that were ACTIVE on this date (custom items added later are excluded)
+  let allItems = CHECKLIST.flatMap(s => s.items).filter(item => {
+    if (typeof isItemActiveForDate === 'function') {
+      return isItemActiveForDate(item, month, day);
+    }
+    return true;
+  });
+  // Include one-shot items for THIS specific visit
+  if (visit.oneShotItems && Array.isArray(visit.oneShotItems)) {
+    allItems = allItems.concat(visit.oneShotItems);
+  }
   let ok = 0, excused = 0, deducted = 0;
   const excusedItems = [], deductedItems = [];
   allItems.forEach(item => {
@@ -390,7 +400,8 @@ function calcSmartScore(branch, month, day) {
   });
   const answered = ok + excused + deducted;
   const pct = answered > 0 ? Math.round(((ok + excused) / answered) * 100) : null;
-  return { pct, ok, excused, deducted, answered, excusedItems, deductedItems };
+  // Also provide 'percent' alias for compatibility
+  return { pct, percent: pct, ok, excused, deducted, answered, excusedItems, deductedItems };
 }
 
 // ===================== STATE =====================
@@ -624,11 +635,39 @@ function applyChecklistCustomizations() {
 }
 applyChecklistCustomizations();
 
-// Add a custom item
+// Check if a custom item should appear on a given date
+// Returns true for built-in items (always shown), and only-for-future for custom items
+function isItemActiveForDate(item, month, day, year) {
+  // Built-in items are always active
+  if (!item.custom) return true;
+  // If no addedDate metadata (legacy), always show
+  if (item.addedMonth == null && item.addedYear == null) return true;
+  
+  const targetYear = year || new Date().getFullYear();
+  const targetDate = new Date(targetYear, month, day);
+  const addedDate = new Date(item.addedYear || targetYear, item.addedMonth || 0, item.addedDay || 1);
+  
+  // Show only if target date is ON or AFTER the date the item was added
+  return targetDate >= addedDate;
+}
+window.isItemActiveForDate = isItemActiveForDate;
+
+// Add a custom item — only shows in evals from this date forward (not in past)
 function addCustomItem(section, text, icon, critical) {
   const custom = JSON.parse(localStorage.getItem('blaban_custom_items') || '[]');
   const id = 'cust_' + Date.now();
-  const item = { id, section, text, icon: icon || '📌', critical: !!critical, custom: true };
+  // addedDateKey: month_day at creation time, so we know when to start showing it
+  const now = new Date();
+  const item = { 
+    id, section, text, 
+    icon: icon || '📌', 
+    critical: !!critical, 
+    custom: true,
+    addedAt: now.toISOString(),
+    addedMonth: now.getMonth(),
+    addedDay: now.getDate(),
+    addedYear: now.getFullYear()
+  };
   custom.push(item);
   localStorage.setItem('blaban_custom_items', JSON.stringify(custom));
   let sec = CHECKLIST.find(s => s.section === section);
