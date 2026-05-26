@@ -445,6 +445,13 @@
     </div>
     <div class="header-controls">
       <button class="ctrl-btn" id="pwaInstallBtn" onclick="triggerInstallPWA()" style="display:none;background:linear-gradient(135deg,#27AE60,#2ECC71);color:#fff;font-weight:800;" title="تثبيت كتطبيق">📥 تثبيت</button>
+      <!-- Online users + Chat -->
+      <button class="ctrl-btn ctrl-presence" id="presenceBtn" onclick="openPresenceList()" title="المتصلون الآن">
+        🟢 <span id="presenceCounter" class="ctrl-badge ctrl-badge-green" style="display:none;">0</span>
+      </button>
+      <button class="ctrl-btn ctrl-chat" id="chatBtn" onclick="openChatPanel()" title="الدردشة بين الأعضاء">
+        💬 <span id="chatPanelBadge" class="ctrl-badge ctrl-badge-red" style="display:none;">0</span>
+      </button>
       <!-- 2 fixed buttons: Save + Mode -->
       <button class="ctrl-btn" onclick="saveAllData()" title="حفظ كل البيانات">💾 حفظ</button>
       <button class="ctrl-btn active" id="modeToggle" onclick="toggleMode()" title="تبديل الوضع الداكن/الفاتح">🌙 داكن</button>
@@ -482,10 +489,6 @@
           <button class="bubble-item bubble-firebase" onclick="closeBubbleMenu();openSyncModal();" title="Firebase">
             <span class="bubble-icon">🔥</span>
             <span class="bubble-label">Firebase</span>
-          </button>
-          <button class="bubble-item bubble-rotation" id="rotationLockBtn" onclick="closeBubbleMenu();toggleRotationLock();" title="قفل التدوير">
-            <span class="bubble-icon">🔓</span>
-            <span class="bubble-label">قفل التدوير</span>
           </button>
           <button class="bubble-item bubble-update" onclick="closeBubbleMenu();forceUpdateApp();" title="تحديث قسري">
             <span class="bubble-icon">🔄</span>

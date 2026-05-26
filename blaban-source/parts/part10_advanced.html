@@ -907,10 +907,69 @@ function addChatbotMessage(role, text) {
   if (!msgsEl) return;
   const div = document.createElement('div');
   div.className = `chatbot-msg chatbot-msg-${role}`;
-  div.innerHTML = text.replace(/\n/g, '<br>');
+  
+  // Escape & format text
+  const escaped = text.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const formatted = escaped.replace(/\n/g, '<br>');
+  
+  if (role === 'bot') {
+    // Store raw text for copying (data attribute)
+    const msgId = 'chatmsg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    div.innerHTML = `
+      <div class="chatbot-msg-text">${formatted}</div>
+      <div class="chatbot-msg-actions">
+        <button class="chatbot-msg-btn" onclick="copyChatbotMessage('${msgId}')" title="نسخ">📋</button>
+        <button class="chatbot-msg-btn chatbot-msg-btn-wa" onclick="sendChatbotMessageToWhatsApp('${msgId}')" title="إرسال على واتساب">📱</button>
+      </div>
+      <textarea id="${msgId}" style="position:absolute;left:-99999px;width:0;height:0;opacity:0;">${escaped}</textarea>
+    `;
+  } else {
+    div.innerHTML = formatted;
+  }
+  
   msgsEl.appendChild(div);
   msgsEl.scrollTop = msgsEl.scrollHeight;
 }
+
+// Copy bot message text to clipboard
+async function copyChatbotMessage(msgId) {
+  const el = document.getElementById(msgId);
+  if (!el) return;
+  const text = el.value || el.textContent || '';
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      el.style.position = 'fixed';
+      el.style.left = '0';
+      el.style.top = '0';
+      el.style.opacity = '0.01';
+      el.select();
+      document.execCommand('copy');
+      el.style.position = 'absolute';
+      el.style.left = '-99999px';
+      el.style.opacity = '0';
+    }
+    if (typeof showNotif === 'function') showNotif('📋 تم النسخ', 'success', 1500);
+  } catch(e) {
+    if (typeof showNotif === 'function') showNotif('❌ فشل النسخ', 'error');
+  }
+}
+window.copyChatbotMessage = copyChatbotMessage;
+
+// Send message to WhatsApp (opens WA with prefilled text)
+function sendChatbotMessageToWhatsApp(msgId) {
+  const el = document.getElementById(msgId);
+  if (!el) return;
+  const text = el.value || el.textContent || '';
+  if (!text.trim()) return;
+  const prefix = '🤖 *من المساعد الذكي — نظام ب لبن قطر*\n\n';
+  const encoded = encodeURIComponent(prefix + text);
+  // wa.me works on both mobile and desktop (will redirect to app or web)
+  const url = 'https://wa.me/?text=' + encoded;
+  window.open(url, '_blank');
+}
+window.sendChatbotMessageToWhatsApp = sendChatbotMessageToWhatsApp;
 
 function showQuickPrompts() {
   const el = document.getElementById('chatbotQuickPrompts');

@@ -649,8 +649,370 @@ function setupRealtimeSubscriptions() {
     .subscribe();
   realtimeChannels.push(managersChannel);
   
-  console.log('[Realtime] Subscribed to 3 channels');
+  // ============ PRESENCE CHANNEL (who's online now) ============
+  setupPresenceChannel();
+  
+  // ============ CHAT CHANNEL (inter-user messaging) ============
+  setupChatChannel();
+  
+  console.log('[Realtime] Subscribed to all channels (evals, tasks, managers, presence, chat)');
 }
+
+// ============ PRESENCE (who is online) ============
+let presenceChannel = null;
+window.onlineUsers = {}; // { user_id: { email, online_at } }
+
+function setupPresenceChannel() {
+  if (!supabaseClient || !currentUser) return;
+  
+  if (presenceChannel) {
+    try { supabaseClient.removeChannel(presenceChannel); } catch(e) {}
+  }
+  
+  presenceChannel = supabaseClient.channel('blaban-presence', {
+    config: { presence: { key: currentUser.id } }
+  });
+  
+  presenceChannel
+    .on('presence', { event: 'sync' }, () => {
+      try {
+        const state = presenceChannel.presenceState();
+        window.onlineUsers = {};
+        Object.keys(state).forEach(userId => {
+          const presences = state[userId];
+          if (presences && presences.length > 0) {
+            window.onlineUsers[userId] = presences[0];
+          }
+        });
+        if (typeof updatePresenceUI === 'function') updatePresenceUI();
+      } catch(e) { console.warn('[Presence] sync', e); }
+    })
+    .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+      console.log('[Presence] User joined:', key);
+      const p = newPresences[0];
+      if (p && p.email && p.user_id !== currentUser?.id) {
+        if (typeof showNotif === 'function') {
+          showNotif('🟢 ' + (p.email || 'مستخدم') + ' متصل الآن', 'info', 2500);
+        }
+      }
+    })
+    .on('presence', { event: 'leave' }, ({ key }) => {
+      console.log('[Presence] User left:', key);
+    })
+    .subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        await presenceChannel.track({
+          user_id: currentUser.id,
+          email: currentUser.email || 'مستخدم',
+          online_at: new Date().toISOString()
+        });
+      }
+    });
+}
+window.setupPresenceChannel = setupPresenceChannel;
+
+function updatePresenceUI() {
+  const counter = document.getElementById('presenceCounter');
+  if (counter) {
+    const count = Object.keys(window.onlineUsers || {}).length;
+    counter.textContent = String(count);
+    counter.style.display = count > 0 ? 'inline-flex' : 'none';
+  }
+  // Refresh list if open
+  if (document.getElementById('presenceListModal') && !document.getElementById('presenceListModal').classList.contains('hidden')) {
+    renderPresenceList();
+  }
+}
+window.updatePresenceUI = updatePresenceUI;
+
+function openPresenceList() {
+  let modal = document.getElementById('presenceListModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'presenceListModal';
+    modal.className = 'modal-overlay';
+    modal.onclick = (e) => { if (e.target === modal) closePresenceList(); };
+    document.body.appendChild(modal);
+  }
+  modal.classList.remove('hidden');
+  renderPresenceList();
+}
+window.openPresenceList = openPresenceList;
+
+function closePresenceList() {
+  const m = document.getElementById('presenceListModal');
+  if (m) m.classList.add('hidden');
+}
+window.closePresenceList = closePresenceList;
+
+function renderPresenceList() {
+  const modal = document.getElementById('presenceListModal');
+  if (!modal) return;
+  const users = Object.values(window.onlineUsers || {});
+  let html = `
+    <div class="modal-box" style="max-width:480px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h3 style="margin:0;color:var(--gold-light);">🟢 المتصلون الآن (${users.length})</h3>
+        <button class="btn btn-icon" onclick="closePresenceList()" style="font-size:22px;">×</button>
+      </div>
+  `;
+  if (users.length === 0) {
+    html += '<div style="text-align:center;padding:30px 10px;color:var(--text-muted);">لا يوجد مستخدمون متصلون حالياً</div>';
+  } else {
+    html += '<div style="display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow-y:auto;">';
+    users.forEach(u => {
+      const isMe = u.user_id === currentUser?.id;
+      const onlineSince = u.online_at ? new Date(u.online_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : '';
+      html += `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg-card2);border-radius:10px;border:1px solid var(--border);">
+          <div style="width:10px;height:10px;border-radius:50%;background:#2ECC71;box-shadow:0 0 8px #2ECC71;flex-shrink:0;"></div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:800;color:var(--gold-light);font-size:14px;">${(u.email || 'مستخدم').replace(/[<>&"']/g, '')}${isMe ? ' <span style="color:#2ECC71;">(أنت)</span>' : ''}</div>
+            <div style="font-size:11px;color:var(--text-muted);">متصل منذ ${onlineSince}</div>
+          </div>
+          ${!isMe ? `<button class="btn btn-sm btn-gold" onclick="openChatWith('${u.user_id}','${(u.email||'').replace(/'/g,"\\'")}');" style="font-size:11px;padding:4px 10px;">💬 محادثة</button>` : ''}
+        </div>
+      `;
+    });
+    html += '</div>';
+  }
+  html += `<div style="margin-top:14px;text-align:center;"><button class="btn" onclick="closePresenceList()">إغلاق</button></div></div>`;
+  modal.innerHTML = html;
+}
+window.renderPresenceList = renderPresenceList;
+
+// ============ INTER-USER CHAT ============
+let chatChannel = null;
+window.chatMessages = []; // [{from_id, from_email, to_id|null, text, timestamp}]
+const MAX_CHAT_MESSAGES = 100;
+
+function setupChatChannel() {
+  if (!supabaseClient || !currentUser) return;
+  
+  if (chatChannel) {
+    try { supabaseClient.removeChannel(chatChannel); } catch(e) {}
+  }
+  
+  chatChannel = supabaseClient.channel('blaban-chat', {
+    config: { broadcast: { self: false, ack: true } }
+  });
+  
+  chatChannel.on('broadcast', { event: 'chat_msg' }, (payload) => {
+    try {
+      const msg = payload.payload || payload;
+      if (!msg || msg.from_id === currentUser?.id) return;
+      
+      // Filter: only show if it's broadcast (no to_id) OR addressed to me
+      if (msg.to_id && msg.to_id !== currentUser?.id) return;
+      
+      // Add to local chat
+      window.chatMessages.push(msg);
+      if (window.chatMessages.length > MAX_CHAT_MESSAGES) {
+        window.chatMessages = window.chatMessages.slice(-MAX_CHAT_MESSAGES);
+      }
+      
+      // Save in localStorage so it persists
+      try { localStorage.setItem('blaban_chat_messages', JSON.stringify(window.chatMessages.slice(-50))); } catch(e) {}
+      
+      // Notify
+      if (typeof showNotif === 'function') {
+        showNotif('💬 ' + (msg.from_email || 'مستخدم') + ': ' + (msg.text || '').substring(0, 50), 'info', 4000);
+      }
+      // OS notification
+      if (typeof showOSNotification === 'function') {
+        showOSNotification({
+          title: '💬 رسالة من ' + (msg.from_email || 'مستخدم'),
+          body: msg.text || '',
+          icon: './icon-192.png',
+          tag: 'chat-' + Date.now()
+        });
+      }
+      
+      // Update unread badge
+      const myUnread = parseInt(localStorage.getItem('blaban_chat_unread') || '0') + 1;
+      localStorage.setItem('blaban_chat_unread', String(myUnread));
+      updateChatBadge();
+      
+      // Refresh chat panel if open
+      if (typeof renderChatPanel === 'function' && document.getElementById('chatPanel') && !document.getElementById('chatPanel').classList.contains('hidden')) {
+        renderChatPanel();
+      }
+    } catch(e) { console.warn('[Chat] handler', e); }
+  });
+  
+  chatChannel.subscribe();
+  
+  // Load saved messages
+  try {
+    const saved = localStorage.getItem('blaban_chat_messages');
+    if (saved) window.chatMessages = JSON.parse(saved);
+  } catch(e) {}
+  
+  updateChatBadge();
+}
+window.setupChatChannel = setupChatChannel;
+
+function sendChatMessage(text, toUserId, toEmail) {
+  if (!text || !text.trim()) return;
+  if (!chatChannel || !currentUser) {
+    if (typeof showNotif === 'function') showNotif('⚠️ غير متصل بالسحابة', 'error');
+    return;
+  }
+  
+  const msg = {
+    from_id: currentUser.id,
+    from_email: currentUser.email || 'مدير التشغيل',
+    to_id: toUserId || null,
+    to_email: toEmail || null,
+    text: text.trim(),
+    timestamp: Date.now()
+  };
+  
+  // Send broadcast
+  chatChannel.send({
+    type: 'broadcast',
+    event: 'chat_msg',
+    payload: msg
+  }).catch(e => console.warn('[Chat] send failed:', e));
+  
+  // Add to local
+  window.chatMessages.push(msg);
+  try { localStorage.setItem('blaban_chat_messages', JSON.stringify(window.chatMessages.slice(-50))); } catch(e) {}
+  
+  // Refresh UI
+  if (typeof renderChatPanel === 'function') renderChatPanel();
+}
+window.sendChatMessage = sendChatMessage;
+
+function updateChatBadge() {
+  const badge = document.getElementById('chatPanelBadge');
+  if (badge) {
+    const unread = parseInt(localStorage.getItem('blaban_chat_unread') || '0');
+    badge.textContent = String(unread);
+    badge.style.display = unread > 0 ? 'inline-flex' : 'none';
+  }
+}
+window.updateChatBadge = updateChatBadge;
+
+function openChatPanel() {
+  let panel = document.getElementById('chatPanel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'chatPanel';
+    panel.className = 'modal-overlay';
+    panel.onclick = (e) => { if (e.target === panel) closeChatPanel(); };
+    document.body.appendChild(panel);
+  }
+  panel.classList.remove('hidden');
+  // Mark as read
+  localStorage.setItem('blaban_chat_unread', '0');
+  updateChatBadge();
+  // Track current conversation (null = global broadcast)
+  panel._toUserId = panel._toUserId || null;
+  panel._toEmail = panel._toEmail || null;
+  renderChatPanel();
+}
+window.openChatPanel = openChatPanel;
+
+function openChatWith(userId, email) {
+  closePresenceList();
+  let panel = document.getElementById('chatPanel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'chatPanel';
+    panel.className = 'modal-overlay';
+    panel.onclick = (e) => { if (e.target === panel) closeChatPanel(); };
+    document.body.appendChild(panel);
+  }
+  panel._toUserId = userId;
+  panel._toEmail = email;
+  panel.classList.remove('hidden');
+  renderChatPanel();
+}
+window.openChatWith = openChatWith;
+
+function closeChatPanel() {
+  const p = document.getElementById('chatPanel');
+  if (p) p.classList.add('hidden');
+}
+window.closeChatPanel = closeChatPanel;
+
+function renderChatPanel() {
+  const panel = document.getElementById('chatPanel');
+  if (!panel) return;
+  
+  const toUserId = panel._toUserId;
+  const toEmail = panel._toEmail;
+  const title = toUserId 
+    ? '💬 محادثة مع ' + (toEmail || 'مستخدم')
+    : '💬 الدردشة العامة (لكل المتصلين)';
+  
+  // Filter messages relevant to this conversation
+  const filtered = window.chatMessages.filter(m => {
+    if (toUserId) {
+      // 1-on-1: messages between me and toUserId
+      return (m.from_id === currentUser?.id && m.to_id === toUserId) ||
+             (m.from_id === toUserId && m.to_id === currentUser?.id);
+    } else {
+      // Broadcast: messages with no to_id
+      return !m.to_id;
+    }
+  });
+  
+  let html = `
+    <div class="modal-box" style="max-width:560px;height:80vh;display:flex;flex-direction:column;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;">
+        <h3 style="margin:0;color:var(--gold-light);font-size:15px;flex:1;">${title}</h3>
+        ${toUserId ? `<button class="btn btn-sm" onclick="openChatPanel(); document.getElementById('chatPanel')._toUserId=null; document.getElementById('chatPanel')._toEmail=null; renderChatPanel();" title="رجوع للعام">🌐</button>` : ''}
+        <button class="btn btn-icon" onclick="closeChatPanel()" style="font-size:22px;">×</button>
+      </div>
+      
+      <div id="chatMessagesArea" style="flex:1;overflow-y:auto;padding:8px;background:var(--bg-card);border-radius:10px;border:1px solid var(--border);display:flex;flex-direction:column;gap:8px;">
+        ${filtered.length === 0 
+          ? '<div style="text-align:center;color:var(--text-muted);padding:30px 10px;font-size:13px;">لا توجد رسائل بعد. ابدأ المحادثة!</div>' 
+          : filtered.map(m => {
+              const isMe = m.from_id === currentUser?.id;
+              const time = new Date(m.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+              const escText = String(m.text || '').replace(/[<>&"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])).replace(/\n/g,'<br>');
+              return `
+                <div style="align-self:${isMe ? 'flex-end' : 'flex-start'};max-width:75%;background:${isMe ? 'linear-gradient(135deg,var(--gold),var(--gold-light))' : 'var(--bg-card2)'};color:${isMe ? 'var(--maroon-dark)' : 'var(--text-light)'};padding:8px 12px;border-radius:12px;border:1px solid var(--border);font-size:13px;">
+                  ${!isMe ? `<div style="font-size:10px;font-weight:800;opacity:0.7;margin-bottom:2px;">${String(m.from_email || 'مستخدم').replace(/[<>&"']/g, '')}</div>` : ''}
+                  <div style="word-wrap:break-word;">${escText}</div>
+                  <div style="font-size:9px;opacity:0.6;margin-top:3px;text-align:end;">${time}</div>
+                </div>
+              `;
+            }).join('')}
+      </div>
+      
+      <div style="display:flex;gap:6px;margin-top:10px;">
+        <input type="text" id="chatInputField" placeholder="اكتب رسالتك..." onkeydown="if(event.key==='Enter')window.sendChatFromInput()"
+          style="flex:1;padding:10px 14px;font-size:14px;border-radius:10px;border:2px solid var(--gold);background:rgba(0,0,0,0.3);color:var(--text-light);font-family:Tajawal,sans-serif;">
+        <button class="btn btn-gold" onclick="window.sendChatFromInput()">إرسال</button>
+      </div>
+    </div>
+  `;
+  panel.innerHTML = html;
+  
+  // Auto-scroll to bottom
+  setTimeout(() => {
+    const area = document.getElementById('chatMessagesArea');
+    if (area) area.scrollTop = area.scrollHeight;
+    const input = document.getElementById('chatInputField');
+    if (input) input.focus();
+  }, 50);
+}
+window.renderChatPanel = renderChatPanel;
+
+window.sendChatFromInput = function() {
+  const input = document.getElementById('chatInputField');
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  const panel = document.getElementById('chatPanel');
+  sendChatMessage(text, panel?._toUserId || null, panel?._toEmail || null);
+  input.value = '';
+  input.focus();
+};
 
 function cleanupRealtimeSubscriptions() {
   realtimeChannels.forEach(ch => {
@@ -1114,25 +1476,66 @@ window.broadcastDataChange = broadcastDataChange;
 function applyRemoteEvalChange(data) {
   try {
     const ev = data.data;
-    if (!ev || !ev.branch || !ev.month && ev.month !== 0 || !ev.day) return;
+    if (!ev || !ev.branch || (ev.month == null) || (ev.day == null)) return;
     
-    // Update appData (merge — never replace silently)
     const key = ev.branch + '_' + ev.month + '_' + ev.day;
-    if (typeof appData !== 'undefined' && appData) {
-      // Merge incoming data
-      if (!appData[key]) appData[key] = { results:{}, notes:{}, comments:{}, actionStatus:{}, images:{}, deptAssign:{}, reported24h:{}, manager:'', shift:'', managers:[] };
-      Object.assign(appData[key], ev.visit || {});
-      // Re-save locally
-      try { localStorage.setItem('blaban_data_v3', JSON.stringify(appData)); } catch(e) {}
+    if (typeof appData === 'undefined' || !appData) return;
+    
+    // Initialize if doesn't exist
+    if (!appData[key]) {
+      appData[key] = { results:{}, notes:{}, comments:{}, actionStatus:{}, images:{}, deptAssign:{}, reported24h:{}, manager:'', shift:'', managers:[] };
     }
     
-    // Notify user
+    // ============ DEEP MERGE — never overwrite local fields silently ============
+    const local = appData[key];
+    const remote = ev.visit || {};
+    
+    // For scalar fields, take remote ONLY if remote has a non-empty value
+    ['manager', 'shift'].forEach(f => {
+      if (remote[f] && String(remote[f]).trim()) local[f] = remote[f];
+    });
+    if (Array.isArray(remote.managers) && remote.managers.length) {
+      local.managers = remote.managers;
+    }
+    
+    // For object fields, merge keys (remote keys override only individual entries)
+    ['results', 'notes', 'images', 'reported24h', 'deptAssign', 'actionStatus'].forEach(f => {
+      if (!local[f] || typeof local[f] !== 'object') local[f] = {};
+      if (remote[f] && typeof remote[f] === 'object') {
+        Object.keys(remote[f]).forEach(itemId => {
+          // Only accept remote value if it has actual content (non-empty)
+          const remoteVal = remote[f][itemId];
+          if (remoteVal !== undefined && remoteVal !== null && remoteVal !== '') {
+            local[f][itemId] = remoteVal;
+          }
+        });
+      }
+    });
+    
+    // Comments are arrays — concat unique by timestamp
+    if (remote.comments && typeof remote.comments === 'object') {
+      if (!local.comments) local.comments = {};
+      Object.keys(remote.comments).forEach(itemId => {
+        const remoteArr = Array.isArray(remote.comments[itemId]) ? remote.comments[itemId] : [];
+        const localArr = Array.isArray(local.comments[itemId]) ? local.comments[itemId] : [];
+        const merged = [...localArr];
+        remoteArr.forEach(rc => {
+          if (!merged.find(lc => lc.timestamp === rc.timestamp && lc.text === rc.text)) {
+            merged.push(rc);
+          }
+        });
+        local.comments[itemId] = merged;
+      });
+    }
+    
+    // Save merged data
+    try { localStorage.setItem('blaban_data_v3', JSON.stringify(appData)); } catch(e) {}
+    
     const branchName = (window.BRANCH_NAMES && window.BRANCH_NAMES[ev.branch]) || ev.branch;
     if (typeof showNotif === 'function') {
-      showNotif('🔄 تحديث مباشر: تقييم ' + branchName, 'info', 3000);
+      showNotif('🔄 تحديث: ' + branchName, 'info', 2000);
     }
     
-    // OS notification for offline users
     if (typeof showOSNotification === 'function') {
       showOSNotification({
         title: '📊 تحديث تقييم',
@@ -1142,12 +1545,19 @@ function applyRemoteEvalChange(data) {
       });
     }
     
-    // Refresh UI (only the relevant branch/page)
-    if (typeof selectedBranch !== 'undefined' && selectedBranch === ev.branch && typeof renderBranch === 'function') {
-      try { renderBranch(ev.branch); } catch(e) {}
-    }
-    if (typeof renderDashboard === 'function') {
-      try { renderDashboard(); } catch(e) {}
+    // Refresh UI — debounced to avoid render-storm if many updates arrive
+    if (!window._remoteRefreshTimer) {
+      window._remoteRefreshTimer = setTimeout(() => {
+        window._remoteRefreshTimer = null;
+        // Only re-render the relevant branch (NOT a full page swap that loses focus)
+        try {
+          if (typeof selectedBranch !== 'undefined' && selectedBranch === ev.branch) {
+            // Re-render only the checklist (preserves dropdowns/inputs in branch header)
+            if (typeof renderChecklist === 'function') renderChecklist(ev.branch);
+            if (typeof updateScore === 'function') updateScore(ev.branch);
+          }
+        } catch(e) {}
+      }, 400);
     }
   } catch(e) { console.warn('[InstantSync eval]', e); }
 }

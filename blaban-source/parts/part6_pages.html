@@ -116,7 +116,7 @@ function renderManagersPage() {
           </div>
           <div class="manager-spark-row">
             <div class="manager-spark-box">
-              <svg width="${sparkW}" height="${sparkH}" style="display:block;max-width:100%;">
+              <svg viewBox="0 0 ${sparkW} ${sparkH}" preserveAspectRatio="xMidYMid meet" style="display:block;width:100%;max-width:${sparkW}px;height:${sparkH}px;">
                 <polyline points="${sparkPts}" fill="none" stroke="${sparkColor}" stroke-width="2.5" stroke-linejoin="round"/>
                 ${sparkData.map((v,i)=>{const x=sparkData.length>1?(i/(sparkData.length-1))*(sparkW-4)+2:sparkW/2;const y=sparkH-((v-sparkMin)/(sparkMax-sparkMin||1))*(sparkH-6)-3;return`<circle cx="${x}" cy="${y}" r="3" fill="${sparkColor}"/><title>${sortedVisits[i]?.date}: ${v}%</title>`;}).join('')}
               </svg>

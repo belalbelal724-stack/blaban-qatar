@@ -911,47 +911,95 @@ function exportTasksExcel() {
   }
   const wb = XLSX.utils.book_new();
   
-  // Single simplified sheet: المهمة | تم؟ | الفرع | المنفّذ
-  const rows = [
-    ['🥛 ب لبن قطر — تقرير المهام'],
-    ['التاريخ: ' + new Date().toLocaleString('ar-QA') + '    إجمالي المهام: ' + tasksData.length],
-    [],
-    ['المهمة', 'تم تنفيذها؟', 'الفرع', 'المنفّذ', 'تاريخ التنفيذ']
-  ];
-  
-  tasksData.forEach(t => {
+  // Group tasks by target (branch or "all")
+  // For each task, determine the target string
+  function getTaskTargetLabel(t) {
     const branches = getTaskBranches(t);
-    branches.forEach(b => {
+    if (!branches || branches.length === 0) return 'جميع الفروع';
+    if (branches.length >= Object.keys(BRANCH_NAMES).length) return 'جميع الفروع';
+    return branches.map(b => BRANCH_NAMES[b] || b).join('، ');
+  }
+  
+  // Group by priority for nice ordering
+  const priorityOrder = { 'عاجلة': 0, 'urgent': 0, 'مهمة': 1, 'high': 1, 'عادية': 2, 'normal': 2, 'منخفضة': 3, 'low': 3 };
+  const sorted = [...tasksData].sort((a,b) => {
+    const pa = priorityOrder[a.priority || 'عادية'] ?? 2;
+    const pb = priorityOrder[b.priority || 'عادية'] ?? 2;
+    if (pa !== pb) return pa - pb;
+    return (new Date(b.createdAt || 0).getTime()) - (new Date(a.createdAt || 0).getTime());
+  });
+  
+  // Build rows
+  const rows = [];
+  
+  // Header card
+  rows.push(['🥛 ب لبن قطر — مهام مدير التشغيل']);
+  rows.push(['التاريخ: ' + new Date().toLocaleString('ar-QA') + '   |   من: بلال الأنصاري — مدير التشغيل']);
+  rows.push([]);
+  
+  // For each task, create a header line + a data row
+  sorted.forEach((t, idx) => {
+    const target = getTaskTargetLabel(t);
+    const priority = t.priority || 'عادية';
+    const priorityIcon = priority === 'عاجلة' || priority === 'urgent' ? '🔴 عاجلة' 
+                       : priority === 'مهمة' || priority === 'high' ? '🟡 مهمة'
+                       : priority === 'منخفضة' || priority === 'low' ? '⚪ منخفضة'
+                       : '🔵 عادية';
+    
+    // Title row: "مهمة [priority] الى [target]"
+    const titleText = (priority === 'عاجلة' || priority === 'urgent' ? '📢 مهمة عاجلة' : '📋 مهمة') + ' إلى ' + target;
+    rows.push([titleText]);
+    rows.push(['#' + (idx + 1) + (t.deadline ? '   |   الميعاد: ' + t.deadline : '') + (t.createdAt ? '   |   أُنشئت: ' + new Date(t.createdAt).toLocaleDateString('ar-QA') : '')]);
+    
+    // Header row for this task
+    rows.push(['المهمة', 'الأهمية', 'التنفيذ (يكتبه المدير)', 'ملاحظات']);
+    
+    // For each branch (or single row if all), add a data row
+    const branches = getTaskBranches(t);
+    const taskBranches = (branches && branches.length > 0) ? branches : ['__all__'];
+    
+    taskBranches.forEach(b => {
       const bs = t.branchStatus?.[b];
       const done = bs?.status === 'completed';
-      const completedBy = bs?.completedBy || '-';
-      const date = bs?.completedAt ? new Date(bs.completedAt).toLocaleDateString('ar-QA') : '-';
-      rows.push([
-        t.title,
-        done ? '✅ تم' : '❌ لم يتم',
-        BRANCH_NAMES[b] || b,
-        completedBy,
-        date
-      ]);
+      const inProgress = bs?.status === 'in-progress';
+      const branchLabel = b === '__all__' ? 'كل الفروع' : (BRANCH_NAMES[b] || b);
+      
+      const executionText = done ? '✅ تم — بواسطة: ' + (bs.completedBy || '-') + (bs.completedAt ? ' في ' + new Date(bs.completedAt).toLocaleDateString('ar-QA') : '')
+                          : inProgress ? '🔄 قيد التنفيذ'
+                          : '⬜ لم يبدأ بعد';
+      
+      // Get latest comment for this branch (notes)
+      const branchComments = (t.comments || []).filter(c => !c.branch || c.branch === b || c.branch === '__ops__');
+      const notesText = branchComments.length > 0 
+        ? branchComments.slice(-3).map(c => '[' + (c.author || '?') + '] ' + (c.text || '')).join(' || ')
+        : (t.desc || '');
+      
+      const taskTextWithBranch = (taskBranches.length > 1 ? '[' + branchLabel + '] ' : '') + t.title;
+      rows.push([taskTextWithBranch, priorityIcon, executionText, notesText]);
     });
+    
+    rows.push([]); // blank row between tasks
   });
   
   const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{wch:40},{wch:14},{wch:18},{wch:20},{wch:18}];
-  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }];
+  ws['!cols'] = [{wch:50},{wch:14},{wch:35},{wch:50}];
   
-  // Color rows based on status
-  for (let r = 4; r < rows.length; r++) {
-    const isDone = rows[r][1] === '✅ تم';
-    for (let c = 0; c < 5; c++) {
-      const ref = XLSX.utils.encode_cell({ r, c });
-      if (!ws[ref]) ws[ref] = { v: rows[r][c] || '', t: 's' };
-      ws[ref].s = {
-        fill: { fgColor: { rgb: isDone ? 'D4EDDA' : 'F8D7DA' } },
-        font: { color: { rgb: isDone ? '155724' : '721C24' } }
-      };
-    }
-  }
+  // Merge cells for headers
+  const merges = [];
+  let curRow = 0;
+  merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 3 } }); // header
+  merges.push({ s: { r: 1, c: 0 }, e: { r: 1, c: 3 } }); // subheader
+  
+  // Track per-task title rows
+  let rowIdx = 3;
+  sorted.forEach(t => {
+    merges.push({ s: { r: rowIdx, c: 0 }, e: { r: rowIdx, c: 3 } });     // title
+    merges.push({ s: { r: rowIdx+1, c: 0 }, e: { r: rowIdx+1, c: 3 } }); // meta
+    const branches = getTaskBranches(t);
+    const cnt = (branches && branches.length > 0) ? branches.length : 1;
+    rowIdx += 3 /* title + meta + header */ + cnt + 1 /* blank */;
+  });
+  ws['!merges'] = merges;
   
   XLSX.utils.book_append_sheet(wb, ws, 'المهام');
   XLSX.writeFile(wb, `مهام_ب_لبن_${new Date().toISOString().split('T')[0]}.xlsx`);

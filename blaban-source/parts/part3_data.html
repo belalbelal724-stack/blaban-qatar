@@ -260,39 +260,44 @@ function initData() {
   } catch(e) { tasksData = []; }
 }
 
-// Lightweight cloud sync — fires immediately after each save
+// Lightweight cloud sync — DEBOUNCED to prevent hang
 let _saveDataSyncTimer = null;
 let _saveTasksSyncTimer = null;
+let _broadcastDataTimer = null;
+let _broadcastTasksTimer = null;
 
 function saveData() {
   try { localStorage.setItem('blaban_data_v3', JSON.stringify(appData)); }
   catch(e) { localStorage.removeItem('blaban_data_v2'); localStorage.setItem('blaban_data_v3', JSON.stringify(appData)); }
-  // Push to firebase if connected
+  // Push to firebase if connected (already internally debounced)
   if (typeof pushDataToFirebase === 'function') pushDataToFirebase();
   
-  // ============ INSTANT BROADCAST (< 100ms) ============
-  // Send a broadcast for the last-edited key — arrives instantly on all devices
-  try {
-    const lastKey = window._lastEditedKey || window._currentEditKey;
-    if (lastKey && appData[lastKey] && typeof broadcastDataChange === 'function') {
-      const parts = lastKey.split('_');
-      if (parts.length >= 3) {
-        const day = parseInt(parts[parts.length - 1]);
-        const month = parseInt(parts[parts.length - 2]);
-        const branch = parts.slice(0, parts.length - 2).join('_');
-        if (!isNaN(month) && !isNaN(day)) {
-          broadcastDataChange('eval', 'update', {
-            branch: branch,
-            month: month,
-            day: day,
-            visit: appData[lastKey]
-          });
+  // ============ DEBOUNCED BROADCAST (500ms) ============
+  // Prevents flooding when user clicks many items quickly
+  if (_broadcastDataTimer) clearTimeout(_broadcastDataTimer);
+  _broadcastDataTimer = setTimeout(() => {
+    try {
+      const lastKey = window._lastEditedKey || window._currentEditKey;
+      if (lastKey && appData[lastKey] && typeof broadcastDataChange === 'function') {
+        const parts = lastKey.split('_');
+        if (parts.length >= 3) {
+          const day = parseInt(parts[parts.length - 1]);
+          const month = parseInt(parts[parts.length - 2]);
+          const branch = parts.slice(0, parts.length - 2).join('_');
+          if (!isNaN(month) && !isNaN(day)) {
+            broadcastDataChange('eval', 'update', {
+              branch: branch,
+              month: month,
+              day: day,
+              visit: appData[lastKey]
+            });
+          }
         }
       }
-    }
-  } catch(e) { console.warn('[Broadcast eval]', e); }
+    } catch(e) { console.warn('[Broadcast eval]', e); }
+  }, 500);
   
-  // ============ DB SYNC (Supabase persistence — ~500ms) ============
+  // ============ DEBOUNCED DB SYNC (1s) ============
   if (typeof window.syncEnabled === 'function' && window.syncEnabled()) {
     if (_saveDataSyncTimer) clearTimeout(_saveDataSyncTimer);
     _saveDataSyncTimer = setTimeout(() => {
@@ -310,7 +315,7 @@ function saveData() {
           });
         }
       } catch(e) { console.warn('[Supabase] auto-sync error:', e); }
-    }, 200);
+    }, 1000);
   }
 }
 
@@ -319,18 +324,21 @@ function saveTasks() {
   catch(e) { console.error('Tasks save failed', e); }
   if (typeof pushDataToFirebase === 'function') pushDataToFirebase();
   
-  // ============ INSTANT BROADCAST of last-edited task ============
-  try {
-    const lastTaskId = window._lastEditedTaskId;
-    if (lastTaskId && typeof broadcastDataChange === 'function') {
-      const task = tasksData.find(t => String(t.id) === String(lastTaskId));
-      if (task) {
-        broadcastDataChange('task', 'update', task);
+  // ============ DEBOUNCED BROADCAST (500ms) ============
+  if (_broadcastTasksTimer) clearTimeout(_broadcastTasksTimer);
+  _broadcastTasksTimer = setTimeout(() => {
+    try {
+      const lastTaskId = window._lastEditedTaskId;
+      if (lastTaskId && typeof broadcastDataChange === 'function') {
+        const task = tasksData.find(t => String(t.id) === String(lastTaskId));
+        if (task) {
+          broadcastDataChange('task', 'update', task);
+        }
       }
-    }
-  } catch(e) { console.warn('[Broadcast task]', e); }
+    } catch(e) { console.warn('[Broadcast task]', e); }
+  }, 500);
   
-  // ============ DB SYNC ============
+  // ============ DEBOUNCED DB SYNC (1s) ============
   if (typeof window.syncEnabled === 'function' && window.syncEnabled()) {
     if (_saveTasksSyncTimer) clearTimeout(_saveTasksSyncTimer);
     _saveTasksSyncTimer = setTimeout(() => {
@@ -346,7 +354,7 @@ function saveTasks() {
           });
         }
       } catch(e) { console.warn('[Supabase] task sync error:', e); }
-    }, 200);
+    }, 1000);
   }
 }
 

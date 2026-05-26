@@ -80,8 +80,6 @@ function renderBranch(branch) {
   <div class="page-footer">
     
     <div class="footer-actions">
-      <button class="btn btn-gold btn-sm" onclick="exportBranchExcel('${branch}','${branchName}')">📊 Excel كامل</button>
-      <button class="btn btn-gold btn-sm" onclick="exportBranchDailyExcel('${branch}','${branchName}')">📋 تقرير اليوم</button>
       <button class="btn btn-orange btn-sm" style="background:linear-gradient(135deg,#D35400,#E67E22);color:#fff;font-weight:800;" onclick="exportFullReportExcel('${branch}')">📑 التقرير الشامل (6 أوراق)</button>
       <button class="btn btn-green btn-sm" style="background:linear-gradient(135deg,#27AE60,#2ECC71);color:#fff;font-weight:800;" onclick="exportBranchZipWithPhotos('${branch}')">📦 Excel + الصور (ZIP)</button>
       <button class="btn" style="background:linear-gradient(135deg,#E74C3C,#C0392B);color:#fff;font-weight:800;font-size:13px;padding:6px 14px;border-radius:8px;border:none;cursor:pointer;" onclick="openPdfExportModal('${branch}')">📄 تصدير PDF</button>
@@ -109,6 +107,16 @@ function renderChecklist(branch) {
   if (isReadonly) {
     html += `<div class="alert alert-info" style="font-size:var(--fs-sm);margin-bottom:10px;">
       🔒 <strong>وضع القراءة فقط</strong> — أنت مدير فرع، يمكنك مشاهدة التقييم والعمل على الأكشن بلان أدناه فقط. التعديل على نتائج التقييم محصور بمدير التشغيل.
+    </div>`;
+  } else {
+    // Add custom item buttons (only for ops manager)
+    html += `<div class="add-item-buttons" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+      <button class="btn btn-sm" style="background:linear-gradient(135deg,#16A085,#0E6B57);color:#fff;font-weight:800;" onclick="openAddItemForThisEval('${branch}', ${month}, ${day})" title="بند يظهر فقط في هذا التقييم">
+        ➕ بند خاص بهذا التقييم
+      </button>
+      <button class="btn btn-sm" style="background:linear-gradient(135deg,#D35400,#E67E22);color:#fff;font-weight:800;" onclick="openAddPermanentItem()" title="بند يضاف لكل التقييمات القادمة">
+        ⭐ بند دائم في كل التقييمات
+      </button>
     </div>`;
   }
   CHECKLIST.forEach(sec => {
@@ -170,10 +178,61 @@ function renderChecklist(branch) {
     });
     html += `</div>`;
   });
+  
+  // ============ ONE-SHOT ITEMS (added only for this eval) ============
+  const oneShots = visitData.oneShotItems || [];
+  if (oneShots.length > 0) {
+    html += `<div class="checklist-section${isReadonly?' readonly':''}" style="border:2px solid #16A085;background:rgba(22,160,133,0.05);"><div class="section-header" style="color:#1ABC9C;">⭐ بنود إضافية خاصة بهذا التقييم</div>`;
+    oneShots.forEach(item => {
+      const result = visitData.results[item.id];
+      const isCriticalItem = item.critical;
+      const dept = visitData.deptAssign[item.id] || 'الفرع';
+      html += `
+      <div class="check-item${isCriticalItem?' critical-item':''}${isCriticalItem&&result==='fail'?' critical-fail':''}${isReadonly?' readonly':''}">
+        ${isCriticalItem?`<span class="critical-badge">🚨 بند حرج</span>`:''}
+        <span style="position:absolute;top:6px;inset-inline-end:6px;background:#16A085;color:#fff;font-size:9px;padding:2px 6px;border-radius:6px;font-weight:800;">جديد</span>
+        <div class="check-label"><span class="item-icon">${item.icon || '✨'}</span>${item.text}</div>
+        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+          <div class="check-options">
+            <button class="check-btn ok ${result==='ok'?'selected':''}" ${isReadonly?'disabled':`onclick="setResult('${branch}','${item.id}','ok')"`}>✅ مطابق</button>
+            <button class="check-btn fail ${result==='fail'?'selected':''}" ${isReadonly?'disabled':`onclick="setResult('${branch}','${item.id}','fail')"`}>❌ غير مطابق</button>
+            ${result ? `<button class="check-btn clear-btn" ${isReadonly?'disabled':`onclick="clearResult('${branch}','${item.id}')"`}>↩️ تراجع</button>` : ''}
+            ${!isReadonly ? `<button class="check-btn" style="background:#E74C3C;color:#fff;" onclick="removeOneShotItem('${branch}','${month}','${day}','${item.id}')" title="حذف هذا البند">🗑️ حذف</button>` : ''}
+          </div>
+          ${result ? `
+          <div style="margin-top:6px;width:100%;">
+            <textarea rows="2" placeholder="💬 ملاحظات..." ${isReadonly?'readonly':''}
+              style="width:100%;background:var(--bg-card);border:1px solid var(--border);color:var(--text-light);padding:6px 10px;border-radius:8px;font-family:Tajawal,sans-serif;font-size:calc(var(--fs-xs) - 2px);resize:vertical;min-height:52px;outline:none;"
+              ${isReadonly?'':`oninput="saveComment('${branch}','${item.id}',this.value)"`}>${visitData.comments&&visitData.comments[item.id]||''}</textarea>
+          </div>
+          ` : ''}
+        </div>
+      </div>`;
+    });
+    html += '</div>';
+  }
+  
   container.innerHTML = html;
   // Update date info bar
   if (typeof updateBranchDateInfo === 'function') updateBranchDateInfo(branch);
 }
+
+// Remove one-shot item from current eval
+function removeOneShotItem(branch, month, day, itemId) {
+  if (!confirm('هل تريد حذف هذا البند من التقييم؟')) return;
+  const visit = getVisitData(branch, parseInt(month), parseInt(day));
+  if (visit.oneShotItems) {
+    visit.oneShotItems = visit.oneShotItems.filter(i => i.id !== itemId);
+  }
+  if (visit.results) delete visit.results[itemId];
+  if (visit.comments) delete visit.comments[itemId];
+  window._lastEditedKey = getKey(branch, parseInt(month), parseInt(day));
+  saveData();
+  renderChecklist(branch);
+  updateScore(branch);
+  if (typeof showNotif === 'function') showNotif('🗑️ تم حذف البند', 'info');
+}
+window.removeOneShotItem = removeOneShotItem;
 
 // ============ Date Navigation ============
 function setBranchDateToday(branch) {
@@ -1302,4 +1361,79 @@ function viewActionPhoto(branch, itemId, slot) {
   `;
   lightbox.style.display = 'flex';
 }
+
+// ============ ADD CUSTOM ITEM (one-shot for current eval) ============
+function openAddItemForThisEval(branch, month, day) {
+  const text = prompt('اكتب نص البند الذي تريد إضافته للتقييم الحالي فقط:\n\n(سيظهر فقط في تقييم هذا اليوم وفي هذا الفرع)');
+  if (!text || !text.trim()) return;
+  
+  const isCritical = confirm('هل هذا البند حرج؟\n\n✓ نعم = بند حرج (وزن أعلى في النتيجة)\n✗ لا = بند عادي');
+  
+  // Generate unique id for this one-shot item
+  const itemId = 'oneshot_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  
+  // Get visit data
+  const visit = getVisitData(branch, month, day);
+  
+  // Store the one-shot items in the visit itself
+  if (!visit.oneShotItems) visit.oneShotItems = [];
+  visit.oneShotItems.push({
+    id: itemId,
+    text: text.trim(),
+    icon: '✨',
+    critical: isCritical,
+    section: '⭐ بنود إضافية خاصة بهذا التقييم',
+    addedAt: new Date().toISOString()
+  });
+  
+  // Default result = empty (user will mark it ok/fail)
+  if (!visit.results) visit.results = {};
+  
+  window._lastEditedKey = getKey(branch, month, day);
+  saveData();
+  renderChecklist(branch);
+  updateScore(branch);
+  
+  if (typeof showNotif === 'function') showNotif('✅ تمت إضافة البند للتقييم الحالي', 'success');
+}
+window.openAddItemForThisEval = openAddItemForThisEval;
+
+// ============ ADD PERMANENT ITEM (system-wide, all future evals) ============
+function openAddPermanentItem() {
+  const text = prompt('اكتب نص البند الدائم:\n\n(سيُضاف لقائمة البنود الرئيسية ويظهر في كل التقييمات الحالية والمستقبلية لكل الفروع)');
+  if (!text || !text.trim()) return;
+  
+  // Pick section
+  const sections = (typeof CHECKLIST !== 'undefined' ? CHECKLIST.map(s => s.section) : []);
+  if (sections.length === 0) {
+    if (typeof showNotif === 'function') showNotif('❌ لا توجد أقسام', 'error');
+    return;
+  }
+  
+  let sectionsList = sections.map((s, i) => (i+1) + '. ' + s).join('\n');
+  const choice = prompt('اختر القسم بكتابة رقمه:\n\n' + sectionsList);
+  if (!choice) return;
+  
+  const idx = parseInt(choice) - 1;
+  if (isNaN(idx) || idx < 0 || idx >= sections.length) {
+    if (typeof showNotif === 'function') showNotif('❌ رقم قسم غير صحيح', 'error');
+    return;
+  }
+  
+  const sectionName = sections[idx];
+  const isCritical = confirm('هل هذا البند حرج؟\n\n✓ نعم = بند حرج\n✗ لا = عادي');
+  
+  // Add to custom items
+  if (typeof addCustomItem === 'function') {
+    addCustomItem(sectionName, text.trim(), '🔹', isCritical);
+    if (typeof showNotif === 'function') showNotif('⭐ تمت إضافة البند الدائم للنظام', 'success');
+    // Re-render branch
+    if (typeof selectedBranch !== 'undefined' && typeof renderBranch === 'function') {
+      renderBranch(selectedBranch);
+    }
+  } else {
+    if (typeof showNotif === 'function') showNotif('❌ النظام لا يدعم إضافة بنود', 'error');
+  }
+}
+window.openAddPermanentItem = openAddPermanentItem;
 </script>

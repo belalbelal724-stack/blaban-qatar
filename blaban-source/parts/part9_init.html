@@ -360,14 +360,8 @@ async function applyRotationLock(locked) {
 window.toggleRotationLock = toggleRotationLock;
 window.applyRotationLock = applyRotationLock;
 
-// Restore rotation lock preference on load
-(function() {
-  const locked = localStorage.getItem('blaban_rotation_lock') === '1';
-  if (locked) {
-    // Wait for DOM
-    setTimeout(() => applyRotationLock(true), 200);
-  }
-})();
+// Clean up old rotation lock preference (feature removed)
+try { localStorage.removeItem('blaban_rotation_lock'); document.body.classList.remove('rotation-locked'); } catch(e) {}
 
 // ============ DEVICE SUB-MENU ============
 function toggleDeviceSubMenu(e) {

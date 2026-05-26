@@ -287,6 +287,140 @@ function exportAllExcel() {
     }
     if(rows.length>1){const ws=XLSX.utils.aoa_to_sheet(rows);XLSX.utils.book_append_sheet(wb,ws,BRANCH_NAMES[branch]);}
   });
+  
+  // ===== Sheet 7: Tasks of today + Analysis =====
+  try {
+    const tasks = (typeof tasksData !== 'undefined' && Array.isArray(tasksData)) ? tasksData : [];
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todayDate = new Date(); todayDate.setHours(0,0,0,0);
+    
+    const taskRows = [];
+    taskRows.push(['📋 المهام والتحليل الشامل']);
+    taskRows.push(['التاريخ: ' + new Date().toLocaleString('ar-QA') + '   |   مدير التشغيل: بلال الأنصاري']);
+    taskRows.push([]);
+    
+    // === Section 7a: تحليل عام للمهام ===
+    const total = tasks.length;
+    const completed = tasks.filter(t => t.status === 'completed' || t.done).length;
+    const inProgress = tasks.filter(t => t.status === 'in-progress').length;
+    const pending = tasks.filter(t => !t.status || t.status === 'pending').length;
+    const urgent = tasks.filter(t => t.priority === 'عاجلة' || t.priority === 'urgent').length;
+    const completionRate = total > 0 ? Math.round((completed/total)*100) : 0;
+    
+    taskRows.push(['📊 تحليل شامل للمهام']);
+    taskRows.push([]);
+    taskRows.push(['المؤشر', 'القيمة']);
+    taskRows.push(['إجمالي المهام', total]);
+    taskRows.push(['المهام المنجزة', completed + ' (' + completionRate + '%)']);
+    taskRows.push(['قيد التنفيذ', inProgress]);
+    taskRows.push(['لم تبدأ بعد', pending]);
+    taskRows.push(['مهام عاجلة', urgent]);
+    taskRows.push([]);
+    
+    // === Section 7b: مهام اليوم ===
+    const tasksToday = tasks.filter(t => {
+      if (!t.createdAt) return false;
+      const d = new Date(t.createdAt);
+      return d >= todayDate;
+    });
+    
+    taskRows.push(['📅 مهام اليوم (' + tasksToday.length + ')']);
+    taskRows.push([]);
+    taskRows.push(['#', 'المهمة', 'الأهمية', 'الفرع/الفروع', 'الحالة', 'المنفّذ', 'التعليقات']);
+    
+    tasksToday.forEach((t, i) => {
+      const branches = (typeof getTaskBranches === 'function') ? getTaskBranches(t) : (t.branch ? [t.branch] : []);
+      const branchLabel = (!branches || branches.length === 0) ? 'جميع الفروع'
+                        : branches.length >= Object.keys(BRANCH_NAMES).length ? 'جميع الفروع'
+                        : branches.map(b => BRANCH_NAMES[b] || b).join('، ');
+      const statusTxt = t.status === 'completed' || t.done ? '✅ منتهية' 
+                      : t.status === 'in-progress' ? '🔄 قيد التنفيذ' 
+                      : '⬜ معلقة';
+      const priorityTxt = t.priority === 'عاجلة' || t.priority === 'urgent' ? '🔴 عاجلة' 
+                        : t.priority === 'مهمة' || t.priority === 'high' ? '🟡 مهمة' 
+                        : '🔵 عادية';
+      const executor = t.completedBy || (t.comments || []).filter(c => c.role !== 'ops').slice(-1)[0]?.author || '-';
+      const commentsTxt = (t.comments || []).slice(-3).map(c => '[' + (c.author || '?') + '] ' + (c.text || '')).join(' || ');
+      
+      taskRows.push([
+        i + 1,
+        t.title || '',
+        priorityTxt,
+        branchLabel,
+        statusTxt,
+        executor,
+        commentsTxt || (t.desc || '')
+      ]);
+    });
+    
+    if (tasksToday.length === 0) {
+      taskRows.push(['—', 'لا توجد مهام أُنشئت اليوم', '', '', '', '', '']);
+    }
+    
+    taskRows.push([]);
+    
+    // === Section 7c: المهام المتبقية (عاجلة + معلقة) ===
+    const urgentPending = tasks.filter(t => 
+      (t.priority === 'عاجلة' || t.priority === 'urgent') && 
+      t.status !== 'completed' && !t.done
+    );
+    
+    if (urgentPending.length > 0) {
+      taskRows.push(['🚨 المهام العاجلة المعلقة (' + urgentPending.length + ')']);
+      taskRows.push([]);
+      taskRows.push(['#', 'المهمة', 'الفرع/الفروع', 'تاريخ الإنشاء', 'الميعاد', 'الحالة']);
+      urgentPending.forEach((t, i) => {
+        const branches = (typeof getTaskBranches === 'function') ? getTaskBranches(t) : (t.branch ? [t.branch] : []);
+        const branchLabel = (!branches || branches.length === 0) ? 'جميع الفروع'
+                          : branches.map(b => BRANCH_NAMES[b] || b).join('، ');
+        taskRows.push([
+          i + 1,
+          t.title || '',
+          branchLabel,
+          t.createdAt ? new Date(t.createdAt).toLocaleDateString('ar-QA') : '-',
+          t.deadline || t.dueDate || '-',
+          t.status === 'in-progress' ? '🔄 قيد التنفيذ' : '⬜ لم تبدأ'
+        ]);
+      });
+      taskRows.push([]);
+    }
+    
+    // === Section 7d: تحليل بالفرع ===
+    taskRows.push(['📈 توزيع المهام حسب الفرع']);
+    taskRows.push([]);
+    taskRows.push(['الفرع', 'إجمالي', 'منتهية', 'قيد التنفيذ', 'معلقة', 'معدل الإنجاز']);
+    
+    BRANCHES.forEach(b => {
+      const branchTasks = tasks.filter(t => {
+        const branches = (typeof getTaskBranches === 'function') ? getTaskBranches(t) : (t.branch ? [t.branch] : []);
+        return branches.includes(b);
+      });
+      const bTotal = branchTasks.length;
+      let bDone = 0, bInProg = 0, bPending = 0;
+      branchTasks.forEach(t => {
+        const bs = t.branchStatus?.[b];
+        const isDone = bs?.status === 'completed' || (t.status === 'completed' && !t.branchStatus);
+        const isInProg = bs?.status === 'in-progress' || (t.status === 'in-progress' && !t.branchStatus);
+        if (isDone) bDone++;
+        else if (isInProg) bInProg++;
+        else bPending++;
+      });
+      const rate = bTotal > 0 ? Math.round((bDone/bTotal)*100) : 0;
+      taskRows.push([
+        BRANCH_NAMES[b] || b,
+        bTotal,
+        bDone,
+        bInProg,
+        bPending,
+        rate + '%'
+      ]);
+    });
+    
+    const wsTasks = XLSX.utils.aoa_to_sheet(taskRows);
+    wsTasks['!cols'] = [{wch:5},{wch:40},{wch:14},{wch:25},{wch:18},{wch:18},{wch:40}];
+    XLSX.utils.book_append_sheet(wb, wsTasks, '📋 المهام');
+  } catch(e) { console.warn('[Excel] Tasks section failed:', e); }
+  
   XLSX.writeFile(wb,'تقرير_ب_لبن_قطر_2026_كامل.xlsx');showNotif('✅ تم التصدير!','success');
 }
 
@@ -1038,19 +1172,68 @@ async function _capturePageAsImage(pageId) {
   }
   
   try {
+    // Force-resolve any oklch/conic colors by inlining computed RGB on critical elements
+    // (html2canvas v1.4 doesn't parse oklch which causes silent failure)
+    const elementsToFix = targetPage.querySelectorAll('*');
+    const originalStyles = [];
+    elementsToFix.forEach((el, i) => {
+      try {
+        const cs = window.getComputedStyle(el);
+        const props = ['color', 'background-color', 'border-color', 'background-image'];
+        let needsFix = false;
+        props.forEach(p => {
+          const v = cs.getPropertyValue(p);
+          if (v && (v.includes('oklch') || v.includes('color-mix'))) needsFix = true;
+        });
+        if (needsFix) {
+          originalStyles.push({ el, originalStyle: el.getAttribute('style') || '' });
+          // Override with computed RGB
+          el.style.color = cs.color;
+          el.style.backgroundColor = cs.backgroundColor;
+          el.style.borderColor = cs.borderColor;
+        }
+      } catch(e) {}
+    });
+    
     const canvas = await html2canvas(targetPage, {
       scale: 1.4,
       useCORS: true,
       allowTaint: true,
       logging: false,
-      backgroundColor: '#FFFFFF',  // Always white for PDF
+      backgroundColor: '#FFFFFF',
       windowWidth: Math.max(targetPage.scrollWidth, 794),
       width: targetPage.scrollWidth,
-      height: targetPage.scrollHeight
+      height: targetPage.scrollHeight,
+      ignoreElements: (el) => {
+        // Skip elements that can break canvas (videos, iframes, embedded SVG with externalrefs)
+        return el.tagName === 'IFRAME' || el.tagName === 'VIDEO' || el.classList.contains('no-pdf-capture');
+      },
+      onclone: (clonedDoc) => {
+        // Strip problematic CSS from the clone before render
+        try {
+          const sheets = clonedDoc.styleSheets;
+          // Remove animation/transition (sometimes causes html2canvas issues)
+          const styleEl = clonedDoc.createElement('style');
+          styleEl.textContent = `
+            * { animation: none !important; transition: none !important; }
+            svg { color: inherit !important; }
+            .bubble-menu, .chatbot-fab, .chatbot-window, #remembranceBubble, #prayerBubble, .update-banner, .broadcast-alert-overlay { display: none !important; }
+          `;
+          clonedDoc.head.appendChild(styleEl);
+        } catch(e) {}
+      }
     });
+    
+    // Restore original styles
+    originalStyles.forEach(({ el, originalStyle }) => {
+      if (originalStyle) el.setAttribute('style', originalStyle);
+      else el.removeAttribute('style');
+    });
+    
     return canvas;
   } catch(err) {
     console.error('Capture error:', err);
+    if (typeof showNotif === 'function') showNotif('⚠️ خطأ في الالتقاط: ' + err.message, 'error', 4000);
     return null;
   } finally {
     // Restore previous active

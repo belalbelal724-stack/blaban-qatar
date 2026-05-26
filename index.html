@@ -828,34 +828,61 @@ body {
   visibility: visible;
 }
 
-/* Each bubble — smaller (was 64px now 52px), drops in sequentially */
+/* ============ UNIFORM METALLIC GOLD BUBBLES (all the same color, glowing) ============ */
+/* Override the base for a richer metallic look */
 .bubble-item {
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--bg-card2), var(--bg-card));
-  border: 2px solid var(--gold);
-  color: var(--gold-light);
+  /* Metallic gold gradient (multi-stop for shine effect) */
+  background: linear-gradient(135deg, #E8C96A 0%, #C9A84C 40%, #8B6F2A 70%, #C9A84C 100%);
+  border: 2px solid #F4DC8A;
+  color: #2C1810;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 1px;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.5), 0 0 14px rgba(201,168,76,0.3);
+  /* Strong gold glow */
+  box-shadow: 
+    0 0 14px rgba(232,201,106,0.7),
+    0 0 28px rgba(201,168,76,0.4),
+    0 6px 18px rgba(0,0,0,0.5),
+    inset 0 1px 2px rgba(255,255,255,0.5),
+    inset 0 -2px 4px rgba(0,0,0,0.2);
   opacity: 0;
   transform: translateY(-30px) scale(0.3);
   transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
   font-family: 'Tajawal', sans-serif;
   position: relative;
+  /* Pulsing glow animation */
+  animation: bubbleGoldPulse 2.5s ease-in-out infinite;
+}
+@keyframes bubbleGoldPulse {
+  0%, 100% { 
+    box-shadow: 
+      0 0 14px rgba(232,201,106,0.7),
+      0 0 28px rgba(201,168,76,0.4),
+      0 6px 18px rgba(0,0,0,0.5),
+      inset 0 1px 2px rgba(255,255,255,0.5),
+      inset 0 -2px 4px rgba(0,0,0,0.2);
+  }
+  50% { 
+    box-shadow: 
+      0 0 20px rgba(244,220,138,0.9),
+      0 0 40px rgba(232,201,106,0.6),
+      0 6px 18px rgba(0,0,0,0.5),
+      inset 0 1px 2px rgba(255,255,255,0.6),
+      inset 0 -2px 4px rgba(0,0,0,0.2);
+  }
 }
 .bubble-item .bubble-icon {
   font-size: 18px;
   line-height: 1;
-  /* Gold glowing icon — applied to ALL bubbles regardless of background */
-  filter: drop-shadow(0 0 4px rgba(232,201,106,0.9))
-          drop-shadow(0 0 8px rgba(201,168,76,0.6))
-          drop-shadow(0 2px 3px rgba(0,0,0,0.5));
+  /* Dark glow that pops against gold */
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.4))
+          drop-shadow(0 0 2px rgba(255,255,255,0.5));
 }
 .bubble-item .bubble-label {
   font-size: 8px;
@@ -863,24 +890,27 @@ body {
   letter-spacing: 0.3px;
   line-height: 1;
   margin-top: 2px;
-  /* Gold glow on label too */
-  color: var(--gold-light);
-  text-shadow: 0 0 4px rgba(232,201,106,0.8), 0 1px 2px rgba(0,0,0,0.6);
+  color: #2C1810; /* Dark for contrast against gold */
+  text-shadow: 0 0 2px rgba(255,255,255,0.6), 0 1px 1px rgba(0,0,0,0.2);
 }
 .bubble-item:hover {
-  transform: translateY(0) scale(1.12);
-  box-shadow: 0 10px 24px rgba(0,0,0,0.6), 0 0 22px rgba(201,168,76,0.6);
-  background: linear-gradient(135deg, var(--gold), var(--gold-light));
-  border-color: var(--gold-light);
+  transform: translateY(0) scale(1.15);
+  background: linear-gradient(135deg, #F8E190 0%, #E8C96A 40%, #C9A84C 70%, #E8C96A 100%);
+  border-color: #FFE9A0;
+  box-shadow: 
+    0 0 28px rgba(255,233,160,1),
+    0 0 50px rgba(232,201,106,0.7),
+    0 10px 24px rgba(0,0,0,0.6),
+    inset 0 2px 3px rgba(255,255,255,0.7),
+    inset 0 -2px 4px rgba(0,0,0,0.2);
+  animation: none; /* freeze the pulse on hover */
 }
-/* On hover the icon should pop in maroon-dark for contrast */
 .bubble-item:hover .bubble-icon {
-  filter: drop-shadow(0 0 4px rgba(255,255,255,0.9))
-          drop-shadow(0 2px 3px rgba(0,0,0,0.4));
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5))
+          drop-shadow(0 0 3px rgba(255,255,255,0.8));
 }
 .bubble-item:hover .bubble-label {
-  color: var(--maroon-dark);
-  text-shadow: 0 1px 2px rgba(255,255,255,0.4);
+  color: #1A0E08;
 }
 
 /* Open state — sequential reveal (one after another like beads dropping) */
@@ -897,63 +927,25 @@ body {
 .bubble-menu.is-open .bubble-item:nth-child(7) { transition-delay: 0.36s; }
 .bubble-menu.is-open .bubble-item:nth-child(8) { transition-delay: 0.42s; }
 
-/* Color variants for each bubble */
+/* ALERT bubble — only one that stays red with pulse (it's an alert!) */
 .bubble-item.bubble-alert {
-  background: linear-gradient(135deg, #E74C3C, #C0392B);
+  background: linear-gradient(135deg, #FF6B5C 0%, #E74C3C 40%, #B23128 70%, #E74C3C 100%);
   border-color: #FFCDC3;
   color: #fff;
-  animation: pulseAlert 2s infinite;
+  animation: pulseAlert 1.5s infinite;
+}
+.bubble-item.bubble-alert .bubble-icon {
+  filter: drop-shadow(0 0 4px rgba(255,255,255,0.9))
+          drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+}
+.bubble-item.bubble-alert .bubble-label {
+  color: #fff;
+  text-shadow: 0 0 3px rgba(0,0,0,0.6);
 }
 .bubble-item.bubble-alert:hover {
-  background: linear-gradient(135deg, #FF6B5C, #E74C3C);
+  background: linear-gradient(135deg, #FF8B7C, #FF6B5C);
   color: #fff;
 }
-.bubble-item.bubble-security {
-  background: linear-gradient(135deg, #9B59B6, #8E44AD);
-  border-color: #D6BAE6;
-  color: #fff;
-}
-.bubble-item.bubble-security:hover { background: linear-gradient(135deg, #B574CB, #9B59B6); color: #fff; }
-.bubble-item.bubble-cloud {
-  background: linear-gradient(135deg, #3498DB, #2980B9);
-  border-color: #B0DAF1;
-  color: #fff;
-}
-.bubble-item.bubble-cloud:hover { background: linear-gradient(135deg, #5DADE2, #3498DB); color: #fff; }
-.bubble-item.bubble-firebase {
-  background: linear-gradient(135deg, #F39C12, #D35400);
-  border-color: #FCD9A6;
-  color: #fff;
-}
-.bubble-item.bubble-firebase:hover { background: linear-gradient(135deg, #F5B041, #F39C12); color: #fff; }
-.bubble-item.bubble-update {
-  background: linear-gradient(135deg, #1ABC9C, #16A085);
-  border-color: #B5E8DD;
-  color: #fff;
-}
-.bubble-item.bubble-update:hover { background: linear-gradient(135deg, #48C9B0, #1ABC9C); color: #fff; }
-.bubble-item.bubble-rotation {
-  background: linear-gradient(135deg, #34495E, #2C3E50);
-  border-color: #ABB7C0;
-  color: #fff;
-}
-.bubble-item.bubble-rotation:hover { background: linear-gradient(135deg, #5D6D7E, #34495E); color: #fff; }
-.bubble-item.bubble-rotation.is-locked {
-  background: linear-gradient(135deg, #27AE60, #1E8449);
-  border-color: #ABEBC6;
-}
-.bubble-item.bubble-items {
-  background: linear-gradient(135deg, #5D6D7E, #34495E);
-  border-color: #BDC3C7;
-  color: #fff;
-}
-.bubble-item.bubble-items:hover { background: linear-gradient(135deg, #7F8C8D, #5D6D7E); color: #fff; }
-.bubble-item.bubble-branches {
-  background: linear-gradient(135deg, #16A085, #0E6B57);
-  border-color: #A2D9CE;
-  color: #fff;
-}
-.bubble-item.bubble-branches:hover { background: linear-gradient(135deg, #1ABC9C, #16A085); color: #fff; }
 
 /* Cloud connected indicator */
 .bubble-item.bubble-cloud.cloud-connected::after {
@@ -1422,6 +1414,41 @@ body { transition: transform 0.3s ease; }
   font-weight: 800 !important;
   box-shadow: 0 2px 8px rgba(201,168,76,0.4), 0 0 14px rgba(232,201,106,0.4) !important;
   text-shadow: none !important;
+}
+
+/* Header presence + chat */
+.ctrl-presence, .ctrl-chat {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.ctrl-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 900;
+  padding: 0 5px;
+  margin-inline-start: 4px;
+}
+.ctrl-badge-green {
+  background: #2ECC71;
+  color: #fff;
+  box-shadow: 0 0 8px rgba(46,204,113,0.7);
+}
+.ctrl-badge-red {
+  background: #E74C3C;
+  color: #fff;
+  box-shadow: 0 0 8px rgba(231,76,60,0.7);
+  animation: chatBadgePulse 1.5s ease-in-out infinite;
+}
+@keyframes chatBadgePulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
 }
 .ctrl-btn-gold:hover {
   background: linear-gradient(135deg, var(--gold-light), #FFE599) !important;
@@ -2283,6 +2310,45 @@ body.view-tablet .main { padding: 12px 10px; }
   color: var(--text-light);
   border: 1px solid var(--border);
   border-bottom-left-radius: 4px;
+  position: relative;
+  padding-bottom: 32px; /* room for action buttons */
+}
+.chatbot-msg-text {
+  word-wrap: break-word;
+}
+.chatbot-msg-actions {
+  position: absolute;
+  bottom: 4px;
+  inset-inline-end: 4px;
+  display: flex;
+  gap: 4px;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+.chatbot-msg-bot:hover .chatbot-msg-actions { opacity: 1; }
+.chatbot-msg-btn {
+  background: linear-gradient(135deg, var(--gold), var(--gold-light));
+  color: var(--maroon-dark);
+  border: 1px solid var(--gold-light);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: Tajawal, sans-serif;
+  font-weight: 700;
+  transition: all 0.15s;
+}
+.chatbot-msg-btn:hover {
+  transform: scale(1.08);
+  box-shadow: 0 2px 6px rgba(201,168,76,0.4);
+}
+.chatbot-msg-btn-wa {
+  background: linear-gradient(135deg, #25D366, #128C7E);
+  color: #fff;
+  border-color: #25D366;
+}
+.chatbot-msg-btn-wa:hover {
+  box-shadow: 0 2px 6px rgba(37,211,102,0.5);
 }
 .chatbot-typing {
   opacity: 0.8;
@@ -2650,86 +2716,114 @@ body.view-tablet .main { padding: 12px 10px; }
 @media (max-width: 768px) {
   .manager-score-row,
   .manager-card-fixed {
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: column !important;
+    align-items: stretch !important;
     gap: 10px;
     padding: 12px;
+    max-width: 100%;
+    overflow: hidden;
   }
   .manager-card-fixed .score-circle {
     width: 56px; height: 56px; min-width: 56px; min-height: 56px;
+    max-width: 56px; max-height: 56px;
     font-size: 15px;
     align-self: center;
+    flex: 0 0 56px !important;
   }
   .manager-card-body {
-    width: 100%;
-    min-width: 0;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow: hidden;
   }
   .manager-card-header {
-    flex-direction: column;
-    align-items: flex-start;
+    flex-direction: column !important;
+    align-items: flex-start !important;
     gap: 4px;
+    width: 100%;
   }
   .manager-name {
     font-size: 16px;
     line-height: 1.3;
     word-break: break-word;
+    max-width: 100%;
   }
   .manager-trend {
     font-size: 11px;
     word-break: break-word;
+    max-width: 100%;
   }
   .manager-meta {
     font-size: 11px;
     line-height: 1.5;
     word-break: break-word;
+    max-width: 100%;
   }
   .manager-spark-row {
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: column !important;
+    align-items: stretch !important;
     gap: 8px;
+    width: 100%;
   }
   .manager-spark-box {
-    width: 100%;
-    overflow-x: auto;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
   }
   .manager-spark-box svg {
-    max-width: 100%;
-    height: auto;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 40px !important;
+    display: block !important;
   }
   .manager-spark-stats {
     gap: 8px;
     font-size: 11px;
     justify-content: space-between;
     width: 100%;
+    flex-wrap: wrap;
   }
   .manager-tags {
     gap: 3px;
+    max-width: 100%;
+    overflow: hidden;
   }
   .manager-tags .tag {
     font-size: 10px;
     padding: 2px 6px;
+    max-width: 100%;
+    word-break: break-word;
   }
   .manager-actions {
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: column !important;
+    align-items: stretch !important;
     gap: 8px;
+    width: 100%;
   }
   .manager-verdict {
     font-size: 11px;
     padding: 6px 10px;
     text-align: center;
     line-height: 1.4;
+    width: 100%;
+    box-sizing: border-box;
   }
   .manager-actions .btn {
-    width: 100%;
+    width: 100% !important;
     font-size: 12px;
     padding: 8px 12px;
+    box-sizing: border-box;
   }
   .manager-ap-mini-row {
-    flex-direction: column;
-    align-items: flex-start;
+    flex-direction: column !important;
+    align-items: flex-start !important;
     gap: 4px;
     font-size: 11px;
+    width: 100%;
+  }
+  .manager-ap-mini {
+    width: 100%;
+    box-sizing: border-box;
   }
 }
 
@@ -4154,6 +4248,13 @@ body.pdf-capturing .page-signature { color: #6B1B2A !important; }
     </div>
     <div class="header-controls">
       <button class="ctrl-btn" id="pwaInstallBtn" onclick="triggerInstallPWA()" style="display:none;background:linear-gradient(135deg,#27AE60,#2ECC71);color:#fff;font-weight:800;" title="تثبيت كتطبيق">📥 تثبيت</button>
+      <!-- Online users + Chat -->
+      <button class="ctrl-btn ctrl-presence" id="presenceBtn" onclick="openPresenceList()" title="المتصلون الآن">
+        🟢 <span id="presenceCounter" class="ctrl-badge ctrl-badge-green" style="display:none;">0</span>
+      </button>
+      <button class="ctrl-btn ctrl-chat" id="chatBtn" onclick="openChatPanel()" title="الدردشة بين الأعضاء">
+        💬 <span id="chatPanelBadge" class="ctrl-badge ctrl-badge-red" style="display:none;">0</span>
+      </button>
       <!-- 2 fixed buttons: Save + Mode -->
       <button class="ctrl-btn" onclick="saveAllData()" title="حفظ كل البيانات">💾 حفظ</button>
       <button class="ctrl-btn active" id="modeToggle" onclick="toggleMode()" title="تبديل الوضع الداكن/الفاتح">🌙 داكن</button>
@@ -4191,10 +4292,6 @@ body.pdf-capturing .page-signature { color: #6B1B2A !important; }
           <button class="bubble-item bubble-firebase" onclick="closeBubbleMenu();openSyncModal();" title="Firebase">
             <span class="bubble-icon">🔥</span>
             <span class="bubble-label">Firebase</span>
-          </button>
-          <button class="bubble-item bubble-rotation" id="rotationLockBtn" onclick="closeBubbleMenu();toggleRotationLock();" title="قفل التدوير">
-            <span class="bubble-icon">🔓</span>
-            <span class="bubble-label">قفل التدوير</span>
           </button>
           <button class="bubble-item bubble-update" onclick="closeBubbleMenu();forceUpdateApp();" title="تحديث قسري">
             <span class="bubble-icon">🔄</span>
@@ -4573,39 +4670,44 @@ function initData() {
   } catch(e) { tasksData = []; }
 }
 
-// Lightweight cloud sync — fires immediately after each save
+// Lightweight cloud sync — DEBOUNCED to prevent hang
 let _saveDataSyncTimer = null;
 let _saveTasksSyncTimer = null;
+let _broadcastDataTimer = null;
+let _broadcastTasksTimer = null;
 
 function saveData() {
   try { localStorage.setItem('blaban_data_v3', JSON.stringify(appData)); }
   catch(e) { localStorage.removeItem('blaban_data_v2'); localStorage.setItem('blaban_data_v3', JSON.stringify(appData)); }
-  // Push to firebase if connected
+  // Push to firebase if connected (already internally debounced)
   if (typeof pushDataToFirebase === 'function') pushDataToFirebase();
   
-  // ============ INSTANT BROADCAST (< 100ms) ============
-  // Send a broadcast for the last-edited key — arrives instantly on all devices
-  try {
-    const lastKey = window._lastEditedKey || window._currentEditKey;
-    if (lastKey && appData[lastKey] && typeof broadcastDataChange === 'function') {
-      const parts = lastKey.split('_');
-      if (parts.length >= 3) {
-        const day = parseInt(parts[parts.length - 1]);
-        const month = parseInt(parts[parts.length - 2]);
-        const branch = parts.slice(0, parts.length - 2).join('_');
-        if (!isNaN(month) && !isNaN(day)) {
-          broadcastDataChange('eval', 'update', {
-            branch: branch,
-            month: month,
-            day: day,
-            visit: appData[lastKey]
-          });
+  // ============ DEBOUNCED BROADCAST (500ms) ============
+  // Prevents flooding when user clicks many items quickly
+  if (_broadcastDataTimer) clearTimeout(_broadcastDataTimer);
+  _broadcastDataTimer = setTimeout(() => {
+    try {
+      const lastKey = window._lastEditedKey || window._currentEditKey;
+      if (lastKey && appData[lastKey] && typeof broadcastDataChange === 'function') {
+        const parts = lastKey.split('_');
+        if (parts.length >= 3) {
+          const day = parseInt(parts[parts.length - 1]);
+          const month = parseInt(parts[parts.length - 2]);
+          const branch = parts.slice(0, parts.length - 2).join('_');
+          if (!isNaN(month) && !isNaN(day)) {
+            broadcastDataChange('eval', 'update', {
+              branch: branch,
+              month: month,
+              day: day,
+              visit: appData[lastKey]
+            });
+          }
         }
       }
-    }
-  } catch(e) { console.warn('[Broadcast eval]', e); }
+    } catch(e) { console.warn('[Broadcast eval]', e); }
+  }, 500);
   
-  // ============ DB SYNC (Supabase persistence — ~500ms) ============
+  // ============ DEBOUNCED DB SYNC (1s) ============
   if (typeof window.syncEnabled === 'function' && window.syncEnabled()) {
     if (_saveDataSyncTimer) clearTimeout(_saveDataSyncTimer);
     _saveDataSyncTimer = setTimeout(() => {
@@ -4623,7 +4725,7 @@ function saveData() {
           });
         }
       } catch(e) { console.warn('[Supabase] auto-sync error:', e); }
-    }, 200);
+    }, 1000);
   }
 }
 
@@ -4632,18 +4734,21 @@ function saveTasks() {
   catch(e) { console.error('Tasks save failed', e); }
   if (typeof pushDataToFirebase === 'function') pushDataToFirebase();
   
-  // ============ INSTANT BROADCAST of last-edited task ============
-  try {
-    const lastTaskId = window._lastEditedTaskId;
-    if (lastTaskId && typeof broadcastDataChange === 'function') {
-      const task = tasksData.find(t => String(t.id) === String(lastTaskId));
-      if (task) {
-        broadcastDataChange('task', 'update', task);
+  // ============ DEBOUNCED BROADCAST (500ms) ============
+  if (_broadcastTasksTimer) clearTimeout(_broadcastTasksTimer);
+  _broadcastTasksTimer = setTimeout(() => {
+    try {
+      const lastTaskId = window._lastEditedTaskId;
+      if (lastTaskId && typeof broadcastDataChange === 'function') {
+        const task = tasksData.find(t => String(t.id) === String(lastTaskId));
+        if (task) {
+          broadcastDataChange('task', 'update', task);
+        }
       }
-    }
-  } catch(e) { console.warn('[Broadcast task]', e); }
+    } catch(e) { console.warn('[Broadcast task]', e); }
+  }, 500);
   
-  // ============ DB SYNC ============
+  // ============ DEBOUNCED DB SYNC (1s) ============
   if (typeof window.syncEnabled === 'function' && window.syncEnabled()) {
     if (_saveTasksSyncTimer) clearTimeout(_saveTasksSyncTimer);
     _saveTasksSyncTimer = setTimeout(() => {
@@ -4659,7 +4764,7 @@ function saveTasks() {
           });
         }
       } catch(e) { console.warn('[Supabase] task sync error:', e); }
-    }, 200);
+    }, 1000);
   }
 }
 
@@ -5220,8 +5325,6 @@ function renderBranch(branch) {
   <div class="page-footer">
     
     <div class="footer-actions">
-      <button class="btn btn-gold btn-sm" onclick="exportBranchExcel('${branch}','${branchName}')">📊 Excel كامل</button>
-      <button class="btn btn-gold btn-sm" onclick="exportBranchDailyExcel('${branch}','${branchName}')">📋 تقرير اليوم</button>
       <button class="btn btn-orange btn-sm" style="background:linear-gradient(135deg,#D35400,#E67E22);color:#fff;font-weight:800;" onclick="exportFullReportExcel('${branch}')">📑 التقرير الشامل (6 أوراق)</button>
       <button class="btn btn-green btn-sm" style="background:linear-gradient(135deg,#27AE60,#2ECC71);color:#fff;font-weight:800;" onclick="exportBranchZipWithPhotos('${branch}')">📦 Excel + الصور (ZIP)</button>
       <button class="btn" style="background:linear-gradient(135deg,#E74C3C,#C0392B);color:#fff;font-weight:800;font-size:13px;padding:6px 14px;border-radius:8px;border:none;cursor:pointer;" onclick="openPdfExportModal('${branch}')">📄 تصدير PDF</button>
@@ -5249,6 +5352,16 @@ function renderChecklist(branch) {
   if (isReadonly) {
     html += `<div class="alert alert-info" style="font-size:var(--fs-sm);margin-bottom:10px;">
       🔒 <strong>وضع القراءة فقط</strong> — أنت مدير فرع، يمكنك مشاهدة التقييم والعمل على الأكشن بلان أدناه فقط. التعديل على نتائج التقييم محصور بمدير التشغيل.
+    </div>`;
+  } else {
+    // Add custom item buttons (only for ops manager)
+    html += `<div class="add-item-buttons" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+      <button class="btn btn-sm" style="background:linear-gradient(135deg,#16A085,#0E6B57);color:#fff;font-weight:800;" onclick="openAddItemForThisEval('${branch}', ${month}, ${day})" title="بند يظهر فقط في هذا التقييم">
+        ➕ بند خاص بهذا التقييم
+      </button>
+      <button class="btn btn-sm" style="background:linear-gradient(135deg,#D35400,#E67E22);color:#fff;font-weight:800;" onclick="openAddPermanentItem()" title="بند يضاف لكل التقييمات القادمة">
+        ⭐ بند دائم في كل التقييمات
+      </button>
     </div>`;
   }
   CHECKLIST.forEach(sec => {
@@ -5310,10 +5423,61 @@ function renderChecklist(branch) {
     });
     html += `</div>`;
   });
+  
+  // ============ ONE-SHOT ITEMS (added only for this eval) ============
+  const oneShots = visitData.oneShotItems || [];
+  if (oneShots.length > 0) {
+    html += `<div class="checklist-section${isReadonly?' readonly':''}" style="border:2px solid #16A085;background:rgba(22,160,133,0.05);"><div class="section-header" style="color:#1ABC9C;">⭐ بنود إضافية خاصة بهذا التقييم</div>`;
+    oneShots.forEach(item => {
+      const result = visitData.results[item.id];
+      const isCriticalItem = item.critical;
+      const dept = visitData.deptAssign[item.id] || 'الفرع';
+      html += `
+      <div class="check-item${isCriticalItem?' critical-item':''}${isCriticalItem&&result==='fail'?' critical-fail':''}${isReadonly?' readonly':''}">
+        ${isCriticalItem?`<span class="critical-badge">🚨 بند حرج</span>`:''}
+        <span style="position:absolute;top:6px;inset-inline-end:6px;background:#16A085;color:#fff;font-size:9px;padding:2px 6px;border-radius:6px;font-weight:800;">جديد</span>
+        <div class="check-label"><span class="item-icon">${item.icon || '✨'}</span>${item.text}</div>
+        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+          <div class="check-options">
+            <button class="check-btn ok ${result==='ok'?'selected':''}" ${isReadonly?'disabled':`onclick="setResult('${branch}','${item.id}','ok')"`}>✅ مطابق</button>
+            <button class="check-btn fail ${result==='fail'?'selected':''}" ${isReadonly?'disabled':`onclick="setResult('${branch}','${item.id}','fail')"`}>❌ غير مطابق</button>
+            ${result ? `<button class="check-btn clear-btn" ${isReadonly?'disabled':`onclick="clearResult('${branch}','${item.id}')"`}>↩️ تراجع</button>` : ''}
+            ${!isReadonly ? `<button class="check-btn" style="background:#E74C3C;color:#fff;" onclick="removeOneShotItem('${branch}','${month}','${day}','${item.id}')" title="حذف هذا البند">🗑️ حذف</button>` : ''}
+          </div>
+          ${result ? `
+          <div style="margin-top:6px;width:100%;">
+            <textarea rows="2" placeholder="💬 ملاحظات..." ${isReadonly?'readonly':''}
+              style="width:100%;background:var(--bg-card);border:1px solid var(--border);color:var(--text-light);padding:6px 10px;border-radius:8px;font-family:Tajawal,sans-serif;font-size:calc(var(--fs-xs) - 2px);resize:vertical;min-height:52px;outline:none;"
+              ${isReadonly?'':`oninput="saveComment('${branch}','${item.id}',this.value)"`}>${visitData.comments&&visitData.comments[item.id]||''}</textarea>
+          </div>
+          ` : ''}
+        </div>
+      </div>`;
+    });
+    html += '</div>';
+  }
+  
   container.innerHTML = html;
   // Update date info bar
   if (typeof updateBranchDateInfo === 'function') updateBranchDateInfo(branch);
 }
+
+// Remove one-shot item from current eval
+function removeOneShotItem(branch, month, day, itemId) {
+  if (!confirm('هل تريد حذف هذا البند من التقييم؟')) return;
+  const visit = getVisitData(branch, parseInt(month), parseInt(day));
+  if (visit.oneShotItems) {
+    visit.oneShotItems = visit.oneShotItems.filter(i => i.id !== itemId);
+  }
+  if (visit.results) delete visit.results[itemId];
+  if (visit.comments) delete visit.comments[itemId];
+  window._lastEditedKey = getKey(branch, parseInt(month), parseInt(day));
+  saveData();
+  renderChecklist(branch);
+  updateScore(branch);
+  if (typeof showNotif === 'function') showNotif('🗑️ تم حذف البند', 'info');
+}
+window.removeOneShotItem = removeOneShotItem;
 
 // ============ Date Navigation ============
 function setBranchDateToday(branch) {
@@ -6442,6 +6606,81 @@ function viewActionPhoto(branch, itemId, slot) {
   `;
   lightbox.style.display = 'flex';
 }
+
+// ============ ADD CUSTOM ITEM (one-shot for current eval) ============
+function openAddItemForThisEval(branch, month, day) {
+  const text = prompt('اكتب نص البند الذي تريد إضافته للتقييم الحالي فقط:\n\n(سيظهر فقط في تقييم هذا اليوم وفي هذا الفرع)');
+  if (!text || !text.trim()) return;
+  
+  const isCritical = confirm('هل هذا البند حرج؟\n\n✓ نعم = بند حرج (وزن أعلى في النتيجة)\n✗ لا = بند عادي');
+  
+  // Generate unique id for this one-shot item
+  const itemId = 'oneshot_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  
+  // Get visit data
+  const visit = getVisitData(branch, month, day);
+  
+  // Store the one-shot items in the visit itself
+  if (!visit.oneShotItems) visit.oneShotItems = [];
+  visit.oneShotItems.push({
+    id: itemId,
+    text: text.trim(),
+    icon: '✨',
+    critical: isCritical,
+    section: '⭐ بنود إضافية خاصة بهذا التقييم',
+    addedAt: new Date().toISOString()
+  });
+  
+  // Default result = empty (user will mark it ok/fail)
+  if (!visit.results) visit.results = {};
+  
+  window._lastEditedKey = getKey(branch, month, day);
+  saveData();
+  renderChecklist(branch);
+  updateScore(branch);
+  
+  if (typeof showNotif === 'function') showNotif('✅ تمت إضافة البند للتقييم الحالي', 'success');
+}
+window.openAddItemForThisEval = openAddItemForThisEval;
+
+// ============ ADD PERMANENT ITEM (system-wide, all future evals) ============
+function openAddPermanentItem() {
+  const text = prompt('اكتب نص البند الدائم:\n\n(سيُضاف لقائمة البنود الرئيسية ويظهر في كل التقييمات الحالية والمستقبلية لكل الفروع)');
+  if (!text || !text.trim()) return;
+  
+  // Pick section
+  const sections = (typeof CHECKLIST !== 'undefined' ? CHECKLIST.map(s => s.section) : []);
+  if (sections.length === 0) {
+    if (typeof showNotif === 'function') showNotif('❌ لا توجد أقسام', 'error');
+    return;
+  }
+  
+  let sectionsList = sections.map((s, i) => (i+1) + '. ' + s).join('\n');
+  const choice = prompt('اختر القسم بكتابة رقمه:\n\n' + sectionsList);
+  if (!choice) return;
+  
+  const idx = parseInt(choice) - 1;
+  if (isNaN(idx) || idx < 0 || idx >= sections.length) {
+    if (typeof showNotif === 'function') showNotif('❌ رقم قسم غير صحيح', 'error');
+    return;
+  }
+  
+  const sectionName = sections[idx];
+  const isCritical = confirm('هل هذا البند حرج؟\n\n✓ نعم = بند حرج\n✗ لا = عادي');
+  
+  // Add to custom items
+  if (typeof addCustomItem === 'function') {
+    addCustomItem(sectionName, text.trim(), '🔹', isCritical);
+    if (typeof showNotif === 'function') showNotif('⭐ تمت إضافة البند الدائم للنظام', 'success');
+    // Re-render branch
+    if (typeof selectedBranch !== 'undefined' && typeof renderBranch === 'function') {
+      renderBranch(selectedBranch);
+    }
+  } else {
+    if (typeof showNotif === 'function') showNotif('❌ النظام لا يدعم إضافة بنود', 'error');
+  }
+}
+window.openAddPermanentItem = openAddPermanentItem;
 </script>
 <script>
 // ===================== WEEKLY ANALYSIS =====================
@@ -7356,47 +7595,95 @@ function exportTasksExcel() {
   }
   const wb = XLSX.utils.book_new();
   
-  // Single simplified sheet: المهمة | تم؟ | الفرع | المنفّذ
-  const rows = [
-    ['🥛 ب لبن قطر — تقرير المهام'],
-    ['التاريخ: ' + new Date().toLocaleString('ar-QA') + '    إجمالي المهام: ' + tasksData.length],
-    [],
-    ['المهمة', 'تم تنفيذها؟', 'الفرع', 'المنفّذ', 'تاريخ التنفيذ']
-  ];
-  
-  tasksData.forEach(t => {
+  // Group tasks by target (branch or "all")
+  // For each task, determine the target string
+  function getTaskTargetLabel(t) {
     const branches = getTaskBranches(t);
-    branches.forEach(b => {
+    if (!branches || branches.length === 0) return 'جميع الفروع';
+    if (branches.length >= Object.keys(BRANCH_NAMES).length) return 'جميع الفروع';
+    return branches.map(b => BRANCH_NAMES[b] || b).join('، ');
+  }
+  
+  // Group by priority for nice ordering
+  const priorityOrder = { 'عاجلة': 0, 'urgent': 0, 'مهمة': 1, 'high': 1, 'عادية': 2, 'normal': 2, 'منخفضة': 3, 'low': 3 };
+  const sorted = [...tasksData].sort((a,b) => {
+    const pa = priorityOrder[a.priority || 'عادية'] ?? 2;
+    const pb = priorityOrder[b.priority || 'عادية'] ?? 2;
+    if (pa !== pb) return pa - pb;
+    return (new Date(b.createdAt || 0).getTime()) - (new Date(a.createdAt || 0).getTime());
+  });
+  
+  // Build rows
+  const rows = [];
+  
+  // Header card
+  rows.push(['🥛 ب لبن قطر — مهام مدير التشغيل']);
+  rows.push(['التاريخ: ' + new Date().toLocaleString('ar-QA') + '   |   من: بلال الأنصاري — مدير التشغيل']);
+  rows.push([]);
+  
+  // For each task, create a header line + a data row
+  sorted.forEach((t, idx) => {
+    const target = getTaskTargetLabel(t);
+    const priority = t.priority || 'عادية';
+    const priorityIcon = priority === 'عاجلة' || priority === 'urgent' ? '🔴 عاجلة' 
+                       : priority === 'مهمة' || priority === 'high' ? '🟡 مهمة'
+                       : priority === 'منخفضة' || priority === 'low' ? '⚪ منخفضة'
+                       : '🔵 عادية';
+    
+    // Title row: "مهمة [priority] الى [target]"
+    const titleText = (priority === 'عاجلة' || priority === 'urgent' ? '📢 مهمة عاجلة' : '📋 مهمة') + ' إلى ' + target;
+    rows.push([titleText]);
+    rows.push(['#' + (idx + 1) + (t.deadline ? '   |   الميعاد: ' + t.deadline : '') + (t.createdAt ? '   |   أُنشئت: ' + new Date(t.createdAt).toLocaleDateString('ar-QA') : '')]);
+    
+    // Header row for this task
+    rows.push(['المهمة', 'الأهمية', 'التنفيذ (يكتبه المدير)', 'ملاحظات']);
+    
+    // For each branch (or single row if all), add a data row
+    const branches = getTaskBranches(t);
+    const taskBranches = (branches && branches.length > 0) ? branches : ['__all__'];
+    
+    taskBranches.forEach(b => {
       const bs = t.branchStatus?.[b];
       const done = bs?.status === 'completed';
-      const completedBy = bs?.completedBy || '-';
-      const date = bs?.completedAt ? new Date(bs.completedAt).toLocaleDateString('ar-QA') : '-';
-      rows.push([
-        t.title,
-        done ? '✅ تم' : '❌ لم يتم',
-        BRANCH_NAMES[b] || b,
-        completedBy,
-        date
-      ]);
+      const inProgress = bs?.status === 'in-progress';
+      const branchLabel = b === '__all__' ? 'كل الفروع' : (BRANCH_NAMES[b] || b);
+      
+      const executionText = done ? '✅ تم — بواسطة: ' + (bs.completedBy || '-') + (bs.completedAt ? ' في ' + new Date(bs.completedAt).toLocaleDateString('ar-QA') : '')
+                          : inProgress ? '🔄 قيد التنفيذ'
+                          : '⬜ لم يبدأ بعد';
+      
+      // Get latest comment for this branch (notes)
+      const branchComments = (t.comments || []).filter(c => !c.branch || c.branch === b || c.branch === '__ops__');
+      const notesText = branchComments.length > 0 
+        ? branchComments.slice(-3).map(c => '[' + (c.author || '?') + '] ' + (c.text || '')).join(' || ')
+        : (t.desc || '');
+      
+      const taskTextWithBranch = (taskBranches.length > 1 ? '[' + branchLabel + '] ' : '') + t.title;
+      rows.push([taskTextWithBranch, priorityIcon, executionText, notesText]);
     });
+    
+    rows.push([]); // blank row between tasks
   });
   
   const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{wch:40},{wch:14},{wch:18},{wch:20},{wch:18}];
-  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }];
+  ws['!cols'] = [{wch:50},{wch:14},{wch:35},{wch:50}];
   
-  // Color rows based on status
-  for (let r = 4; r < rows.length; r++) {
-    const isDone = rows[r][1] === '✅ تم';
-    for (let c = 0; c < 5; c++) {
-      const ref = XLSX.utils.encode_cell({ r, c });
-      if (!ws[ref]) ws[ref] = { v: rows[r][c] || '', t: 's' };
-      ws[ref].s = {
-        fill: { fgColor: { rgb: isDone ? 'D4EDDA' : 'F8D7DA' } },
-        font: { color: { rgb: isDone ? '155724' : '721C24' } }
-      };
-    }
-  }
+  // Merge cells for headers
+  const merges = [];
+  let curRow = 0;
+  merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 3 } }); // header
+  merges.push({ s: { r: 1, c: 0 }, e: { r: 1, c: 3 } }); // subheader
+  
+  // Track per-task title rows
+  let rowIdx = 3;
+  sorted.forEach(t => {
+    merges.push({ s: { r: rowIdx, c: 0 }, e: { r: rowIdx, c: 3 } });     // title
+    merges.push({ s: { r: rowIdx+1, c: 0 }, e: { r: rowIdx+1, c: 3 } }); // meta
+    const branches = getTaskBranches(t);
+    const cnt = (branches && branches.length > 0) ? branches.length : 1;
+    rowIdx += 3 /* title + meta + header */ + cnt + 1 /* blank */;
+  });
+  ws['!merges'] = merges;
   
   XLSX.utils.book_append_sheet(wb, ws, 'المهام');
   XLSX.writeFile(wb, `مهام_ب_لبن_${new Date().toISOString().split('T')[0]}.xlsx`);
@@ -7521,7 +7808,7 @@ function renderManagersPage() {
           </div>
           <div class="manager-spark-row">
             <div class="manager-spark-box">
-              <svg width="${sparkW}" height="${sparkH}" style="display:block;max-width:100%;">
+              <svg viewBox="0 0 ${sparkW} ${sparkH}" preserveAspectRatio="xMidYMid meet" style="display:block;width:100%;max-width:${sparkW}px;height:${sparkH}px;">
                 <polyline points="${sparkPts}" fill="none" stroke="${sparkColor}" stroke-width="2.5" stroke-linejoin="round"/>
                 ${sparkData.map((v,i)=>{const x=sparkData.length>1?(i/(sparkData.length-1))*(sparkW-4)+2:sparkW/2;const y=sparkH-((v-sparkMin)/(sparkMax-sparkMin||1))*(sparkH-6)-3;return`<circle cx="${x}" cy="${y}" r="3" fill="${sparkColor}"/><title>${sortedVisits[i]?.date}: ${v}%</title>`;}).join('')}
               </svg>
@@ -9382,6 +9669,140 @@ function exportAllExcel() {
     }
     if(rows.length>1){const ws=XLSX.utils.aoa_to_sheet(rows);XLSX.utils.book_append_sheet(wb,ws,BRANCH_NAMES[branch]);}
   });
+  
+  // ===== Sheet 7: Tasks of today + Analysis =====
+  try {
+    const tasks = (typeof tasksData !== 'undefined' && Array.isArray(tasksData)) ? tasksData : [];
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todayDate = new Date(); todayDate.setHours(0,0,0,0);
+    
+    const taskRows = [];
+    taskRows.push(['📋 المهام والتحليل الشامل']);
+    taskRows.push(['التاريخ: ' + new Date().toLocaleString('ar-QA') + '   |   مدير التشغيل: بلال الأنصاري']);
+    taskRows.push([]);
+    
+    // === Section 7a: تحليل عام للمهام ===
+    const total = tasks.length;
+    const completed = tasks.filter(t => t.status === 'completed' || t.done).length;
+    const inProgress = tasks.filter(t => t.status === 'in-progress').length;
+    const pending = tasks.filter(t => !t.status || t.status === 'pending').length;
+    const urgent = tasks.filter(t => t.priority === 'عاجلة' || t.priority === 'urgent').length;
+    const completionRate = total > 0 ? Math.round((completed/total)*100) : 0;
+    
+    taskRows.push(['📊 تحليل شامل للمهام']);
+    taskRows.push([]);
+    taskRows.push(['المؤشر', 'القيمة']);
+    taskRows.push(['إجمالي المهام', total]);
+    taskRows.push(['المهام المنجزة', completed + ' (' + completionRate + '%)']);
+    taskRows.push(['قيد التنفيذ', inProgress]);
+    taskRows.push(['لم تبدأ بعد', pending]);
+    taskRows.push(['مهام عاجلة', urgent]);
+    taskRows.push([]);
+    
+    // === Section 7b: مهام اليوم ===
+    const tasksToday = tasks.filter(t => {
+      if (!t.createdAt) return false;
+      const d = new Date(t.createdAt);
+      return d >= todayDate;
+    });
+    
+    taskRows.push(['📅 مهام اليوم (' + tasksToday.length + ')']);
+    taskRows.push([]);
+    taskRows.push(['#', 'المهمة', 'الأهمية', 'الفرع/الفروع', 'الحالة', 'المنفّذ', 'التعليقات']);
+    
+    tasksToday.forEach((t, i) => {
+      const branches = (typeof getTaskBranches === 'function') ? getTaskBranches(t) : (t.branch ? [t.branch] : []);
+      const branchLabel = (!branches || branches.length === 0) ? 'جميع الفروع'
+                        : branches.length >= Object.keys(BRANCH_NAMES).length ? 'جميع الفروع'
+                        : branches.map(b => BRANCH_NAMES[b] || b).join('، ');
+      const statusTxt = t.status === 'completed' || t.done ? '✅ منتهية' 
+                      : t.status === 'in-progress' ? '🔄 قيد التنفيذ' 
+                      : '⬜ معلقة';
+      const priorityTxt = t.priority === 'عاجلة' || t.priority === 'urgent' ? '🔴 عاجلة' 
+                        : t.priority === 'مهمة' || t.priority === 'high' ? '🟡 مهمة' 
+                        : '🔵 عادية';
+      const executor = t.completedBy || (t.comments || []).filter(c => c.role !== 'ops').slice(-1)[0]?.author || '-';
+      const commentsTxt = (t.comments || []).slice(-3).map(c => '[' + (c.author || '?') + '] ' + (c.text || '')).join(' || ');
+      
+      taskRows.push([
+        i + 1,
+        t.title || '',
+        priorityTxt,
+        branchLabel,
+        statusTxt,
+        executor,
+        commentsTxt || (t.desc || '')
+      ]);
+    });
+    
+    if (tasksToday.length === 0) {
+      taskRows.push(['—', 'لا توجد مهام أُنشئت اليوم', '', '', '', '', '']);
+    }
+    
+    taskRows.push([]);
+    
+    // === Section 7c: المهام المتبقية (عاجلة + معلقة) ===
+    const urgentPending = tasks.filter(t => 
+      (t.priority === 'عاجلة' || t.priority === 'urgent') && 
+      t.status !== 'completed' && !t.done
+    );
+    
+    if (urgentPending.length > 0) {
+      taskRows.push(['🚨 المهام العاجلة المعلقة (' + urgentPending.length + ')']);
+      taskRows.push([]);
+      taskRows.push(['#', 'المهمة', 'الفرع/الفروع', 'تاريخ الإنشاء', 'الميعاد', 'الحالة']);
+      urgentPending.forEach((t, i) => {
+        const branches = (typeof getTaskBranches === 'function') ? getTaskBranches(t) : (t.branch ? [t.branch] : []);
+        const branchLabel = (!branches || branches.length === 0) ? 'جميع الفروع'
+                          : branches.map(b => BRANCH_NAMES[b] || b).join('، ');
+        taskRows.push([
+          i + 1,
+          t.title || '',
+          branchLabel,
+          t.createdAt ? new Date(t.createdAt).toLocaleDateString('ar-QA') : '-',
+          t.deadline || t.dueDate || '-',
+          t.status === 'in-progress' ? '🔄 قيد التنفيذ' : '⬜ لم تبدأ'
+        ]);
+      });
+      taskRows.push([]);
+    }
+    
+    // === Section 7d: تحليل بالفرع ===
+    taskRows.push(['📈 توزيع المهام حسب الفرع']);
+    taskRows.push([]);
+    taskRows.push(['الفرع', 'إجمالي', 'منتهية', 'قيد التنفيذ', 'معلقة', 'معدل الإنجاز']);
+    
+    BRANCHES.forEach(b => {
+      const branchTasks = tasks.filter(t => {
+        const branches = (typeof getTaskBranches === 'function') ? getTaskBranches(t) : (t.branch ? [t.branch] : []);
+        return branches.includes(b);
+      });
+      const bTotal = branchTasks.length;
+      let bDone = 0, bInProg = 0, bPending = 0;
+      branchTasks.forEach(t => {
+        const bs = t.branchStatus?.[b];
+        const isDone = bs?.status === 'completed' || (t.status === 'completed' && !t.branchStatus);
+        const isInProg = bs?.status === 'in-progress' || (t.status === 'in-progress' && !t.branchStatus);
+        if (isDone) bDone++;
+        else if (isInProg) bInProg++;
+        else bPending++;
+      });
+      const rate = bTotal > 0 ? Math.round((bDone/bTotal)*100) : 0;
+      taskRows.push([
+        BRANCH_NAMES[b] || b,
+        bTotal,
+        bDone,
+        bInProg,
+        bPending,
+        rate + '%'
+      ]);
+    });
+    
+    const wsTasks = XLSX.utils.aoa_to_sheet(taskRows);
+    wsTasks['!cols'] = [{wch:5},{wch:40},{wch:14},{wch:25},{wch:18},{wch:18},{wch:40}];
+    XLSX.utils.book_append_sheet(wb, wsTasks, '📋 المهام');
+  } catch(e) { console.warn('[Excel] Tasks section failed:', e); }
+  
   XLSX.writeFile(wb,'تقرير_ب_لبن_قطر_2026_كامل.xlsx');showNotif('✅ تم التصدير!','success');
 }
 
@@ -10133,19 +10554,68 @@ async function _capturePageAsImage(pageId) {
   }
   
   try {
+    // Force-resolve any oklch/conic colors by inlining computed RGB on critical elements
+    // (html2canvas v1.4 doesn't parse oklch which causes silent failure)
+    const elementsToFix = targetPage.querySelectorAll('*');
+    const originalStyles = [];
+    elementsToFix.forEach((el, i) => {
+      try {
+        const cs = window.getComputedStyle(el);
+        const props = ['color', 'background-color', 'border-color', 'background-image'];
+        let needsFix = false;
+        props.forEach(p => {
+          const v = cs.getPropertyValue(p);
+          if (v && (v.includes('oklch') || v.includes('color-mix'))) needsFix = true;
+        });
+        if (needsFix) {
+          originalStyles.push({ el, originalStyle: el.getAttribute('style') || '' });
+          // Override with computed RGB
+          el.style.color = cs.color;
+          el.style.backgroundColor = cs.backgroundColor;
+          el.style.borderColor = cs.borderColor;
+        }
+      } catch(e) {}
+    });
+    
     const canvas = await html2canvas(targetPage, {
       scale: 1.4,
       useCORS: true,
       allowTaint: true,
       logging: false,
-      backgroundColor: '#FFFFFF',  // Always white for PDF
+      backgroundColor: '#FFFFFF',
       windowWidth: Math.max(targetPage.scrollWidth, 794),
       width: targetPage.scrollWidth,
-      height: targetPage.scrollHeight
+      height: targetPage.scrollHeight,
+      ignoreElements: (el) => {
+        // Skip elements that can break canvas (videos, iframes, embedded SVG with externalrefs)
+        return el.tagName === 'IFRAME' || el.tagName === 'VIDEO' || el.classList.contains('no-pdf-capture');
+      },
+      onclone: (clonedDoc) => {
+        // Strip problematic CSS from the clone before render
+        try {
+          const sheets = clonedDoc.styleSheets;
+          // Remove animation/transition (sometimes causes html2canvas issues)
+          const styleEl = clonedDoc.createElement('style');
+          styleEl.textContent = `
+            * { animation: none !important; transition: none !important; }
+            svg { color: inherit !important; }
+            .bubble-menu, .chatbot-fab, .chatbot-window, #remembranceBubble, #prayerBubble, .update-banner, .broadcast-alert-overlay { display: none !important; }
+          `;
+          clonedDoc.head.appendChild(styleEl);
+        } catch(e) {}
+      }
     });
+    
+    // Restore original styles
+    originalStyles.forEach(({ el, originalStyle }) => {
+      if (originalStyle) el.setAttribute('style', originalStyle);
+      else el.removeAttribute('style');
+    });
+    
     return canvas;
   } catch(err) {
     console.error('Capture error:', err);
+    if (typeof showNotif === 'function') showNotif('⚠️ خطأ في الالتقاط: ' + err.message, 'error', 4000);
     return null;
   } finally {
     // Restore previous active
@@ -11416,10 +11886,69 @@ function addChatbotMessage(role, text) {
   if (!msgsEl) return;
   const div = document.createElement('div');
   div.className = `chatbot-msg chatbot-msg-${role}`;
-  div.innerHTML = text.replace(/\n/g, '<br>');
+  
+  // Escape & format text
+  const escaped = text.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const formatted = escaped.replace(/\n/g, '<br>');
+  
+  if (role === 'bot') {
+    // Store raw text for copying (data attribute)
+    const msgId = 'chatmsg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    div.innerHTML = `
+      <div class="chatbot-msg-text">${formatted}</div>
+      <div class="chatbot-msg-actions">
+        <button class="chatbot-msg-btn" onclick="copyChatbotMessage('${msgId}')" title="نسخ">📋</button>
+        <button class="chatbot-msg-btn chatbot-msg-btn-wa" onclick="sendChatbotMessageToWhatsApp('${msgId}')" title="إرسال على واتساب">📱</button>
+      </div>
+      <textarea id="${msgId}" style="position:absolute;left:-99999px;width:0;height:0;opacity:0;">${escaped}</textarea>
+    `;
+  } else {
+    div.innerHTML = formatted;
+  }
+  
   msgsEl.appendChild(div);
   msgsEl.scrollTop = msgsEl.scrollHeight;
 }
+
+// Copy bot message text to clipboard
+async function copyChatbotMessage(msgId) {
+  const el = document.getElementById(msgId);
+  if (!el) return;
+  const text = el.value || el.textContent || '';
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      el.style.position = 'fixed';
+      el.style.left = '0';
+      el.style.top = '0';
+      el.style.opacity = '0.01';
+      el.select();
+      document.execCommand('copy');
+      el.style.position = 'absolute';
+      el.style.left = '-99999px';
+      el.style.opacity = '0';
+    }
+    if (typeof showNotif === 'function') showNotif('📋 تم النسخ', 'success', 1500);
+  } catch(e) {
+    if (typeof showNotif === 'function') showNotif('❌ فشل النسخ', 'error');
+  }
+}
+window.copyChatbotMessage = copyChatbotMessage;
+
+// Send message to WhatsApp (opens WA with prefilled text)
+function sendChatbotMessageToWhatsApp(msgId) {
+  const el = document.getElementById(msgId);
+  if (!el) return;
+  const text = el.value || el.textContent || '';
+  if (!text.trim()) return;
+  const prefix = '🤖 *من المساعد الذكي — نظام ب لبن قطر*\n\n';
+  const encoded = encodeURIComponent(prefix + text);
+  // wa.me works on both mobile and desktop (will redirect to app or web)
+  const url = 'https://wa.me/?text=' + encoded;
+  window.open(url, '_blank');
+}
+window.sendChatbotMessageToWhatsApp = sendChatbotMessageToWhatsApp;
 
 function showQuickPrompts() {
   const el = document.getElementById('chatbotQuickPrompts');
@@ -14072,8 +14601,370 @@ function setupRealtimeSubscriptions() {
     .subscribe();
   realtimeChannels.push(managersChannel);
   
-  console.log('[Realtime] Subscribed to 3 channels');
+  // ============ PRESENCE CHANNEL (who's online now) ============
+  setupPresenceChannel();
+  
+  // ============ CHAT CHANNEL (inter-user messaging) ============
+  setupChatChannel();
+  
+  console.log('[Realtime] Subscribed to all channels (evals, tasks, managers, presence, chat)');
 }
+
+// ============ PRESENCE (who is online) ============
+let presenceChannel = null;
+window.onlineUsers = {}; // { user_id: { email, online_at } }
+
+function setupPresenceChannel() {
+  if (!supabaseClient || !currentUser) return;
+  
+  if (presenceChannel) {
+    try { supabaseClient.removeChannel(presenceChannel); } catch(e) {}
+  }
+  
+  presenceChannel = supabaseClient.channel('blaban-presence', {
+    config: { presence: { key: currentUser.id } }
+  });
+  
+  presenceChannel
+    .on('presence', { event: 'sync' }, () => {
+      try {
+        const state = presenceChannel.presenceState();
+        window.onlineUsers = {};
+        Object.keys(state).forEach(userId => {
+          const presences = state[userId];
+          if (presences && presences.length > 0) {
+            window.onlineUsers[userId] = presences[0];
+          }
+        });
+        if (typeof updatePresenceUI === 'function') updatePresenceUI();
+      } catch(e) { console.warn('[Presence] sync', e); }
+    })
+    .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+      console.log('[Presence] User joined:', key);
+      const p = newPresences[0];
+      if (p && p.email && p.user_id !== currentUser?.id) {
+        if (typeof showNotif === 'function') {
+          showNotif('🟢 ' + (p.email || 'مستخدم') + ' متصل الآن', 'info', 2500);
+        }
+      }
+    })
+    .on('presence', { event: 'leave' }, ({ key }) => {
+      console.log('[Presence] User left:', key);
+    })
+    .subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        await presenceChannel.track({
+          user_id: currentUser.id,
+          email: currentUser.email || 'مستخدم',
+          online_at: new Date().toISOString()
+        });
+      }
+    });
+}
+window.setupPresenceChannel = setupPresenceChannel;
+
+function updatePresenceUI() {
+  const counter = document.getElementById('presenceCounter');
+  if (counter) {
+    const count = Object.keys(window.onlineUsers || {}).length;
+    counter.textContent = String(count);
+    counter.style.display = count > 0 ? 'inline-flex' : 'none';
+  }
+  // Refresh list if open
+  if (document.getElementById('presenceListModal') && !document.getElementById('presenceListModal').classList.contains('hidden')) {
+    renderPresenceList();
+  }
+}
+window.updatePresenceUI = updatePresenceUI;
+
+function openPresenceList() {
+  let modal = document.getElementById('presenceListModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'presenceListModal';
+    modal.className = 'modal-overlay';
+    modal.onclick = (e) => { if (e.target === modal) closePresenceList(); };
+    document.body.appendChild(modal);
+  }
+  modal.classList.remove('hidden');
+  renderPresenceList();
+}
+window.openPresenceList = openPresenceList;
+
+function closePresenceList() {
+  const m = document.getElementById('presenceListModal');
+  if (m) m.classList.add('hidden');
+}
+window.closePresenceList = closePresenceList;
+
+function renderPresenceList() {
+  const modal = document.getElementById('presenceListModal');
+  if (!modal) return;
+  const users = Object.values(window.onlineUsers || {});
+  let html = `
+    <div class="modal-box" style="max-width:480px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h3 style="margin:0;color:var(--gold-light);">🟢 المتصلون الآن (${users.length})</h3>
+        <button class="btn btn-icon" onclick="closePresenceList()" style="font-size:22px;">×</button>
+      </div>
+  `;
+  if (users.length === 0) {
+    html += '<div style="text-align:center;padding:30px 10px;color:var(--text-muted);">لا يوجد مستخدمون متصلون حالياً</div>';
+  } else {
+    html += '<div style="display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow-y:auto;">';
+    users.forEach(u => {
+      const isMe = u.user_id === currentUser?.id;
+      const onlineSince = u.online_at ? new Date(u.online_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : '';
+      html += `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg-card2);border-radius:10px;border:1px solid var(--border);">
+          <div style="width:10px;height:10px;border-radius:50%;background:#2ECC71;box-shadow:0 0 8px #2ECC71;flex-shrink:0;"></div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:800;color:var(--gold-light);font-size:14px;">${(u.email || 'مستخدم').replace(/[<>&"']/g, '')}${isMe ? ' <span style="color:#2ECC71;">(أنت)</span>' : ''}</div>
+            <div style="font-size:11px;color:var(--text-muted);">متصل منذ ${onlineSince}</div>
+          </div>
+          ${!isMe ? `<button class="btn btn-sm btn-gold" onclick="openChatWith('${u.user_id}','${(u.email||'').replace(/'/g,"\\'")}');" style="font-size:11px;padding:4px 10px;">💬 محادثة</button>` : ''}
+        </div>
+      `;
+    });
+    html += '</div>';
+  }
+  html += `<div style="margin-top:14px;text-align:center;"><button class="btn" onclick="closePresenceList()">إغلاق</button></div></div>`;
+  modal.innerHTML = html;
+}
+window.renderPresenceList = renderPresenceList;
+
+// ============ INTER-USER CHAT ============
+let chatChannel = null;
+window.chatMessages = []; // [{from_id, from_email, to_id|null, text, timestamp}]
+const MAX_CHAT_MESSAGES = 100;
+
+function setupChatChannel() {
+  if (!supabaseClient || !currentUser) return;
+  
+  if (chatChannel) {
+    try { supabaseClient.removeChannel(chatChannel); } catch(e) {}
+  }
+  
+  chatChannel = supabaseClient.channel('blaban-chat', {
+    config: { broadcast: { self: false, ack: true } }
+  });
+  
+  chatChannel.on('broadcast', { event: 'chat_msg' }, (payload) => {
+    try {
+      const msg = payload.payload || payload;
+      if (!msg || msg.from_id === currentUser?.id) return;
+      
+      // Filter: only show if it's broadcast (no to_id) OR addressed to me
+      if (msg.to_id && msg.to_id !== currentUser?.id) return;
+      
+      // Add to local chat
+      window.chatMessages.push(msg);
+      if (window.chatMessages.length > MAX_CHAT_MESSAGES) {
+        window.chatMessages = window.chatMessages.slice(-MAX_CHAT_MESSAGES);
+      }
+      
+      // Save in localStorage so it persists
+      try { localStorage.setItem('blaban_chat_messages', JSON.stringify(window.chatMessages.slice(-50))); } catch(e) {}
+      
+      // Notify
+      if (typeof showNotif === 'function') {
+        showNotif('💬 ' + (msg.from_email || 'مستخدم') + ': ' + (msg.text || '').substring(0, 50), 'info', 4000);
+      }
+      // OS notification
+      if (typeof showOSNotification === 'function') {
+        showOSNotification({
+          title: '💬 رسالة من ' + (msg.from_email || 'مستخدم'),
+          body: msg.text || '',
+          icon: './icon-192.png',
+          tag: 'chat-' + Date.now()
+        });
+      }
+      
+      // Update unread badge
+      const myUnread = parseInt(localStorage.getItem('blaban_chat_unread') || '0') + 1;
+      localStorage.setItem('blaban_chat_unread', String(myUnread));
+      updateChatBadge();
+      
+      // Refresh chat panel if open
+      if (typeof renderChatPanel === 'function' && document.getElementById('chatPanel') && !document.getElementById('chatPanel').classList.contains('hidden')) {
+        renderChatPanel();
+      }
+    } catch(e) { console.warn('[Chat] handler', e); }
+  });
+  
+  chatChannel.subscribe();
+  
+  // Load saved messages
+  try {
+    const saved = localStorage.getItem('blaban_chat_messages');
+    if (saved) window.chatMessages = JSON.parse(saved);
+  } catch(e) {}
+  
+  updateChatBadge();
+}
+window.setupChatChannel = setupChatChannel;
+
+function sendChatMessage(text, toUserId, toEmail) {
+  if (!text || !text.trim()) return;
+  if (!chatChannel || !currentUser) {
+    if (typeof showNotif === 'function') showNotif('⚠️ غير متصل بالسحابة', 'error');
+    return;
+  }
+  
+  const msg = {
+    from_id: currentUser.id,
+    from_email: currentUser.email || 'مدير التشغيل',
+    to_id: toUserId || null,
+    to_email: toEmail || null,
+    text: text.trim(),
+    timestamp: Date.now()
+  };
+  
+  // Send broadcast
+  chatChannel.send({
+    type: 'broadcast',
+    event: 'chat_msg',
+    payload: msg
+  }).catch(e => console.warn('[Chat] send failed:', e));
+  
+  // Add to local
+  window.chatMessages.push(msg);
+  try { localStorage.setItem('blaban_chat_messages', JSON.stringify(window.chatMessages.slice(-50))); } catch(e) {}
+  
+  // Refresh UI
+  if (typeof renderChatPanel === 'function') renderChatPanel();
+}
+window.sendChatMessage = sendChatMessage;
+
+function updateChatBadge() {
+  const badge = document.getElementById('chatPanelBadge');
+  if (badge) {
+    const unread = parseInt(localStorage.getItem('blaban_chat_unread') || '0');
+    badge.textContent = String(unread);
+    badge.style.display = unread > 0 ? 'inline-flex' : 'none';
+  }
+}
+window.updateChatBadge = updateChatBadge;
+
+function openChatPanel() {
+  let panel = document.getElementById('chatPanel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'chatPanel';
+    panel.className = 'modal-overlay';
+    panel.onclick = (e) => { if (e.target === panel) closeChatPanel(); };
+    document.body.appendChild(panel);
+  }
+  panel.classList.remove('hidden');
+  // Mark as read
+  localStorage.setItem('blaban_chat_unread', '0');
+  updateChatBadge();
+  // Track current conversation (null = global broadcast)
+  panel._toUserId = panel._toUserId || null;
+  panel._toEmail = panel._toEmail || null;
+  renderChatPanel();
+}
+window.openChatPanel = openChatPanel;
+
+function openChatWith(userId, email) {
+  closePresenceList();
+  let panel = document.getElementById('chatPanel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'chatPanel';
+    panel.className = 'modal-overlay';
+    panel.onclick = (e) => { if (e.target === panel) closeChatPanel(); };
+    document.body.appendChild(panel);
+  }
+  panel._toUserId = userId;
+  panel._toEmail = email;
+  panel.classList.remove('hidden');
+  renderChatPanel();
+}
+window.openChatWith = openChatWith;
+
+function closeChatPanel() {
+  const p = document.getElementById('chatPanel');
+  if (p) p.classList.add('hidden');
+}
+window.closeChatPanel = closeChatPanel;
+
+function renderChatPanel() {
+  const panel = document.getElementById('chatPanel');
+  if (!panel) return;
+  
+  const toUserId = panel._toUserId;
+  const toEmail = panel._toEmail;
+  const title = toUserId 
+    ? '💬 محادثة مع ' + (toEmail || 'مستخدم')
+    : '💬 الدردشة العامة (لكل المتصلين)';
+  
+  // Filter messages relevant to this conversation
+  const filtered = window.chatMessages.filter(m => {
+    if (toUserId) {
+      // 1-on-1: messages between me and toUserId
+      return (m.from_id === currentUser?.id && m.to_id === toUserId) ||
+             (m.from_id === toUserId && m.to_id === currentUser?.id);
+    } else {
+      // Broadcast: messages with no to_id
+      return !m.to_id;
+    }
+  });
+  
+  let html = `
+    <div class="modal-box" style="max-width:560px;height:80vh;display:flex;flex-direction:column;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;">
+        <h3 style="margin:0;color:var(--gold-light);font-size:15px;flex:1;">${title}</h3>
+        ${toUserId ? `<button class="btn btn-sm" onclick="openChatPanel(); document.getElementById('chatPanel')._toUserId=null; document.getElementById('chatPanel')._toEmail=null; renderChatPanel();" title="رجوع للعام">🌐</button>` : ''}
+        <button class="btn btn-icon" onclick="closeChatPanel()" style="font-size:22px;">×</button>
+      </div>
+      
+      <div id="chatMessagesArea" style="flex:1;overflow-y:auto;padding:8px;background:var(--bg-card);border-radius:10px;border:1px solid var(--border);display:flex;flex-direction:column;gap:8px;">
+        ${filtered.length === 0 
+          ? '<div style="text-align:center;color:var(--text-muted);padding:30px 10px;font-size:13px;">لا توجد رسائل بعد. ابدأ المحادثة!</div>' 
+          : filtered.map(m => {
+              const isMe = m.from_id === currentUser?.id;
+              const time = new Date(m.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+              const escText = String(m.text || '').replace(/[<>&"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])).replace(/\n/g,'<br>');
+              return `
+                <div style="align-self:${isMe ? 'flex-end' : 'flex-start'};max-width:75%;background:${isMe ? 'linear-gradient(135deg,var(--gold),var(--gold-light))' : 'var(--bg-card2)'};color:${isMe ? 'var(--maroon-dark)' : 'var(--text-light)'};padding:8px 12px;border-radius:12px;border:1px solid var(--border);font-size:13px;">
+                  ${!isMe ? `<div style="font-size:10px;font-weight:800;opacity:0.7;margin-bottom:2px;">${String(m.from_email || 'مستخدم').replace(/[<>&"']/g, '')}</div>` : ''}
+                  <div style="word-wrap:break-word;">${escText}</div>
+                  <div style="font-size:9px;opacity:0.6;margin-top:3px;text-align:end;">${time}</div>
+                </div>
+              `;
+            }).join('')}
+      </div>
+      
+      <div style="display:flex;gap:6px;margin-top:10px;">
+        <input type="text" id="chatInputField" placeholder="اكتب رسالتك..." onkeydown="if(event.key==='Enter')window.sendChatFromInput()"
+          style="flex:1;padding:10px 14px;font-size:14px;border-radius:10px;border:2px solid var(--gold);background:rgba(0,0,0,0.3);color:var(--text-light);font-family:Tajawal,sans-serif;">
+        <button class="btn btn-gold" onclick="window.sendChatFromInput()">إرسال</button>
+      </div>
+    </div>
+  `;
+  panel.innerHTML = html;
+  
+  // Auto-scroll to bottom
+  setTimeout(() => {
+    const area = document.getElementById('chatMessagesArea');
+    if (area) area.scrollTop = area.scrollHeight;
+    const input = document.getElementById('chatInputField');
+    if (input) input.focus();
+  }, 50);
+}
+window.renderChatPanel = renderChatPanel;
+
+window.sendChatFromInput = function() {
+  const input = document.getElementById('chatInputField');
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  const panel = document.getElementById('chatPanel');
+  sendChatMessage(text, panel?._toUserId || null, panel?._toEmail || null);
+  input.value = '';
+  input.focus();
+};
 
 function cleanupRealtimeSubscriptions() {
   realtimeChannels.forEach(ch => {
@@ -14537,25 +15428,66 @@ window.broadcastDataChange = broadcastDataChange;
 function applyRemoteEvalChange(data) {
   try {
     const ev = data.data;
-    if (!ev || !ev.branch || !ev.month && ev.month !== 0 || !ev.day) return;
+    if (!ev || !ev.branch || (ev.month == null) || (ev.day == null)) return;
     
-    // Update appData (merge — never replace silently)
     const key = ev.branch + '_' + ev.month + '_' + ev.day;
-    if (typeof appData !== 'undefined' && appData) {
-      // Merge incoming data
-      if (!appData[key]) appData[key] = { results:{}, notes:{}, comments:{}, actionStatus:{}, images:{}, deptAssign:{}, reported24h:{}, manager:'', shift:'', managers:[] };
-      Object.assign(appData[key], ev.visit || {});
-      // Re-save locally
-      try { localStorage.setItem('blaban_data_v3', JSON.stringify(appData)); } catch(e) {}
+    if (typeof appData === 'undefined' || !appData) return;
+    
+    // Initialize if doesn't exist
+    if (!appData[key]) {
+      appData[key] = { results:{}, notes:{}, comments:{}, actionStatus:{}, images:{}, deptAssign:{}, reported24h:{}, manager:'', shift:'', managers:[] };
     }
     
-    // Notify user
+    // ============ DEEP MERGE — never overwrite local fields silently ============
+    const local = appData[key];
+    const remote = ev.visit || {};
+    
+    // For scalar fields, take remote ONLY if remote has a non-empty value
+    ['manager', 'shift'].forEach(f => {
+      if (remote[f] && String(remote[f]).trim()) local[f] = remote[f];
+    });
+    if (Array.isArray(remote.managers) && remote.managers.length) {
+      local.managers = remote.managers;
+    }
+    
+    // For object fields, merge keys (remote keys override only individual entries)
+    ['results', 'notes', 'images', 'reported24h', 'deptAssign', 'actionStatus'].forEach(f => {
+      if (!local[f] || typeof local[f] !== 'object') local[f] = {};
+      if (remote[f] && typeof remote[f] === 'object') {
+        Object.keys(remote[f]).forEach(itemId => {
+          // Only accept remote value if it has actual content (non-empty)
+          const remoteVal = remote[f][itemId];
+          if (remoteVal !== undefined && remoteVal !== null && remoteVal !== '') {
+            local[f][itemId] = remoteVal;
+          }
+        });
+      }
+    });
+    
+    // Comments are arrays — concat unique by timestamp
+    if (remote.comments && typeof remote.comments === 'object') {
+      if (!local.comments) local.comments = {};
+      Object.keys(remote.comments).forEach(itemId => {
+        const remoteArr = Array.isArray(remote.comments[itemId]) ? remote.comments[itemId] : [];
+        const localArr = Array.isArray(local.comments[itemId]) ? local.comments[itemId] : [];
+        const merged = [...localArr];
+        remoteArr.forEach(rc => {
+          if (!merged.find(lc => lc.timestamp === rc.timestamp && lc.text === rc.text)) {
+            merged.push(rc);
+          }
+        });
+        local.comments[itemId] = merged;
+      });
+    }
+    
+    // Save merged data
+    try { localStorage.setItem('blaban_data_v3', JSON.stringify(appData)); } catch(e) {}
+    
     const branchName = (window.BRANCH_NAMES && window.BRANCH_NAMES[ev.branch]) || ev.branch;
     if (typeof showNotif === 'function') {
-      showNotif('🔄 تحديث مباشر: تقييم ' + branchName, 'info', 3000);
+      showNotif('🔄 تحديث: ' + branchName, 'info', 2000);
     }
     
-    // OS notification for offline users
     if (typeof showOSNotification === 'function') {
       showOSNotification({
         title: '📊 تحديث تقييم',
@@ -14565,12 +15497,19 @@ function applyRemoteEvalChange(data) {
       });
     }
     
-    // Refresh UI (only the relevant branch/page)
-    if (typeof selectedBranch !== 'undefined' && selectedBranch === ev.branch && typeof renderBranch === 'function') {
-      try { renderBranch(ev.branch); } catch(e) {}
-    }
-    if (typeof renderDashboard === 'function') {
-      try { renderDashboard(); } catch(e) {}
+    // Refresh UI — debounced to avoid render-storm if many updates arrive
+    if (!window._remoteRefreshTimer) {
+      window._remoteRefreshTimer = setTimeout(() => {
+        window._remoteRefreshTimer = null;
+        // Only re-render the relevant branch (NOT a full page swap that loses focus)
+        try {
+          if (typeof selectedBranch !== 'undefined' && selectedBranch === ev.branch) {
+            // Re-render only the checklist (preserves dropdowns/inputs in branch header)
+            if (typeof renderChecklist === 'function') renderChecklist(ev.branch);
+            if (typeof updateScore === 'function') updateScore(ev.branch);
+          }
+        } catch(e) {}
+      }, 400);
     }
   } catch(e) { console.warn('[InstantSync eval]', e); }
 }
@@ -15271,14 +16210,8 @@ async function applyRotationLock(locked) {
 window.toggleRotationLock = toggleRotationLock;
 window.applyRotationLock = applyRotationLock;
 
-// Restore rotation lock preference on load
-(function() {
-  const locked = localStorage.getItem('blaban_rotation_lock') === '1';
-  if (locked) {
-    // Wait for DOM
-    setTimeout(() => applyRotationLock(true), 200);
-  }
-})();
+// Clean up old rotation lock preference (feature removed)
+try { localStorage.removeItem('blaban_rotation_lock'); document.body.classList.remove('rotation-locked'); } catch(e) {}
 
 // ============ DEVICE SUB-MENU ============
 function toggleDeviceSubMenu(e) {
