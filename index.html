@@ -4378,6 +4378,10 @@ body.pdf-capturing .page-signature { color: #6B1B2A !important; }
             <span class="bubble-icon">🔄</span>
             <span class="bubble-label">تحديث</span>
           </button>
+          <button class="bubble-item bubble-storage" onclick="closeBubbleMenu();openStorageManager();" title="إدارة المساحة">
+            <span class="bubble-icon">💾</span>
+            <span class="bubble-label">المساحة</span>
+          </button>
         </div>
         <!-- Device sub-menu (3 sub-bubbles for desktop/tablet/mobile) -->
         <div class="bubble-submenu" id="deviceSubMenu" aria-hidden="true">
@@ -4489,6 +4493,334 @@ body.pdf-capturing .page-signature { color: #6B1B2A !important; }
   <button class="update-banner-close" onclick="dismissUpdateBanner()" title="تأجيل">×</button>
 </div>
 
+<script>
+// ===================== STORAGE QUOTA MANAGEMENT =====================
+// Detects when localStorage is full and intelligently frees space
+// to avoid "Failed to execute setItem" errors.
+
+window._storageWarningShown = false;
+
+// Returns approximate localStorage usage in MB
+function getStorageUsage() {
+  let total = 0;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      const val = localStorage.getItem(key);
+      if (val) total += (key.length + val.length) * 2; // UTF-16 = 2 bytes per char
+    }
+  } catch(e) {}
+  return total / (1024 * 1024); // in MB
+}
+window.getStorageUsage = getStorageUsage;
+
+// List all blaban keys with their sizes (for debugging)
+function listStorageBlabanKeys() {
+  const items = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('blaban_')) {
+        const val = localStorage.getItem(key) || '';
+        items.push({ key, sizeKB: ((key.length + val.length) * 2 / 1024).toFixed(1) });
+      }
+    }
+  } catch(e) {}
+  return items.sort((a,b) => parseFloat(b.sizeKB) - parseFloat(a.sizeKB));
+}
+window.listStorageBlabanKeys = listStorageBlabanKeys;
+
+// Strip large image data URLs from old visits (keeps text/results/comments)
+function stripOldImagesFromAppData(daysToKeep) {
+  daysToKeep = daysToKeep || 7;
+  try {
+    const data = JSON.parse(localStorage.getItem('blaban_data_v3') || '{}');
+    const today = new Date();
+    const cutoff = new Date(today.getFullYear(), today.getMonth(), today.getDate() - daysToKeep);
+    let stripped = 0, bytesFreed = 0;
+    
+    Object.entries(data).forEach(([key, visit]) => {
+      // key format: branch_month_day
+      const parts = key.split('_');
+      if (parts.length < 3) return;
+      const day = parseInt(parts[parts.length - 1]);
+      const month = parseInt(parts[parts.length - 2]);
+      if (isNaN(day) || isNaN(month)) return;
+      
+      const visitDate = new Date(today.getFullYear(), month, day);
+      if (visitDate >= cutoff) return; // too recent, keep images
+      
+      if (visit.images && typeof visit.images === 'object') {
+        Object.keys(visit.images).forEach(itemId => {
+          const img = visit.images[itemId];
+          if (typeof img === 'string' && img.startsWith('data:')) {
+            bytesFreed += img.length * 2;
+            // Replace with placeholder so we know there WAS an image
+            visit.images[itemId] = '[image_archived]';
+            stripped++;
+          }
+        });
+      }
+    });
+    
+    if (stripped > 0) {
+      localStorage.setItem('blaban_data_v3', JSON.stringify(data));
+    }
+    return { stripped, mbFreed: (bytesFreed / 1024 / 1024).toFixed(2) };
+  } catch(e) { return { stripped: 0, mbFreed: 0 }; }
+}
+window.stripOldImagesFromAppData = stripOldImagesFromAppData;
+
+// Emergency cleanup — runs progressively more aggressive cleanup until space is freed
+function emergencyStorageCleanup() {
+  let freedAny = false;
+  
+  // Pass 1: trim chat messages to last 20
+  try {
+    const chat = JSON.parse(localStorage.getItem('blaban_chat_messages') || '[]');
+    if (chat.length > 20) {
+      localStorage.setItem('blaban_chat_messages', JSON.stringify(chat.slice(-20)));
+      if (typeof window.chatMessages !== 'undefined') {
+        window.chatMessages = chat.slice(-20);
+      }
+      freedAny = true;
+    }
+  } catch(e) {}
+  
+  // Pass 2: trim history log to last 100 entries
+  try {
+    const hist = JSON.parse(localStorage.getItem('blaban_history') || '[]');
+    if (hist.length > 100) {
+      localStorage.setItem('blaban_history', JSON.stringify(hist.slice(-100)));
+      if (typeof window.historyLog !== 'undefined') {
+        window.historyLog = hist.slice(-100);
+      }
+      freedAny = true;
+    }
+  } catch(e) {}
+  
+  // Pass 3: strip images from visits older than 7 days
+  const r1 = stripOldImagesFromAppData(7);
+  if (r1.stripped > 0) freedAny = true;
+  
+  return freedAny;
+}
+window.emergencyStorageCleanup = emergencyStorageCleanup;
+
+// Safe setItem wrapper — handles QuotaExceededError gracefully
+function safeSetItem(key, value) {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch(e) {
+    const isQuotaError = e.name === 'QuotaExceededError' || 
+                          e.code === 22 || e.code === 1014 ||
+                          (e.message && e.message.toLowerCase().includes('quota'));
+    
+    if (!isQuotaError) {
+      console.error('[Storage] non-quota error:', e);
+      return false;
+    }
+    
+    console.warn('[Storage] Quota exceeded. Running emergency cleanup...');
+    
+    // Show user-friendly warning (once per session)
+    if (!window._storageWarningShown && typeof showNotif === 'function') {
+      window._storageWarningShown = true;
+      showNotif('⚠️ المساحة ممتلئة — جاري الحذف التلقائي للبيانات القديمة...', 'info', 4500);
+    }
+    
+    // Try cleanup
+    emergencyStorageCleanup();
+    
+    // Retry
+    try {
+      localStorage.setItem(key, value);
+      console.log('[Storage] Retry succeeded after cleanup');
+      return true;
+    } catch(e2) {
+      console.warn('[Storage] Still full after pass 1. Stripping more aggressively...');
+      
+      // Pass 2: strip images from anything older than 3 days
+      stripOldImagesFromAppData(3);
+      
+      try {
+        localStorage.setItem(key, value);
+        return true;
+      } catch(e3) {
+        console.warn('[Storage] Still full. Removing chat + history entirely...');
+        
+        // Last resort: remove chat + history
+        try { localStorage.removeItem('blaban_chat_messages'); } catch(_){}
+        try { localStorage.removeItem('blaban_history'); } catch(_){}
+        try { localStorage.removeItem('blaban_chat_unread'); } catch(_){}
+        try { localStorage.removeItem('blaban_data_v2'); } catch(_){} // legacy
+        try { localStorage.removeItem('blaban_data_v1'); } catch(_){} // legacy
+        
+        // Strip ALL images
+        stripOldImagesFromAppData(0);
+        
+        try {
+          localStorage.setItem(key, value);
+          if (typeof showNotif === 'function') {
+            showNotif('⚠️ تم حذف بعض البيانات القديمة لتوفير المساحة. البيانات الحالية محفوظة.', 'error', 6000);
+          }
+          return true;
+        } catch(e4) {
+          // Truly full, beyond what we can save
+          console.error('[Storage] CRITICAL: cannot save even after full cleanup', e4);
+          if (typeof showNotif === 'function') {
+            showNotif('❌ المساحة ممتلئة بالكامل. ارفع البيانات للسحابة من ☁️ ثم استخدم زر مسح البيانات.', 'error', 8000);
+          }
+          return false;
+        }
+      }
+    }
+  }
+}
+window.safeSetItem = safeSetItem;
+
+// Periodically warn user when storage > 4MB (limit usually 5MB)
+function checkStorageHealth() {
+  const usage = getStorageUsage();
+  if (usage > 4 && !window._storageWarningShown) {
+    window._storageWarningShown = true;
+    if (typeof showNotif === 'function') {
+      showNotif('⚠️ المساحة المحلية ممتلئة (' + usage.toFixed(1) + ' MB). يُفضل رفع البيانات للسحابة وحذف الصور القديمة.', 'info', 6000);
+    }
+  }
+}
+window.checkStorageHealth = checkStorageHealth;
+// Run check after page load
+setTimeout(checkStorageHealth, 3000);
+// Re-check every 5 minutes
+setInterval(() => { window._storageWarningShown = false; checkStorageHealth(); }, 5 * 60 * 1000);
+
+// ============ STORAGE MANAGER MODAL ============
+function openStorageManager() {
+  const usage = getStorageUsage();
+  const keys = listStorageBlabanKeys();
+  let modal = document.getElementById('storageManagerModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'storageManagerModal';
+    modal.className = 'modal-overlay';
+    modal.onclick = (e) => { if (e.target === modal) modal.classList.add('hidden'); };
+    document.body.appendChild(modal);
+  }
+  
+  const pct = Math.min(100, (usage / 5) * 100);
+  const color = pct >= 80 ? '#E74C3C' : pct >= 60 ? '#F39C12' : '#27AE60';
+  
+  let html = `
+    <div class="modal-box" style="max-width:600px;max-height:85vh;overflow-y:auto;">
+      <h3 style="color:var(--gold-light);margin-bottom:8px;">💾 إدارة المساحة المحلية</h3>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">
+        المساحة المحلية محدودة بـ 5 ميجا تقريباً. لو امتلأت، التطبيق يفشل في الحفظ.
+        ارفع البيانات للسحابة من ☁️ ثم احذف القديمة محلياً.
+      </p>
+      
+      <!-- Usage bar -->
+      <div style="background:rgba(255,255,255,0.1);border-radius:12px;padding:14px;margin-bottom:14px;border:1px solid var(--border);">
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+          <strong>الاستخدام الحالي</strong>
+          <strong style="color:${color};">${usage.toFixed(2)} MB / ~5 MB</strong>
+        </div>
+        <div style="background:rgba(0,0,0,0.4);border-radius:8px;height:14px;overflow:hidden;">
+          <div style="width:${pct}%;height:100%;background:${color};box-shadow:0 0 8px ${color};transition:width 0.3s;"></div>
+        </div>
+        <div style="text-align:center;margin-top:6px;font-size:11px;color:var(--text-muted);">${pct.toFixed(0)}%</div>
+      </div>
+      
+      <!-- Cleanup actions -->
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+        <button class="btn btn-blue" onclick="cleanupAndRefresh('images7')" style="text-align:start;">
+          🖼️ حذف الصور من تقييمات أقدم من 7 أيام
+        </button>
+        <button class="btn btn-orange" style="background:linear-gradient(135deg,#F39C12,#D35400);color:#fff;text-align:start;" onclick="cleanupAndRefresh('images3')">
+          🖼️ حذف الصور من تقييمات أقدم من 3 أيام
+        </button>
+        <button class="btn btn-blue" onclick="cleanupAndRefresh('chat')" style="text-align:start;">
+          💬 مسح الرسائل القديمة (احتفاظ بآخر 20)
+        </button>
+        <button class="btn btn-blue" onclick="cleanupAndRefresh('history')" style="text-align:start;">
+          📜 تقليص سجل العمليات (احتفاظ بآخر 100)
+        </button>
+        <button class="btn btn-red" style="text-align:start;" onclick="cleanupAndRefresh('imagesAll')">
+          🗑️ حذف كل الصور المخزنة محلياً (ابقَ النصوص والتقييمات)
+        </button>
+      </div>
+      
+      <!-- Top consumers -->
+      <details style="margin-bottom:14px;">
+        <summary style="cursor:pointer;font-weight:800;color:var(--gold);padding:8px;background:var(--bg-card2);border-radius:8px;">
+          📊 أكبر العناصر استهلاكاً (${keys.length})
+        </summary>
+        <div style="padding:8px 0;max-height:200px;overflow-y:auto;">
+          ${keys.slice(0, 15).map(k => `
+            <div style="display:flex;justify-content:space-between;padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px;">
+              <code style="color:var(--text-light);">${k.key}</code>
+              <strong style="color:${parseFloat(k.sizeKB) > 500 ? '#E74C3C' : 'var(--gold)'};">${k.sizeKB} KB</strong>
+            </div>
+          `).join('')}
+        </div>
+      </details>
+      
+      <div class="modal-actions">
+        <button class="btn btn-primary" onclick="document.getElementById('storageManagerModal').classList.add('hidden')">إغلاق</button>
+      </div>
+    </div>
+  `;
+  modal.innerHTML = html;
+  modal.classList.remove('hidden');
+}
+window.openStorageManager = openStorageManager;
+
+function cleanupAndRefresh(mode) {
+  let result;
+  let msg = '';
+  
+  if (mode === 'images7') {
+    result = stripOldImagesFromAppData(7);
+    msg = `حُذفت ${result.stripped} صورة، تم تحرير ${result.mbFreed} MB`;
+  } else if (mode === 'images3') {
+    result = stripOldImagesFromAppData(3);
+    msg = `حُذفت ${result.stripped} صورة، تم تحرير ${result.mbFreed} MB`;
+  } else if (mode === 'imagesAll') {
+    if (!confirm('سيتم حذف كل الصور المرفقة في كل التقييمات. لا يمكن التراجع. هل أنت متأكد؟')) return;
+    result = stripOldImagesFromAppData(0);
+    msg = `حُذفت ${result.stripped} صورة، تم تحرير ${result.mbFreed} MB`;
+  } else if (mode === 'chat') {
+    try {
+      const chat = JSON.parse(localStorage.getItem('blaban_chat_messages') || '[]');
+      if (chat.length > 20) {
+        localStorage.setItem('blaban_chat_messages', JSON.stringify(chat.slice(-20)));
+        if (typeof window.chatMessages !== 'undefined') window.chatMessages = chat.slice(-20);
+        msg = `حُذفت ${chat.length - 20} رسالة قديمة`;
+      } else {
+        msg = 'لا توجد رسائل قديمة لحذفها';
+      }
+    } catch(e) { msg = 'خطأ في حذف الرسائل'; }
+  } else if (mode === 'history') {
+    try {
+      const hist = JSON.parse(localStorage.getItem('blaban_history') || '[]');
+      if (hist.length > 100) {
+        localStorage.setItem('blaban_history', JSON.stringify(hist.slice(-100)));
+        if (typeof window.historyLog !== 'undefined') window.historyLog = hist.slice(-100);
+        msg = `حُذف ${hist.length - 100} سجل قديم`;
+      } else {
+        msg = 'لا توجد سجلات قديمة لحذفها';
+      }
+    } catch(e) { msg = 'خطأ في حذف السجلات'; }
+  }
+  
+  if (typeof showNotif === 'function') showNotif('✅ ' + msg, 'success', 4000);
+  
+  // Refresh the modal
+  setTimeout(() => openStorageManager(), 500);
+}
+window.cleanupAndRefresh = cleanupAndRefresh;
+</script>
 <script>
 // ===================== DATA DEFINITIONS =====================
 // Default 5 branches (Khaisa added)
@@ -4758,8 +5090,13 @@ let _broadcastDataTimer = null;
 let _broadcastTasksTimer = null;
 
 function saveData() {
-  try { localStorage.setItem('blaban_data_v3', JSON.stringify(appData)); }
-  catch(e) { localStorage.removeItem('blaban_data_v2'); localStorage.setItem('blaban_data_v3', JSON.stringify(appData)); }
+  // Use safe wrapper that handles QuotaExceededError gracefully
+  if (typeof safeSetItem === 'function') {
+    safeSetItem('blaban_data_v3', JSON.stringify(appData));
+  } else {
+    try { localStorage.setItem('blaban_data_v3', JSON.stringify(appData)); }
+    catch(e) { console.error('[saveData] quota:', e); }
+  }
   // Push to firebase if connected (already internally debounced)
   if (typeof pushDataToFirebase === 'function') pushDataToFirebase();
   
@@ -4811,8 +5148,12 @@ function saveData() {
 }
 
 function saveTasks() {
-  try { localStorage.setItem('blaban_tasks_v1', JSON.stringify(tasksData)); }
-  catch(e) { console.error('Tasks save failed', e); }
+  if (typeof safeSetItem === 'function') {
+    safeSetItem('blaban_tasks_v1', JSON.stringify(tasksData));
+  } else {
+    try { localStorage.setItem('blaban_tasks_v1', JSON.stringify(tasksData)); }
+    catch(e) { console.error('Tasks save failed', e); }
+  }
   if (typeof pushDataToFirebase === 'function') pushDataToFirebase();
   
   // ============ DEBOUNCED BROADCAST (500ms) ============
@@ -14726,7 +15067,12 @@ function isOpsSessionValid() {
 
 function startOpsSession() {
   authSession = { until: Date.now() + AUTH_SESSION_DURATION };
-  localStorage.setItem('blaban_auth_session', JSON.stringify(authSession));
+  if (typeof safeSetItem === 'function') {
+    safeSetItem('blaban_auth_session', JSON.stringify(authSession));
+  } else {
+    try { localStorage.setItem('blaban_auth_session', JSON.stringify(authSession)); }
+    catch(e) { console.error('[Auth] quota:', e); }
+  }
   // Switch role to ops (so user has full access)
   if (typeof _originalSetRole === 'function') {
     try { _originalSetRole('ops'); } catch(e) { console.warn('Set role failed:', e); }
@@ -15421,12 +15767,23 @@ function lockOpsMode() {
 }
 
 // Reset session timer on user activity (session-based, not role-based)
+// Throttle writes to localStorage to avoid spamming + quota errors
+let _lastAuthSessionWrite = 0;
 ['click','keydown','touchstart'].forEach(evt => {
   document.addEventListener(evt, () => {
     if (authSession) {
       // Extend session
       authSession.until = Date.now() + AUTH_SESSION_DURATION;
-      localStorage.setItem('blaban_auth_session', JSON.stringify(authSession));
+      // Only write to localStorage every 30 seconds (not on EVERY click — would flood + cause quota errors)
+      const now = Date.now();
+      if (now - _lastAuthSessionWrite > 30000) {
+        _lastAuthSessionWrite = now;
+        if (typeof safeSetItem === 'function') {
+          safeSetItem('blaban_auth_session', JSON.stringify(authSession));
+        } else {
+          try { localStorage.setItem('blaban_auth_session', JSON.stringify(authSession)); } catch(e) {}
+        }
+      }
       scheduleAutoLock();
     }
   }, { passive: true });
